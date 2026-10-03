@@ -912,6 +912,39 @@ fn lost_the_port_to_a_convsim_core(edition: &str) -> (String, String) {
         .unwrap_or_else(|| (ALREADY_RUNNING_MESSAGE.to_string(), already_running_hint()))
 }
 
+/// The progress message shown while the shell is asking an occupied port who
+/// holds it. Shared by the two places that ask, so the player sees the same
+/// sentence whether the port was taken before our engine started or during.
+fn occupant_check_message() -> String {
+    format!(
+        "Something is already using port {port} — checking whether it is the engine…",
+        port = CORE_PORT
+    )
+}
+
+/// Ask who holds 127.0.0.1:`port`, retrying for up to `grace` while the only
+/// answer is `CoreProbe::Occupied`.
+///
+/// `Occupied` is not an answer, it is the absence of one: the occupant accepted
+/// the connection and did not identify itself *this time*. Acting on it directly
+/// reports `PORT_BUSY_MESSAGE`, whose hint tells the player to close whatever
+/// holds the port — so a convsim-core that was merely slow (`/api/health` awaits
+/// the LLM and TTS probes in sequence, 5 s each, and may be behind an engine
+/// still bringing a model up) gets the one piece of advice that breaks the launch
+/// which worked. The attach loop in `supervise_core` already allows for that with
+/// `OCCUPIED_GRACE`, interleaving its own progress messages; this is the same
+/// grace for the callers that cannot.
+fn identify_port_occupant(port: u16, grace: Duration) -> CoreProbe {
+    let deadline = Instant::now() + grace;
+    loop {
+        let probe = probe_core(port);
+        if probe != CoreProbe::Occupied || Instant::now() >= deadline {
+            return probe;
+        }
+        std::thread::sleep(PROBE_INTERVAL);
+    }
+}
+
 /// The hint beside `KEEPS_STOPPING_MESSAGE`.
 ///
 /// "Restarted {max} times", not "stopped {max} times": the supervisor reaches
@@ -1102,7 +1135,30 @@ fn start_and_await_core(
             // took the port between our probe and its bind. Ask the port what
             // it is, the same way the attach path above does, rather than
             // reporting a crash the logs cannot explain.
-            let (message, hint) = match probe_core(CORE_PORT) {
+            //
+            // And ask with the same patience, for a sharper version of the same
+            // reason. Reaching here means the port was free a moment ago and our
+            // child died for failing to bind it, so whatever won that race
+            // almost certainly IS a convsim-core — another copy of the app, or
+            // the other edition. Taking one unidentified answer as proof of a
+            // stranger reports `PORT_BUSY_MESSAGE`, whose hint tells the player
+            // to close the program holding port 7355: the engine serving the
+            // window that did start.
+            let occupant = match probe_core(CORE_PORT) {
+                CoreProbe::Occupied => {
+                    emit_core_status(
+                        app,
+                        status_arc,
+                        "starting",
+                        &occupant_check_message(),
+                        None,
+                        log_dir,
+                    );
+                    identify_port_occupant(CORE_PORT, OCCUPIED_GRACE)
+                }
+                answered => answered,
+            };
+            let (message, hint) = match occupant {
                 // A convsim-core won the race, so ours could not bind. Name the
                 // edition when it is the other one: the demo and the full app
                 // are separate Steam apps that may be launched together, and a
@@ -1372,7 +1428,7 @@ fn supervise_core(
                         &app,
                         &status_arc,
                         "starting",
-                        "Something is already using port 7355 — checking whether it is the engine…",
+                        &occupant_check_message(),
                         None,
                         log_dir_ref,
                     );
@@ -2393,6 +2449,108 @@ mod tests {
             accepted.load(Ordering::SeqCst),
             2,
             "the watch gave up on a socket that was still accepting"
+        );
+    }
+
+    // ── Identifying who holds the port ───────────────────────────────────────
+
+    #[test]
+    fn a_slow_occupant_gets_a_second_chance_to_identify_itself() {
+        // The regression this guards: `start_and_await_core` used to take one
+        // `CoreProbe::Occupied` as proof that a stranger held the port, and so
+        // reported `PORT_BUSY_MESSAGE` — "close whatever is using that port" —
+        // for an engine whose only fault was answering slowly. On that path the
+        // occupant is almost always a convsim-core (the port was free moments
+        // earlier and our own child just died for failing to bind it), so the
+        // program the player would close is the engine serving the window that
+        // did start.
+        //
+        // The stand-in answers nothing at all the first time and a real health
+        // body the second, which is what a sidecar HTTP probe timing out once
+        // looks like from here. One probe reads it as a conflict; this must not.
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let server = std::thread::spawn(move || {
+            // First connection: accept, read the request, hang up without a
+            // response. The probe sees EOF and has nothing to parse.
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+            }
+            // Second connection: answer properly.
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let body = health_body(",\"edition\":\"full\"");
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+
+        assert_eq!(
+            identify_port_occupant(port, Duration::from_secs(5)),
+            CoreProbe::Ready {
+                edition: "full".to_string()
+            }
+        );
+        let _ = server.join();
+    }
+
+    #[test]
+    fn an_occupant_that_never_identifies_itself_is_still_a_conflict() {
+        // The other half: the grace is bounded, so a program that holds the port
+        // for its own reasons is reported rather than waited on forever.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            while done_rx.try_recv().is_err() {
+                listener
+                    .set_nonblocking(true)
+                    .expect("set the listener non-blocking");
+                if let Ok((stream, _)) = listener.accept() {
+                    drop(stream);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        let started = Instant::now();
+        assert_eq!(
+            identify_port_occupant(port, Duration::from_millis(600)),
+            CoreProbe::Occupied
+        );
+        let elapsed = started.elapsed();
+        let _ = done_tx.send(());
+        let _ = server.join();
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "the grace did not bound the retrying: took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn a_closed_port_is_not_retried() {
+        // `Closed` is an answer — on the lost-bind path it means the exit was not
+        // a failure to bind at all — so it must be returned at once rather than
+        // costing the whole grace before the crash is reported.
+        let started = Instant::now();
+        assert_eq!(
+            identify_port_occupant(free_port(), Duration::from_secs(30)),
+            CoreProbe::Closed
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "a closed port was retried for {:?}",
+            started.elapsed()
         );
     }
 
