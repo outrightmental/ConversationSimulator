@@ -110,11 +110,12 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
     """Internal coherence of the manifest itself."""
     errors: list[str] = []
     project = manifest.get("project") or {}
-    for key in ("owner", "number", "issue_types", "priorities"):
+    for key in ("owner", "number", "issue_types", "priorities", "phases"):
         if not project.get(key):
             errors.append(f"project.{key} is missing")
     types = set(project.get("issue_types") or [])
     priorities = set(project.get("priorities") or [])
+    phases = set(project.get("phases") or [])
 
     names = label_names(manifest)
     for name in sorted({n for n in names if names.count(n) > 1}):
@@ -163,8 +164,13 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
         "milestones": set(titles),
         "priorities": priorities,
         "types": types,
+        "phases": phases,
         "labels": live,
     }
+    # A section the planner does not read is a silent no-op, which is the worst
+    # kind of typo: `apply` reports success and changes nothing.
+    for section in sorted(set(backfill) - set(known)):
+        errors.append(f"backfill.{section!r} is not a section this script applies")
     for section, allowed in known.items():
         seen: dict[int, str] = {}
         for value, numbers in (backfill.get(section) or {}).items():
@@ -843,6 +849,7 @@ project:
   phase_field: Phase
   issue_types: [Task, Bug, Feature, Epic]
   priorities: [P0, P1]
+  phases: ["01"]
 labels:
   - name: area:engine
     color: "1d76db"
@@ -955,6 +962,8 @@ def self_test() -> int:
     broken["rules"]["meta_label"] = "nope"
     broken["backfill"]["milestones"]["v9"] = [7]
     broken["backfill"]["priorities"]["P0"] = [3]
+    broken["backfill"]["phases"] = {"99 · Never": [7]}
+    broken["backfill"]["labelz"] = {"area:engine": [7]}
 
     cases: list[tuple[str, Any, Any]] = [
         # -- the manifest checks
@@ -979,6 +988,11 @@ def self_test() -> int:
          any("unknown value 'v9'" in e for e in manifest_errors(broken)), True),
         ("backfill assigning one issue twice is reported",
          any("assigns issue #3 to both" in e for e in manifest_errors(broken)), True),
+        ("backfill naming an undeclared phase is reported",
+         any("unknown value '99 · Never'" in e for e in manifest_errors(broken)), True),
+        ("a backfill section the planner never reads is reported",
+         any("'labelz' is not a section this script applies" in e
+             for e in manifest_errors(broken)), True),
         ("due_on normalises to YYYY-MM-DD",
          [due_date(dt.date(2026, 1, 31)), due_date("2026-01-31T12:00:00Z"), due_date(None)],
          ["2026-01-31", "2026-01-31", None]),

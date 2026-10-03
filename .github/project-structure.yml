@@ -31,6 +31,17 @@ project:
   # Native repository issue types — the replacement for the type labels.
   issue_types: [Task, Bug, Feature, Epic]
   priorities: [P0 — blocker, P1 — next, P2 — later]
+  # Append-only eras, mirroring the Phase options on the board. Declared so a
+  # mis-spelled phase in `backfill` fails `validate` offline rather than
+  # halfway through `apply`.
+  phases:
+    - 01 · Alpha build
+    - 02 · Steam release
+    - 03 · Beta & signature
+    - 04 · Pivot & onboarding
+    - 05 · Hardening
+    - 06 · Release polish
+    - 07 · Future
 
 # ── Labels ───────────────────────────────────────────────────────────────────
 # The complete set. A label not listed here does not belong on the tracker.
