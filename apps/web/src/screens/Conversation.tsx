@@ -896,8 +896,15 @@ export default function Conversation() {
   const isIdle = phase === 'active'
   const isBusy = phase === 'submitting' || phase === 'ending'
   const isEnded = phase === 'ended'
-  const isSlowResponse = phase === 'submitting' && waitElapsedMs >= SLOW_RESPONSE_MS
-  const isVerySlowResponse = phase === 'submitting' && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
+  // The NPC row the stream committed, while the REST request that carries the
+  // state delta is still out. There is nothing left to wait for on screen, so
+  // the turn panel must not go on asking the player to wait for a reply they
+  // are already reading — and after the turn deadline that gap is up to one
+  // reconcile interval long.
+  const npcReplyOnScreen = turns[turns.length - 1]?.role === 'npc'
+  const isAwaitingNpc = phase === 'submitting' && !npcReplyOnScreen
+  const isSlowResponse = isAwaitingNpc && waitElapsedMs >= SLOW_RESPONSE_MS
+  const isVerySlowResponse = isAwaitingNpc && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
   const npcStatus = npcStatusLabel(sessionState, phase)
 
   return (
@@ -1174,9 +1181,13 @@ export default function Conversation() {
       {/* How long this turn is taking, and how long it usually takes (issue #488).
           Deliberately outside the transcript: that region is a polite live region,
           and a clock ticking inside it would be re-announced every second. */}
-      {phase === 'submitting' && (
+      {isAwaitingNpc && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <NpcTurnProgress elapsedMs={waitElapsedMs} estimateMs={turnEstimateMs} />
+          <NpcTurnProgress
+            elapsedMs={waitElapsedMs}
+            estimateMs={turnEstimateMs}
+            streaming={streamingText.length > 0}
+          />
 
           {isSlowResponse && (
             <div

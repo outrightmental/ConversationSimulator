@@ -138,6 +138,7 @@ import AppLayout from '../layout/AppLayout'
 import MicButton from '../components/MicButton'
 import VadStatusIndicator from '../components/VadStatusIndicator'
 import DebugDrawer from '../components/DebugDrawer'
+import NpcTurnProgress from '../components/NpcTurnProgress'
 import TranscriptReviewPanel from '../components/TranscriptReviewPanel'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -392,6 +393,33 @@ describe('Accessibility: VadStatusIndicator', () => {
     const { container } = render(<VadStatusIndicator state="listening" />)
     const el = container.querySelector('[aria-label]')
     expect(el?.getAttribute('aria-label')).toMatch(/listening/i)
+  })
+})
+
+describe('Accessibility: NpcTurnProgress', () => {
+  // The three states the turn-time estimate can be in (issue #488). The
+  // indeterminate one is the interesting case: a progressbar with no
+  // aria-valuenow is deliberate, and must not read as an incomplete ARIA
+  // contract.
+  const states = [
+    { name: 'indeterminate (no turn timed yet)', props: { elapsedMs: 7_000, estimateMs: null } },
+    { name: 'tracking an estimate', props: { elapsedMs: 10_000, estimateMs: 30_000 } },
+    { name: 'past the estimate', props: { elapsedMs: 90_000, estimateMs: 30_000 } },
+    { name: 'streaming the reply', props: { elapsedMs: 20_000, estimateMs: 30_000, streaming: true } },
+  ]
+
+  for (const { name, props } of states) {
+    it(`has no axe violations while ${name}`, async () => {
+      const { container } = render(<NpcTurnProgress {...props} />)
+      const violations = await runAxe(container)
+      expect(violations, formatViolations(violations)).toHaveLength(0)
+    })
+  }
+
+  it('labels the progress bar', () => {
+    const { container } = render(<NpcTurnProgress elapsedMs={10_000} estimateMs={30_000} />)
+    const bar = container.querySelector('[role="progressbar"]')
+    expect(bar?.getAttribute('aria-label')).toBeTruthy()
   })
 })
 

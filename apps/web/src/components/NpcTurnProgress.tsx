@@ -31,6 +31,10 @@ export interface NpcTurnProgressProps {
   elapsedMs: number
   /** Expected turn length for this machine, or null before any turn was timed. */
   estimateMs: number | null
+  /** True once tokens are arriving. The turn is not finished — the estimate
+   *  covers the whole round trip — but the NPC is visibly speaking rather than
+   *  thinking, and the transcript is already announcing the words. */
+  streaming?: boolean
 }
 
 /**
@@ -42,12 +46,16 @@ export interface NpcTurnProgressProps {
  * looks frozen), and, once a turn has been timed, how long this one is expected
  * to take and how far through that it is.
  *
+ * Once tokens start arriving the heading says the NPC is replying rather than
+ * thinking: the estimate still covers the whole round trip, but a panel claiming
+ * the NPC is thinking under a reply being typed out is simply wrong.
+ *
  * Accessibility: the visible clock ticks every second, so it is hidden from
  * assistive tech and a single polite live region carries the same news on a 30 s
  * grid. The bar keeps its progressbar role and value for anyone who navigates to
  * it deliberately.
  */
-export default function NpcTurnProgress({ elapsedMs, estimateMs }: NpcTurnProgressProps) {
+export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = false }: NpcTurnProgressProps) {
   const hasEstimate = estimateMs !== null && estimateMs > 0
   const overrun = hasEstimate && elapsedMs > estimateMs
   const fillPercent = hasEstimate
@@ -92,7 +100,7 @@ export default function NpcTurnProgress({ elapsedMs, estimateMs }: NpcTurnProgre
           color: 'var(--cs-text-muted, #a1a1aa)',
         }}
       >
-        <span>NPC is thinking…</span>
+        <span>{streaming ? 'NPC is replying…' : 'NPC is thinking…'}</span>
         <span
           data-testid="npc-turn-progress-clock"
           style={{
@@ -150,12 +158,18 @@ export default function NpcTurnProgress({ elapsedMs, estimateMs }: NpcTurnProgre
       <div
         data-testid="npc-turn-progress-detail"
         aria-hidden="true"
-        style={{ fontSize: '0.75rem', color: 'var(--cs-text-faint, #71717a)' }}
+        // Muted, not faint: this caption is the answer to "how long?", and
+        // --cs-text-faint at 12px lands at 3.7:1 on --cs-raise (see the AA note
+        // in ScenarioSetup.css), short of the 4.5:1 body text needs.
+        style={{ fontSize: '0.75rem', color: 'var(--cs-text-muted, #a1a1aa)' }}
       >
         {detail}
       </div>
 
-      {elapsedMs >= FIRST_ANNOUNCE_MS && (
+      {/* Nothing to announce once the words are arriving: the transcript is a
+          polite live region, so it is already reading the reply out, and "still
+          waiting" over the top of it contradicts what the player is hearing. */}
+      {!streaming && elapsedMs >= FIRST_ANNOUNCE_MS && (
         <span data-testid="npc-turn-progress-announcement" role="status" aria-live="polite" style={srOnly}>
           {hasEstimate
             ? `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} of about ${estimateText}. The reply is not lost.`

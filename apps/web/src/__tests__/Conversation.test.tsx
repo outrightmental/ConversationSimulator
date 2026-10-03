@@ -1941,6 +1941,82 @@ describe('Conversation screen', () => {
       }
     })
 
+    it('says the NPC is replying, not thinking, once tokens arrive', async () => {
+      recordTurnSample(MODEL_NAME, 30_000)
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(20_000)
+        expect(screen.getByTestId('npc-turn-progress')).toHaveTextContent('NPC is thinking…')
+
+        act(() => {
+          wsCallback?.({
+            type: 'npc.token',
+            seq: 1,
+            session_id: SESSION_ID,
+            ts: '2026-07-01T00:01:00Z',
+            payload: { text: 'Well, ' },
+          })
+        })
+
+        // The words are visibly arriving; the clock still covers the round trip.
+        const panel = screen.getByTestId('npc-turn-progress')
+        expect(panel).toHaveTextContent('NPC is replying…')
+        expect(panel).not.toHaveTextContent('NPC is thinking…')
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('20s / ~30s')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('stops asking the player to wait once the stream has delivered the reply', async () => {
+      // npc.final commits the reply while the REST request is still out — and
+      // past the turn deadline that gap runs a whole reconcile interval. A panel
+      // counting up under a reply the player is reading is simply wrong.
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(40_000)
+        expect(screen.getByTestId('npc-turn-progress')).toBeInTheDocument()
+        expect(screen.getByTestId('slow-response-indicator')).toBeInTheDocument()
+
+        act(() => {
+          wsCallback?.({
+            type: 'npc.final',
+            seq: 1,
+            session_id: SESSION_ID,
+            ts: '2026-07-01T00:01:01Z',
+            payload: {
+              content: 'Here is my answer.',
+              emotion: 'neutral',
+              state_delta: {},
+              event_flags: [],
+            },
+          })
+        })
+
+        expect(screen.getByText('Here is my answer.')).toBeInTheDocument()
+        expect(screen.queryByTestId('npc-turn-progress')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('slow-response-indicator')).not.toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('does not learn a duration from a turn that failed', async () => {
       // A turn that errored out at 30s says nothing about how long a reply takes.
       let failTurn: (r: { ok: false; error: ApiError }) => void = () => {}

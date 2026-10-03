@@ -3,8 +3,10 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import NpcTurnProgress from '../components/NpcTurnProgress'
 
-function renderProgress(elapsedMs: number, estimateMs: number | null) {
-  return render(<NpcTurnProgress elapsedMs={elapsedMs} estimateMs={estimateMs} />)
+function renderProgress(elapsedMs: number, estimateMs: number | null, streaming = false) {
+  return render(
+    <NpcTurnProgress elapsedMs={elapsedMs} estimateMs={estimateMs} streaming={streaming} />,
+  )
 }
 
 describe('NpcTurnProgress', () => {
@@ -96,6 +98,28 @@ describe('NpcTurnProgress', () => {
       expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent(
         'Still waiting on the NPC — 30s of about 30s. The reply is not lost.',
       )
+    })
+
+    it('stops announcing a wait once the words are arriving', () => {
+      // The transcript is a polite live region already reading the reply out;
+      // "still waiting" over the top of it contradicts what the player hears.
+      renderProgress(45_000, 30_000, true)
+      expect(screen.queryByTestId('npc-turn-progress-announcement')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('once the reply starts streaming', () => {
+    it('stops claiming the NPC is thinking', () => {
+      renderProgress(20_000, 30_000, true)
+      const header = screen.getByTestId('npc-turn-progress-clock').parentElement!
+      expect(header).toHaveTextContent('NPC is replying…')
+      expect(header).not.toHaveTextContent('NPC is thinking…')
+    })
+
+    it('keeps timing the whole round trip, which is what was estimated', () => {
+      renderProgress(20_000, 30_000, true)
+      expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('20s / ~30s')
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '67')
     })
   })
 })
