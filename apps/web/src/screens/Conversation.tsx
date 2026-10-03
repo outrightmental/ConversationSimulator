@@ -163,8 +163,27 @@ export default function Conversation() {
   // counts NPC turns too, so it cannot stand in for this.
   const playerTurnsRef = useRef(0)
   const deepConversationGrantedRef = useRef(false)
-  // Counts one player turn the conversation is keeping, and grants
-  // ACH_DEEP_CONVERSATION at the threshold.
+  // Read `unlock` through a ref so the tally code below touches nothing
+  // reactive. It is called from inside the start-session effect, and that
+  // effect must not gain a dependency that re-runs it for a live session — it
+  // re-POSTs /start and rehydrates the transcript from the server.
+  const unlockRef = useRef(unlock)
+  unlockRef.current = unlock
+  // Grants ACH_DEEP_CONVERSATION once this session's player-turn tally has
+  // reached the threshold. Separate from the counter below because the tally
+  // has two writers and both have to evaluate it: turns counted one at a time
+  // as they settle, and `_hydrateTurnsFromServer`, which replaces the tally
+  // outright from the server's copy. A turn adopted from the server after the
+  // reply deadline (issue #489) arrives only through that second path, so
+  // checking in the counter alone would delay the unlock by a turn — or lose it
+  // entirely when the adopted turn was the session's last.
+  function _checkDeepConversation() {
+    if (deepConversationGrantedRef.current) return
+    if (playerTurnsRef.current < DEEP_CONVERSATION_TURNS) return
+    deepConversationGrantedRef.current = true
+    void unlockRef.current(SteamAchievement.DEEP_CONVERSATION)
+  }
+  // Counts one player turn the conversation is keeping.
   //
   // Called once a turn has settled, never at submit time: a turn whose request
   // fails is rolled back out of the transcript and gives its turn number back,
@@ -173,13 +192,7 @@ export default function Conversation() {
   // Deep" on retries alone.
   function notePlayerTurnKept() {
     playerTurnsRef.current += 1
-    if (
-      !deepConversationGrantedRef.current &&
-      playerTurnsRef.current >= DEEP_CONVERSATION_TURNS
-    ) {
-      deepConversationGrantedRef.current = true
-      void unlock(SteamAchievement.DEEP_CONVERSATION)
-    }
+    _checkDeepConversation()
   }
   const bargeInGrantedRef = useRef(false)
   const modeStatCountedRef = useRef(false)
@@ -286,13 +299,22 @@ export default function Conversation() {
     setWaitElapsedMs(0)
   }
 
-  /** Replace the transcript with the server's copy, renumbering from the top. */
+  /**
+   * Replace the transcript with the server's copy, renumbering from the top.
+   *
+   * Also resets the player-turn tally to the server's count, which is the
+   * authoritative one: a resumed session keeps its progress toward
+   * ACH_DEEP_CONVERSATION, and a turn adopted after the reply deadline
+   * (issue #489) is counted here rather than by `notePlayerTurnKept`, which
+   * that path returns before reaching. Every caller must follow this with
+   * `_checkDeepConversation()` — it is called at the call site rather than
+   * from here only because doing it here would make this function a dependency
+   * of the start-session effect.
+   */
   function _hydrateTurnsFromServer(
     serverTurns: Array<{ role: TurnEntry['role']; content: string; emotion?: string | null }>,
   ) {
     turnNumRef.current = 0
-    // Keep the player-turn tally in step with the rehydrated transcript so a
-    // mid-session reload does not restart progress toward ACH_DEEP_CONVERSATION.
     playerTurnsRef.current = serverTurns.filter((t) => t.role === 'player').length
     setTurns(
       serverTurns.map((t) => ({
@@ -448,6 +470,7 @@ export default function Conversation() {
           if (cancelled) return
           if (tr.ok && tr.data.turns.length > 0) {
             _hydrateTurnsFromServer(tr.data.turns)
+            _checkDeepConversation()
           }
           const lastState = tr.ok
             ? tr.data.turns[tr.data.turns.length - 1]?.flow_state_after
@@ -657,6 +680,7 @@ export default function Conversation() {
     if (!last || last.role !== 'npc' || serverTurns.length <= turnNumRef.current) return 'pending'
 
     _hydrateTurnsFromServer(serverTurns)
+    _checkDeepConversation()
     setNpcEmotion(last.emotion ?? null)
     npcTurnCommittedRef.current = true
     streamingRef.current = ''
