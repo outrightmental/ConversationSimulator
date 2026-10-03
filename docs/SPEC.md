@@ -1146,12 +1146,21 @@ Must allow:
 * Transcript saving on/off.
 * Random seed / variation seed.
 
-The screen is a briefing the player reads, not a settings form they fill in. It
-must carry its own hierarchy:
+The screen is a briefing the player reads, not a settings form they fill in — a
+preflight screen for a conversation. It must be grokkable at a glance, without
+being read, and it must carry three tiers of visual weight:
+
+1. **The mission** — what this conversation is and what the player is trying to
+   achieve.
+2. **The decisions** — the two choices that change the conversation: how the
+   character behaves, and who the player is in it.
+3. **The setup** — the mechanical settings. Grouped and demoted, never hidden:
+   every control stays on the screen and one Tab (or one D-pad press) away.
 
 | Element           | Requirement                                                                                                       |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Brief hero        | Pack, title, summary, and the facts of the engagement: role, estimated length, turn limit, content rating, voice.  |
+| Mission objective | The scenario's `goals.player_visible`, numbered, in the brightest panel on the screen — a player who reads nothing else must still come away knowing what they are trying to do. A scenario that declares no goals falls back to the role brief, which is then not repeated elsewhere. `goals.hidden` is the NPC's covert agenda and is never part of the brief: the engine withholds it from the scenario response unless dev mode is active and the caller asks for it explicitly. |
 | Numbered sections | The settings read as a short labelled sequence, not an undifferentiated stack of fields.                          |
 | Difficulty traits | Patience, disclosure, volatility and time pressure drawn as meters; the fill always matches the number shown.     |
 | Purpose panel     | The rubric dimensions this scenario practises, when it declares any.                                              |

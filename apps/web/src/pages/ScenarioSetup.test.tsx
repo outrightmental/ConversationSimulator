@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import axe from 'axe-core';
 import { ScenarioSetupPage } from './ScenarioSetup';
-import type { ScenarioInfo, HealthResponse, SessionCreateResponse } from '@convsim/shared';
+import type {
+  ScenarioInfo,
+  ScenarioDifficulty,
+  HealthResponse,
+  SessionCreateResponse,
+} from '@convsim/shared';
 import type { ApiResult } from '../api/errors';
 
 const mockScenario: ScenarioInfo = {
@@ -30,6 +35,14 @@ const mockScenario: ScenarioInfo = {
   voice_supported: true,
   safety_summary: 'PG content only. No NSFW, no real-person impersonation.',
   estimated_length_label: '15–20 minutes',
+  // Every official pack declares goals.player_visible, so the fixture carries
+  // them: the objective panel is the default state of this screen, not an
+  // extra. The goal-less fallback is covered in its own cases below.
+  player_visible_goals: [
+    'Demonstrate relevant experience with clear STAR-format examples',
+    'Show self-awareness about strengths and areas for growth',
+    'Ask thoughtful questions about the role',
+  ],
 };
 
 const healthReady: HealthResponse = {
@@ -222,6 +235,35 @@ describe('ScenarioSetupPage', () => {
       expect(screen.getByRole('radio', { name: /warm-up/i })).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: /standard/i })).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: /hard/i })).toBeInTheDocument();
+    });
+
+    // A pack on the older difficulty schema names its levels easy/normal/hard
+    // and describes none of them. The row must then show the level alone — not
+    // the level key dressed up as a sentence.
+    it('says nothing rather than echoing the level when a pack describes none', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
+        ...mockScenario,
+        difficulty: {
+          default: 'normal' as ScenarioDifficulty,
+          options: {
+            easy:   {},
+            normal: {},
+            hard:   {},
+          },
+        } as ScenarioInfo['difficulty'],
+      } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const easy = document.querySelector('[data-level="easy"]') as HTMLElement;
+      expect(within(easy).getByRole('radio', { name: /easy/i })).toBeInTheDocument();
+      expect(easy.querySelector('.brief-option-desc')).toBeNull();
+      // The standard presets still carry their built-in wording.
+      expect(
+        (document.querySelector('[data-level="hard"]') as HTMLElement).querySelector(
+          '.brief-option-desc',
+        )?.textContent,
+      ).toMatch(/terse, reactive/i);
     });
 
     it('changes difficulty when a different option is selected', async () => {
@@ -742,6 +784,242 @@ describe('ScenarioSetupPage', () => {
     });
   });
 
+  // Issue #500: the one thing this screen must convey without being read is
+  // what the player is trying to achieve.
+  describe('mission objective', () => {
+    beforeEach(() => {
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it("leads the hero with the scenario's player-visible goals, in order", async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).getByRole('heading', { name: /your objective/i })).toBeInTheDocument();
+      const goals = within(objective).getAllByRole('listitem');
+      expect(goals.map((li) => li.textContent)).toEqual([
+        '01Demonstrate relevant experience with clear STAR-format examples',
+        '02Show self-awareness about strengths and areas for growth',
+        '03Ask thoughtful questions about the role',
+      ]);
+      expect(within(objective).getByText('3 goals')).toBeInTheDocument();
+    });
+
+    // The same assertion edition.test.tsx makes about the demo's card list, for
+    // the same reason: `.brief-goals` is `list-style: none` (it draws its own
+    // 01/02/03 marks), and WebKit — WKWebView on macOS, the WebKitGTK the Steam
+    // Deck build runs on — drops list semantics from such a list. jsdom does
+    // not, so only the attribute itself can hold the line here.
+    it('carries an explicit list role, which WebKit needs to keep the goals a list', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const goals = within(screen.getByTestId('brief-objective')).getByRole('list');
+      expect(goals.tagName).toBe('OL');
+      expect(goals).toHaveAttribute('role', 'list');
+      // The visible marks are aria-hidden on the premise that the list numbers
+      // the items, so every item has to stay a listitem in its own right.
+      expect(within(goals).getAllByRole('listitem')).toHaveLength(3);
+    });
+
+    it('sits inside the hero, above the configuration', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const objective = screen.getByTestId('brief-objective');
+      expect(objective.closest('.brief-hero')).not.toBeNull();
+      // The objective precedes every setting in document order, which is the
+      // order a screen reader and the D-pad both walk.
+      const facts = screen.getByTestId('brief-facts');
+      expect(objective.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    // `goals.player_visible` is hand-written YAML and the scenario schema
+    // constrains nothing about the strings, so a third-party pack can leave a
+    // blank entry in the list. Drawn, it would be a numbered row with nothing
+    // beside the number — in the one panel that must read cleanly.
+    it('drops blank goals a pack leaves in the list, and counts what is left', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: {
+          ...mockScenario,
+          player_visible_goals: [
+            '  Get the car for under $11,000  ',
+            '   ',
+            'Include at least one free extra in the deal',
+          ],
+        },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+        '01Get the car for under $11,000',
+        '02Include at least one free extra in the deal',
+      ]);
+      expect(within(objective).getByText('2 goals')).toBeInTheDocument();
+    });
+
+    // Nothing but blanks is a scenario that states no objective, so it takes
+    // the same path as one that declares no goals at all.
+    it('falls back to the role brief when every goal is blank', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: { ...mockScenario, player_visible_goals: ['', '   '] },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).queryAllByRole('listitem')).toHaveLength(0);
+      expect(
+        within(objective).getByText('You are interviewing for a product manager role.'),
+      ).toBeInTheDocument();
+    });
+
+    it('counts a single goal in the singular', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: { ...mockScenario, player_visible_goals: ['Get the car for under $11,000'] },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(within(screen.getByTestId('brief-objective')).getByText('1 goal')).toBeInTheDocument();
+    });
+
+    it('keeps the role brief on its own card when there are goals', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const roleBrief = screen.getByText('You are interviewing for a product manager role.');
+      expect(roleBrief).toHaveClass('brief-role-brief');
+      expect(screen.getByTestId('brief-objective')).not.toContainElement(roleBrief);
+    });
+
+    it('falls back to the role brief, shown once, when a pack declares no goals', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: { ...mockScenario, player_visible_goals: undefined },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).getByText('You are interviewing for a product manager role.'))
+        .toBeInTheDocument();
+      // Once, not twice: the role card drops it when it is standing in here.
+      expect(screen.getAllByText('You are interviewing for a product manager role.')).toHaveLength(1);
+      expect(within(objective).queryByText(/goals?$/)).not.toBeInTheDocument();
+    });
+
+    it('omits the panel entirely when there is neither a goal nor a role brief', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: {
+          ...mockScenario,
+          player_visible_goals: [],
+          player_role: { label: 'Candidate', brief: '   ' },
+        },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.queryByTestId('brief-objective')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── The setup tier ───────────────────────────────────────────────────────
+  // The five mechanical settings were seven interchangeable cards before #500.
+  // Demoting them into one quiet group is only acceptable while every one of
+  // them stays on the screen: no disclosure to open, nothing a player has to go
+  // looking for. Grouping also put each set's heading directly above its field
+  // label, and "Language" over "Conversation language" was the one pair that
+  // restated itself.
+  describe('session setup group', () => {
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it('labels the language select without repeating its own group heading', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const select = screen.getByRole('combobox', { name: /conversation language/i });
+      const set = select.closest('.brief-set') as HTMLElement;
+      expect(within(set).getByRole('heading', { name: 'Language' })).toBeInTheDocument();
+      // One micro-label in the set, not two: the heading. The select's name now
+      // comes from the control itself.
+      expect(set.querySelectorAll('.brief-label')).toHaveLength(0);
+      expect(select).toHaveAttribute('aria-label', 'Conversation language');
+    });
+    it('names its five sets, in order', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const setup = screen.getByRole('region', { name: /session setup/i });
+      expect(
+        Array.from(setup.querySelectorAll('.brief-set-title')).map((h) => h.textContent),
+      ).toEqual(['Input mode', 'Audio output', 'Language', 'Privacy', 'Variation seedOptional']);
+      for (const label of ['Input mode', 'Audio output', 'Language', 'Privacy', /Variation seed/]) {
+        expect(within(setup).getByRole('heading', { name: label })).toBeInTheDocument();
+      }
+    });
+
+    // The headings above would pass this group while the controls under them
+    // were gone, so each setting is asserted a second time as the control a
+    // player actually operates, under the name a screen reader announces.
+    it('keeps every mechanical setting on the screen, in one group', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const group = screen.getByRole('region', { name: /session setup/i });
+      expect(within(group).getByRole('radiogroup', { name: 'Input mode' })).toBeInTheDocument();
+      expect(within(group).getByRole('radio', { name: /text only/i })).toBeInTheDocument();
+      expect(within(group).getByRole('checkbox', { name: /npc voice/i })).toBeInTheDocument();
+      expect(
+        within(group).getByRole('combobox', { name: /conversation language/i }),
+      ).toBeInTheDocument();
+      expect(
+        within(group).getByRole('checkbox', { name: /save transcript locally/i }),
+      ).toBeInTheDocument();
+      expect(within(group).getByRole('spinbutton', { name: /variation seed/i })).toBeInTheDocument();
+    });
+
+    it('hides nothing behind a disclosure', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      // #500 allowed these to be demoted, not hidden — not here, and not
+      // anywhere else on the screen.
+      const group = screen.getByRole('region', { name: /session setup/i });
+      expect(document.querySelector('details')).toBeNull();
+      expect(group.querySelector('[hidden]')).toBeNull();
+    });
+
+    // The decisions that change the conversation outrank the settings that do
+    // not: they are the cards above, they keep their own headings, and they do
+    // not get swept into the group.
+    it('ranks the two decisions above the setup group, and leaves them out of it', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const decisions = document.querySelectorAll('.brief-card.is-decision');
+      expect(
+        Array.from(decisions).map((el) => el.querySelector('.brief-card-title')?.textContent),
+      ).toEqual(['Difficulty', 'Your role']);
+
+      const group = screen.getByRole('region', { name: /session setup/i });
+      expect(within(group).queryByRole('radio', { name: /warm-up/i })).not.toBeInTheDocument();
+      expect(
+        within(group).queryByRole('textbox', { name: /name to use in this session/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('difficulty trait meters', () => {
     beforeEach(() => {
       mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
@@ -935,6 +1213,7 @@ describe('ScenarioSetupPage', () => {
       mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
         ...mockScenario,
         tested_dimensions: ['clarity'],
+        player_visible_goals: ['Give one specific example of your own work'],
       } });
       mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       const { container } = render(

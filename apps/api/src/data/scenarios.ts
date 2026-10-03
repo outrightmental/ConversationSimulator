@@ -29,6 +29,11 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       'PG content only. No NSFW content, no real-person impersonation. Professional conversation only.',
     estimated_length_label: '15–20 minutes',
     tags: ['interview', 'professional', 'career'],
+    player_visible_goals: [
+      'Demonstrate relevant experience with clear STAR-format examples',
+      'Show self-awareness about strengths and areas for growth',
+      'Ask thoughtful questions about the role',
+    ],
     recommended_model: ['claude-opus-4-8', 'claude-sonnet-4-6'],
   },
 
@@ -59,6 +64,11 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       'PG content only. The NPC may be blunt or dismissive but never hostile beyond professional boundaries.',
     estimated_length_label: '12–18 minutes',
     tags: ['interview', 'professional', 'career', 'pressure'],
+    player_visible_goals: [
+      'Back every claim with a specific example of your own contribution',
+      'Stay composed and professional under direct challenge',
+      'Hold your position with evidence instead of backing down',
+    ],
     recommended_model: ['claude-opus-4-8', 'claude-sonnet-4-6'],
   },
 
@@ -88,6 +98,10 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
     safety_summary: 'PG content only. No personal attacks. Adversarial but civil negotiation.',
     estimated_length_label: '12–18 minutes',
     tags: ['negotiation', 'everyday'],
+    player_visible_goals: [
+      'Get the car for under $11,000',
+      'Include at least one free extra in the deal',
+    ],
   },
 
   spanish_coffee: {
@@ -117,6 +131,11 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       'G-rated. Friendly social conversation only. No dating scenarios. Language correction is gentle.',
     estimated_length_label: '15–25 minutes',
     tags: ['language', 'social', 'spanish'],
+    player_visible_goals: [
+      'Order a drink in Spanish',
+      'Ask at least one question to keep the conversation going',
+      'Use por favor and gracias naturally',
+    ],
   },
 
   coworker_feedback: {
@@ -146,5 +165,9 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       'PG content only. Interpersonal workplace conversation. No harassment. Constructive tone required.',
     estimated_length_label: '12–18 minutes',
     tags: ['feedback', 'workplace', 'professional'],
+    player_visible_goals: [
+      'Communicate the issue clearly and without blame',
+      'Agree on a concrete next step',
+    ],
   },
 };
