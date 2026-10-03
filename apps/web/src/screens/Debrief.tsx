@@ -1203,7 +1203,8 @@ function TranscriptTurn({
           read as one of the meters (issue #501 §3). */}
       {emotion && emotion !== 'neutral' && (
         <div style={{ fontSize: '0.7rem', color: '#71717a', marginTop: 2 }}>
-          Mood: <span style={{ color: '#6ee7b7' }}>{emotion}</span>
+          {t('debrief.transcript.moodLabel')}{' '}
+          <span style={{ color: '#6ee7b7' }}>{emotion}</span>
         </div>
       )}
     </div>

@@ -540,6 +540,7 @@ export const en = {
       transcriptOnlyNotice: 'Debrief generation failed. Showing transcript only.',
       turn: 'Turn {{number}}',
       opening: 'Opening',
+      moodLabel: 'Mood:',
       you: 'You',
       npc: 'NPC',
       goToTurn: 'Go to turn {{number}}',

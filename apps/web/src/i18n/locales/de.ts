@@ -545,6 +545,7 @@ export const de: LocaleMessages = {
         'Nachbesprechungserstellung fehlgeschlagen. Zeige nur Transkript.',
       turn: 'Zug {{number}}',
       opening: 'Eröffnung',
+      moodLabel: 'Stimmung:',
       you: 'Sie',
       npc: 'NPC',
       goToTurn: 'Zu Zug {{number}} gehen',
