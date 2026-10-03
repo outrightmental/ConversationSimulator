@@ -10,7 +10,10 @@
 #
 # Checks, in order:
 #   1. The packaged binary exists and is executable.
-#   2. It answers GET /api/health with status "ok".
+#   2. It answers GET /api/health with a body the desktop shell accepts as
+#      readiness — a string `status` of "ok", a string `version`, and an object
+#      `database`, which is the test `edition_from_health_body` applies before
+#      it will believe the occupant of the port is our engine at all.
 #   3. Its listener is bound to loopback only.
 #   4. It seeded the official packs embedded in its own payload.
 #   5. `convsim offline-smoke-test` plays one of those seeded packs with no
@@ -170,6 +173,21 @@ if ! command -v curl >/dev/null 2>&1; then
     exit 1
 fi
 
+# A real JSON parser for check 2. grep cannot tell a top-level key from one
+# nested inside `database`, and that distinction is the whole of the check (see
+# `health_contract_violation`). Either interpreter will do: python3 built the
+# binary under test (scripts/build-core.sh) and release.yml sets it up before
+# this step, and node is needed by check 5 regardless.
+JSON_RUNNER=""
+if command -v python3 >/dev/null 2>&1; then
+    JSON_RUNNER="python3"
+elif command -v node >/dev/null 2>&1; then
+    JSON_RUNNER="node"
+else
+    fail "Neither python3 nor node found — required to read the health response."
+    exit 1
+fi
+
 # ── 1. The packaged binary ────────────────────────────────────────────────────
 
 if [[ -z "$BINARY" ]]; then
@@ -278,10 +296,87 @@ if ! await_ready; then
     exit 1
 fi
 
-if grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$HEALTH_JSON"; then
-    pass "GET /api/health reports status \"ok\""
+# Assert the health body is one the desktop shell will accept as readiness, not
+# merely that the string `"status":"ok"` appears somewhere in it.
+#
+# The shell does not treat an open port as readiness: it requires the body on
+# 127.0.0.1:$PORT to carry a string `status`, a string `version` and an object
+# `database` before it will believe the occupant is our engine at all
+# (`edition_from_health_body` in apps/desktop/src-tauri/src/lib.rs; `checkHealth`
+# in apps/web/src/screens/CoreStartup.tsx applies the same test). An engine
+# answering without one of the three reads as a stranger squatting on the port,
+# and the packaged app reports "Port 7355 is already in use by another program."
+# on every launch — with the engine it is refusing to adopt being its own.
+#
+# That contract crosses the Rust/Python boundary and this is the only place the
+# two ends meet: the Rust tests check the rule against a synthetic body, and
+# services/convsim-core/tests/test_health.py checks the fields against the
+# source engine under TestClient. Neither sees the packaged binary.
+#
+# A grep cannot do it. `database` carries a `status` of its own, so
+# `"status":"ok"` matches a body whose top-level `status` is "degraded" — or
+# absent altogether, which is precisely the shape the shell rejects.
+health_contract_violation() {
+    case "$JSON_RUNNER" in
+        python3)
+            python3 - "$HEALTH_JSON" <<'PY'
+import json, sys
+
+try:
+    with open(sys.argv[1]) as fh:
+        body = json.load(fh)
+except Exception as exc:  # noqa: BLE001 - any parse failure is the same answer
+    print(f"not valid JSON: {exc}")
+    sys.exit(1)
+if not isinstance(body, dict):
+    print(f"not a JSON object: {type(body).__name__}")
+    sys.exit(1)
+faults = []
+if body.get("status") != "ok":
+    faults.append(f'top-level status is {body.get("status")!r}, want "ok"')
+if not isinstance(body.get("version"), str):
+    faults.append(f'version is not a string: {body.get("version")!r}')
+if not isinstance(body.get("database"), dict):
+    faults.append(f'database is not an object: {body.get("database")!r}')
+if faults:
+    print("; ".join(faults))
+    sys.exit(1)
+print(f'version {body["version"]}, edition {body.get("edition", "full")}')
+PY
+            ;;
+        node)
+            node -e '
+const fs = require("fs");
+let body;
+try {
+  body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+} catch (e) {
+  console.log("not valid JSON: " + e.message);
+  process.exit(1);
+}
+if (body === null || typeof body !== "object" || Array.isArray(body)) {
+  console.log("not a JSON object");
+  process.exit(1);
+}
+const faults = [];
+if (body.status !== "ok") faults.push("top-level status is " + JSON.stringify(body.status) + ", want \"ok\"");
+if (typeof body.version !== "string") faults.push("version is not a string: " + JSON.stringify(body.version));
+if (body.database === null || typeof body.database !== "object") faults.push("database is not an object: " + JSON.stringify(body.database));
+if (faults.length) {
+  console.log(faults.join("; "));
+  process.exit(1);
+}
+console.log("version " + body.version + ", edition " + (body.edition ?? "full"));
+' "$HEALTH_JSON"
+            ;;
+    esac
+}
+
+if HEALTH_SUMMARY="$(health_contract_violation)"; then
+    pass "GET /api/health answers as a convsim-core the shell will adopt ($HEALTH_SUMMARY)"
 else
-    fail "GET /api/health answered but did not report status \"ok\"."
+    fail "GET /api/health answered, but not as a body the desktop shell accepts: $HEALTH_SUMMARY"
+    info "The shell requires a string status \"ok\", a string version, and an object database."
     sed 's/^/        /' "$HEALTH_JSON" >&2
 fi
 
