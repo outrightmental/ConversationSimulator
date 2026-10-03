@@ -105,7 +105,14 @@ _SLUR_PATTERN = _compile(
     r"\btr[a@]nn(?:y|ies)\b",
     r"\bret[a@]rd(?:s|ed)?\b",
     r"\bchinks?\b(?!\s+(?:of|in)\b)",
-    r"\bf[a@]gg[o0]ts?\b(?!\s+of\b)",
+    # Both spellings of the slur. Requiring the double g, as this used to, left
+    # the commonest single-g spelling to the judge alone — and a judge-raised
+    # below_the_belt deliberately never ends a run (see judge_foul_result), so
+    # the one slur spelling nobody has to think about could be repeated all
+    # session with the "repeat ends the session" rule never reached. The
+    # innocent sense is a bundle of sticks, so it is excluded on both sides:
+    # "a faggot of kindling" and "a cartload of fagots" both pass.
+    r"(?<!\bof\s)\bf[a@]gg?[o0]ts?\b(?!\s+of\b)",
     r"\bsubhumans?\b",
 )
 
@@ -149,14 +156,37 @@ _OUT_OF_FICTION_PATTERN = _compile(
 )
 
 _BRIBE_PATTERN = _compile(
-    r"\b(?:score|rate|grade)\s+(?:this|that|it|me|my\s+\w+)\b",
+    # A mark demanded of the scorer, not an assessment that happens to use the
+    # verb. "Score this one high" and "…, so score it a hundred" are addressed
+    # to the umpire; "I rate that excuse somewhere below your tailoring" and
+    # "You rate me beneath you, and yet here we both stand" are addressed to the
+    # target, and they are the ordinary English for it. The imperative is the
+    # giveaway — the verb opens the line or follows a conjunction, with no
+    # subject in front of it — so requiring that is what separates the two.
+    # Matching the bare verb, as this used to, fouled the assessment: nought
+    # points, the heat reset, and a whiff in Endless, for a line in exactly the
+    # register the launch pack encourages. The demand that hides behind a
+    # subject ("you must score…") has its own rule below.
+    r"(?:^|[.!?;:—–]\s*|\b(?:and|so|then|but)\s+)"
+    r"(?:please\s+|kindly\s+|just\s+|now\s+)*"
+    r"(?:score|rate|grade)\s+(?:this|that|it|me|my\s+\w+)\b",
     # "mark" only when a mark is actually being demanded. "Mark my words" and
     # "mark me well" are stock period taunt openings — exactly the register the
     # launch pack encourages — and a false foul costs the player the volley, the
     # heat multiplier, and a whiff in Endless.
     r"\bmark\s+(?:this|that|it|me|my\s+\w+)\b"
     r"(?=[^.!?]{0,24}(?:\b(?:\d{1,3}|hundred)\b|\b(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b))",
-    r"\b(?:give|award)\s+(?:me|this|it|him|her)\s+(?:a\s+)?(?:\d{1,3}|full|maximum|perfect|top)\b",
+    r"\b(?:give|award)\s+(?:me|this|it|him|her)\s+(?:a\s+)?(?:full|maximum|perfect|top)\b",
+    # The same demand with a number in it, where the number has to read as a
+    # mark rather than as a count. A bare \d{1,3} here fouled "Give me five
+    # minutes with your tailor and I will save your reputation" and "Give him 20
+    # years and he still would not land one" — both taunts, neither addressed to
+    # the scorer. A mark is a number with an article in front of it ("give me a
+    # 100", which is not something anybody says about minutes), a number of
+    # points, or a number that ends the demand.
+    r"\b(?:give|award)\s+(?:me|this|it|him|her)\s+a\s+\d{1,3}\b",
+    r"\b(?:give|award)\s+(?:me|this|it|him|her)\s+\d{1,3}"
+    r"(?:\s*%|\s*/\s*\d{1,3}|\s+(?:points?|marks?|out\s+of)\b|\s*(?=[,.;:!?]|$))",
     # A top mark named is not a top mark demanded. "Full marks for effort, and
     # none whatever for result" and "ten out of ten for brass, nought for sense"
     # are stock English sarcasm aimed squarely at the target — the register the
