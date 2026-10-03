@@ -63,6 +63,32 @@ The app tracks the following timings locally. No data leaves your machine.
 
 Conversation-screen metrics (session start, first token, full response, STT final, TTS first sentence) are visible in the **Developer debug** panel; debrief-generation latency is shown on the debrief screen. Both require dev mode (enable it in Settings).
 
+The conversation screen also remembers how long recent turns took, so it can tell the player what to expect from the next one — see [How long a turn will take](#how-long-a-turn-will-take).
+
+## How long a turn will take
+
+A local model offers the app no progress signal while it works — no percentage, no token count to divide — so the conversation screen answers "how long will this take?" with the only honest evidence it has: how long this machine's own recent turns took.
+
+While the NPC is thinking, the screen shows a clock and a bar:
+
+| What you see | What it means |
+|---|---|
+| `22s` over a hatched bar | Nothing timed yet on this model. The clock still runs, so a long wait never looks like a frozen app. |
+| `22s / ~40s` over a filling bar | A turn is expected to cost about 40 s on this machine, and the caption says roughly how much of it is left. |
+| `1m 20s / ~40s` in amber | The turn has outrun its estimate. The bar stops pretending to know, and says the reply is not lost. |
+
+The panel is the screen's status for as long as the NPC is out, so nothing else repeats it: its heading switches from "NPC is thinking" to "NPC is replying" once the reply starts arriving word by word, and the whole panel disappears the moment the reply is on screen. A turn is not quite over at that point — the app is still collecting the state changes that went with the reply, which it says plainly ("Finishing the turn…") while the input stays disabled — and that tail is included in the duration it files away, so the estimate it quotes next time is for the whole round trip.
+
+Worth knowing about the number it quotes:
+
+- **It is the median of up to eight recent turns**, not the mean. One turn that stalled because the system paged the model back in should not inflate the next five.
+- **Timings are kept per model.** Switching to a smaller model — the app's own advice when turns are slow — starts the estimate over instead of quoting the old model's minutes at the new one.
+- **They never leave the machine.** The samples are bare durations in milliseconds, held in browser local storage under `convsim.turnTiming`, for one model at a time. **Clear all local data** in Settings forgets them along with everything else.
+- **A turn recovered by polling is not timed.** Past the five-minute deadline the app finds the reply by asking the session what it recorded (see [Timeout errors](#timeout-errors)), which measures when the screen noticed the turn rather than what the model spent on it.
+- **The bar never fills completely** while a reply is still out. A full bar with nothing on screen reads as a turn the app lost.
+
+Estimates appear from the second turn of a fresh install: the first one has nothing to go on, so it only shows the clock.
+
 ## What to do when the app is slow
 
 The app surfaces actionable warnings when thresholds are exceeded. Each links to **Runtime Settings**.
@@ -100,7 +126,7 @@ When Kokoro is not running, the app operates in text-only mode. No audio is play
 
 ### Timeout errors
 
-A slow turn is not a failed turn. A local model on CPU-only hardware can spend a minute or more on a single reply — mostly reading the prompt back in — and the app waits for it: after five seconds it says the NPC is taking longer than usual, and after thirty seconds it starts reporting how long it has been waiting so a long turn never looks like a frozen app.
+A slow turn is not a failed turn. A local model on CPU-only hardware can spend a minute or more on a single reply — mostly reading the prompt back in — and the app waits for it. The clock and bar described in [How long a turn will take](#how-long-a-turn-will-take) are on screen for the whole wait; after five seconds the app adds that the NPC is taking longer than usual, and after thirty seconds that the reply has not been thrown away.
 
 Two separate limits can still end a turn early:
 
