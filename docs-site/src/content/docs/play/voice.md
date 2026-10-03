@@ -145,9 +145,10 @@ container is up to you.
 
 ### Two smaller pieces
 
-- **`ffmpeg`** — your browser records WebM/Opus and whisper.cpp reads WAV.
-  Without `ffmpeg` on your `PATH`, some recordings are rejected. The setup
-  screen flags this as its own row with the right command for your platform.
+- **`ffmpeg`** — your browser records WebM/Opus and whisper.cpp reads WAV,
+  and `ffmpeg` is what converts one into the other. Nothing can be transcribed
+  without it, however complete the rest of the list is, so the setup screen
+  gives it its own card with the command for your platform.
 - **`onnxruntime`** — only needed for hands-free turn-taking. The packaged
   app does not include it and cannot have it added, so hands-free is a
   source-checkout feature (`pip install onnxruntime` there); the setup screen

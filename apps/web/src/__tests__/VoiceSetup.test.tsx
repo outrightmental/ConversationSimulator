@@ -808,6 +808,50 @@ describe('VoiceSetup — the microphone', () => {
     expect(await screen.findByTestId('mic-test-result')).toHaveTextContent('No speech was detected')
   })
 
+  it('names ffmpeg rather than "finish the steps above" when ffmpeg is the gap', async () => {
+    // A missing ffmpeg reports 'unavailable', the same status as a missing
+    // binary or model, because it is the same kind of gap. But ffmpeg has its
+    // own card below the capability sections, so "finish the steps above"
+    // would point at the wrong half of the screen.
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    const plan = readyPlan()
+    plan.ffmpeg_installed = false
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+    mockApiClient.uploadAudio.mockResolvedValue({
+      ok: true,
+      data: { transcript: null, status: 'unavailable' },
+    })
+
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('mic-test-start'))
+    await finishRecording()
+
+    const result = await screen.findByTestId('mic-test-result')
+    expect(result).toHaveTextContent('ffmpeg is missing')
+    expect(result).not.toHaveTextContent('finish the steps above')
+    // The card it sends the player to has to actually be on the screen.
+    expect(screen.getByText(/browser records WebM/)).toBeInTheDocument()
+  })
+
+  it('still says "finish the steps above" when ffmpeg is not the gap', async () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    const plan = readyPlan()
+    plan.ffmpeg_installed = true
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+    mockApiClient.uploadAudio.mockResolvedValue({
+      ok: true,
+      data: { transcript: null, status: 'unavailable' },
+    })
+
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('mic-test-start'))
+    await finishRecording()
+
+    expect(await screen.findByTestId('mic-test-result')).toHaveTextContent(
+      'finish the steps above',
+    )
+  })
+
   it('points at ffmpeg when the worker refuses the audio and ffmpeg is missing', async () => {
     vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
     const plan = readyPlan()

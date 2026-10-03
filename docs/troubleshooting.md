@@ -221,8 +221,10 @@ microphone button is still greyed out:
 
 1. Check that your browser has microphone permission for `127.0.0.1`. The
    setup screen asks for it directly and reports a denial.
-2. Install `ffmpeg` — the browser records WebM/Opus and whisper.cpp reads WAV.
-   The setup screen flags this too, and a failed test phrase names it.
+2. Install `ffmpeg` — the browser records WebM/Opus, whisper.cpp reads WAV,
+   and `ffmpeg` is what converts one to the other, so nothing can be
+   transcribed without it. The setup screen gives it its own card, and a failed
+   test phrase names it.
 3. Check the logs folder (see [Where are the logs?](#engine-startup-failure)
    for the platform-specific path) for errors from the STT worker.
 

@@ -20,7 +20,7 @@ are not all of the same kind:
 | **Weight file** | whisper.cpp GGML model, Silero VAD ONNX model | **Yes** — downloaded and SHA-256 verified |
 | **Native engine** | `whisper-cli`, the Kokoro TTS server | **No** — neither publishes a checksummed cross-platform release |
 | **Python extra** | `onnxruntime` | No — guidance, and only in a source checkout |
-| **System tool** | `ffmpeg` | No — guidance only |
+| **System tool** | `ffmpeg` | No — guidance only (but required: it decodes the browser's recording) |
 
 Settings used to report `STT: Not installed` and stop, which left the only
 route to voice buried in `runtimes/*/README.md`. The flow exists so the first
@@ -58,6 +58,16 @@ terminal and switches back sees the row tick over without a reload.
 `winget` writes the install folder into the user `PATH`, which the already
 running service never re-reads, so that row asks for a restart too.
 
+That row is not a nice-to-have. `whisper-cli` decodes its input with miniaudio
+(WAV, FLAC, MP3, Ogg Vorbis) and reaches for `ffmpeg` only when it was compiled
+with `WHISPER_FFMPEG` — which neither Homebrew's formula nor the source builds
+above enable. The browser records WebM/Opus, which miniaudio cannot read, so
+`WhisperCppWorker` transcodes every non-WAV upload to 16 kHz mono 16-bit WAV
+with `ffmpeg` before `whisper-cli` is invoked. Without `ffmpeg` on `PATH` no
+browser recording can be transcribed, whatever else is installed, so the worker
+raises `SttUnavailableError` naming it rather than letting `whisper-cli` answer
+"failed to read audio data".
+
 ### Hands-free in a packaged build
 
 `onnxruntime` is the `vad` extra in `services/convsim-core/pyproject.toml`, and
@@ -83,8 +93,9 @@ phrase**: one real round trip through `POST /api/stt/upload` — microphone,
 `ffmpeg`, whisper model — with the transcript repeated back. Installing the
 pieces does not prove the chain works end to end, and the first turn of a
 scenario is the wrong place to find that out. A failure names the likely
-culprit rather than reporting "unavailable": an `error` status points at
-`ffmpeg`, an empty transcript at mic placement.
+culprit rather than reporting "unavailable": a missing `ffmpeg` is named
+outright, an `error` status points at the model, an empty transcript at mic
+placement.
 
 ## 3. Downloadable assets
 

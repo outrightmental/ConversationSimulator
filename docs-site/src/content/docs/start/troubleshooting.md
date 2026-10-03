@@ -291,8 +291,9 @@ still greyed out:
 
 1. Check that your device has microphone permission for the app. The setup
    screen asks for it directly and reports when the browser is blocking it.
-2. Install `ffmpeg` — some recordings cannot be decoded without it. The setup
-   screen flags this as its own row.
+2. Install `ffmpeg` — it converts your browser's recording into the format
+   the speech model reads, so nothing can be transcribed without it. The setup
+   screen gives it its own card.
 3. Check the logs folder for errors from the speech worker.
 
 **"Voice output unavailable"**

@@ -68,6 +68,93 @@ def _executable(candidate: Path) -> str | None:
     return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else None
 
 
+# whisper-cli decodes its input with miniaudio — WAV, FLAC, MP3 and Ogg Vorbis
+# — and only falls back to ffmpeg when it was compiled with WHISPER_FFMPEG.
+# Neither Homebrew's formula nor the source builds the guided setup flow hands
+# out enable that, so for every install this app walks a player through,
+# whisper-cli has no ffmpeg in it.
+#
+# The browser records WebM/Opus (Safari: MP4/AAC), neither of which miniaudio
+# can read, so handing the recording over untouched gets "failed to read audio
+# data" and a non-zero exit on every utterance. The transcode happens here
+# instead, which is also what makes the setup screen's ffmpeg row true: ffmpeg
+# really is the piece that lets a browser recording reach the speech model.
+_WHISPER_SAMPLE_RATE = 16_000
+# Only WAV is passed through. MP3/FLAC/Ogg are decodable by miniaudio in
+# principle, but "ogg" covers Opus as well as Vorbis and the container alone
+# does not say which, so transcoding everything but WAV keeps one predictable
+# path rather than one that works for some recordings.
+_PASSTHROUGH_AUDIO_FORMATS = frozenset({"wav"})
+
+_FFMPEG_MISSING_MESSAGE = (
+    "ffmpeg was not found on PATH, and it is needed to decode the "
+    "{fmt} audio your browser records into the WAV whisper.cpp reads. "
+    "Install ffmpeg (the voice setup screen shows the command for this "
+    "platform) and try again."
+)
+
+
+async def _transcode_to_wav(source_path: str, audio_format: str, timeout: float) -> str:
+    """Transcode *source_path* to 16 kHz mono 16-bit WAV and return the new path.
+
+    Raises ``SttUnavailableError`` when ffmpeg is absent — a missing piece the
+    player can install, which the setup screen offers a row for — and a
+    recoverable ``SttError`` when ffmpeg is present but cannot read the file.
+
+    Output goes to a file rather than a pipe on purpose: a WAV header carries
+    the data length up front, so ffmpeg writing to a non-seekable stream has to
+    leave that field unset, and the decoder on the other side is then reading a
+    length it cannot trust.
+    """
+    if shutil.which("ffmpeg") is None:
+        raise SttUnavailableError(_FFMPEG_MISSING_MESSAGE.format(fmt=audio_format or "recorded"))
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        wav_path = tmp.name
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y",
+            "-i", source_path,
+            "-ar", str(_WHISPER_SAMPLE_RATE),
+            "-ac", "1",
+            "-c:a", "pcm_s16le",
+            wav_path,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except OSError as exc:
+        _try_unlink(wav_path)
+        raise SttError(f"Failed to start ffmpeg: {exc}", recoverable=True) from exc
+
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        await proc.wait()
+        _try_unlink(wav_path)
+        raise SttError(f"ffmpeg timed out after {timeout}s", recoverable=True) from exc
+    except BaseException:
+        # Includes task cancellation: never leave the temp file behind.
+        _try_unlink(wav_path)
+        raise
+
+    if proc.returncode != 0:
+        detail = stderr.decode(errors="replace")[-500:]
+        _try_unlink(wav_path)
+        raise SttError(
+            f"ffmpeg could not decode the {audio_format or 'recorded'} audio "
+            f"(exit {proc.returncode}): {detail}",
+            recoverable=True,
+        )
+
+    return wav_path
+
+
 def _find_binary(explicit_path: str | None) -> str | None:
     """Return the whisper-cli binary path, or None if not found.
 
@@ -190,21 +277,32 @@ class WhisperCppWorker(SttWorker):
                 "CONVSIM_WHISPER_CPP_MODEL_PATH."
             )
 
+        audio_format = (request.audio_format or "").lower()
         suffix = f".{request.audio_format}" if request.audio_format else ".bin"
-        # All three resources are tracked as None so the finally block can clean
+        # All four resources are tracked as None so the finally block can clean
         # up on every exit path — including asyncio.CancelledError (task cancelled
         # mid-transcription), which the inner except handlers don't catch.
+        source_path: str | None = None
         audio_path: str | None = None
         json_path: str | None = None
         proc: asyncio.subprocess.Process | None = None
         result: SttResult | None = None
         try:
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                audio_path = tmp.name
+                source_path = tmp.name
                 tmp.write(request.audio)
 
+            # whisper-cli cannot decode what the browser records, so anything
+            # but WAV is transcoded first and *that* file is what it reads.
+            if audio_format in _PASSTHROUGH_AUDIO_FORMATS:
+                audio_path = source_path
+            else:
+                audio_path = await _transcode_to_wav(
+                    source_path, audio_format, self._timeout
+                )
+
             # whisper-cli --output-json writes a sidecar named after the input file
-            # stem (extension stripped), e.g. /tmp/tmpXXX.webm → /tmp/tmpXXX.json.
+            # stem (extension stripped), e.g. /tmp/tmpXXX.wav → /tmp/tmpXXX.json.
             json_path = str(Path(audio_path).with_suffix("")) + ".json"
 
             cmd = self._build_command(audio_path, request.language)
@@ -246,6 +344,10 @@ class WhisperCppWorker(SttWorker):
         finally:
             if audio_path is not None:
                 _try_unlink(audio_path)
+            # The same path when the recording was already WAV; unlinking twice
+            # is harmless, and skipping it would leak the original transcode input.
+            if source_path is not None and source_path != audio_path:
+                _try_unlink(source_path)
             if json_path is not None and result is None:
                 # _read_result handles json_path cleanup on the success path.
                 # On any error or cancellation, clean it here.

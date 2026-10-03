@@ -342,7 +342,13 @@ function MicCheckRow({
       } else if (r.data.status === 'unavailable') {
         setResult({
           kind: 'problem',
-          message: 'Speech-to-text is not running yet — finish the steps above, then try again.',
+          // A missing ffmpeg reports 'unavailable' the same way a missing
+          // binary or model does, because it is the same kind of gap: a piece
+          // the player can install. "Finish the steps above" would be the
+          // wrong instruction, since ffmpeg has its own card further down.
+          message: ffmpegInstalled
+            ? 'Speech-to-text is not running yet — finish the steps above, then try again.'
+            : 'ffmpeg is missing, and nothing your browser records can be decoded without it. Install it from the ffmpeg card below, then try again.',
         })
       } else if (r.data.status === 'error') {
         setResult({
@@ -843,8 +849,10 @@ export default function VoiceSetup() {
             ffmpeg <span style={{ fontWeight: 400, color: '#fbbf24' }}>— not found</span>
           </p>
           <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#a1a1aa', lineHeight: 1.5 }}>
-            The browser records WebM/Opus audio and whisper.cpp reads WAV. Without ffmpeg on
-            your PATH some recordings are rejected and the app falls back to text input.
+            The browser records WebM/Opus audio and whisper.cpp reads WAV, so ffmpeg is what
+            converts one into the other. Without it on your PATH no recording can be
+            transcribed at all, however complete the rest of this list is — speaking your
+            turns needs it just as much as the model does.
           </p>
           <CommandBlock
             command={
