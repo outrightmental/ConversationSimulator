@@ -88,7 +88,8 @@ branch. The change propagates to the Steam CDN within 10–15 minutes.
 Open a new GitHub issue immediately after the rollback is confirmed:
 
 - **Title:** `[Rollback] <affected version> reverted on default — <brief reason>`
-- **Labels:** `steam`, `platform-bug`, `severity:critical`
+- **Type and Priority:** Bug at **P0 — blocker**
+- **Labels:** `area:steam`
 - **Body must include:**
   - The defect that triggered the rollback (one paragraph, factual)
   - The build rolled back from (version and Steamworks build ID)
