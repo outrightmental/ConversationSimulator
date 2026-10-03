@@ -3,6 +3,7 @@
 
 Routes:
   POST   /api/sessions                    — create session
+  GET    /api/sessions                    — list sessions (newest first)
   GET    /api/sessions/{session_id}       — get session state
   POST   /api/sessions/{session_id}/start — start session (NPC opening)
   POST   /api/sessions/{session_id}/turn  — submit player turn (full pipeline)
@@ -141,6 +142,15 @@ class SessionResponse(BaseModel):
     state: str
     created_at: str
     setup: Dict[str, Any]
+    #: Only populated by the list endpoint and by sessions that have ended; a
+    #: freshly created session has no outcome and no completed turns yet.
+    ending_type: Optional[str] = None
+    turn_count: int = 0
+    ended_at: Optional[str] = None
+
+
+class SessionListResponse(BaseModel):
+    sessions: List[SessionResponse]
 
 
 class SessionEventPayload(BaseModel):
@@ -365,7 +375,22 @@ def _row_to_response(row: Any) -> SessionResponse:
         state=row["flow_state"],
         created_at=row["created_at"],
         setup=json.loads(row["setup_json"]),
+        ending_type=row["ending_type"],
+        turn_count=int(row["turn_count"] or 0),
+        ended_at=row["ended_at"],
     )
+
+
+#: Flow states a session can be picked back up from. ``NotStarted`` is excluded
+#: on purpose: nothing has been said yet, so there is no conversation to resume —
+#: offering one would send the player to a screen that starts from scratch.
+RESUMABLE_FLOW_STATES = (
+    "PlayerTurnListening",
+    "PlayerTurnReview",
+    "NpcThinking",
+    "NpcSpeaking",
+    "ScenarioEvent",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +526,41 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
         "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
     ).fetchone()
     return _row_to_response(row)
+
+
+@router.get("", response_model=SessionListResponse)
+async def list_sessions(
+    request: Request,
+    status: Literal["all", "in_progress", "ended"] = "all",
+    limit: int = 50,
+) -> SessionListResponse:
+    """List this profile's sessions, newest first.
+
+    ``status=in_progress`` answers the one question the UI could not ask before
+    (issue #501): "is there a conversation I walked away from?". Without it the
+    player who opened Settings mid-scenario had no way back to a live session
+    and started a new one instead.
+    """
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+
+    conn = request.app.state.db.connection()
+    sql = "SELECT * FROM turn_sessions"
+    params: List[Any] = []
+    if status == "in_progress":
+        placeholders = ", ".join("?" for _ in RESUMABLE_FLOW_STATES)
+        sql += f" WHERE flow_state IN ({placeholders})"
+        params.extend(RESUMABLE_FLOW_STATES)
+    elif status == "ended":
+        sql += " WHERE flow_state = 'Ended'"
+    # created_at is ISO-8601/`datetime('now')` text, so lexical order is
+    # chronological order. session_id breaks ties for sessions created inside the
+    # same second, which the second-resolution SQLite default makes common.
+    sql += " ORDER BY created_at DESC, session_id DESC LIMIT ?"
+    params.append(limit)
+
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    return SessionListResponse(sessions=[_row_to_response(r) for r in rows])
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
