@@ -704,6 +704,53 @@ describe('ScenarioSetupPage', () => {
     });
   });
 
+  // Issue #487: the brief is where a player first wants to speak. Reporting
+  // "STT not loaded" on a greyed-out radio and stopping there is the dead end
+  // the guided flow exists to remove, so both voice gaps offer the route.
+  describe('missing voice (guided setup route)', () => {
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthTextOnly });
+    });
+
+    it('offers the voice setup flow from the input mode card when STT is missing', async () => {
+      const onSetUpVoice = vi.fn();
+      renderSetup({ onSetUpVoice });
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      fireEvent.click(screen.getByTestId('brief-set-up-voice-stt'));
+      expect(onSetUpVoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers the voice setup flow from the audio card when TTS is missing', async () => {
+      const onSetUpVoice = vi.fn();
+      renderSetup({ onSetUpVoice });
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      fireEvent.click(screen.getByTestId('brief-set-up-voice-tts'));
+      expect(onSetUpVoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('names the gap even without a route into the flow', async () => {
+      // The demo edition passes no callback: /voice-setup collapses to Home
+      // there, so the note must still say why voice is unavailable.
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByTestId('brief-stt-missing-note')).toHaveTextContent(
+        /speech-to-text, which is not installed/i,
+      );
+      expect(screen.queryByTestId('brief-set-up-voice-stt')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('brief-set-up-voice-tts')).not.toBeInTheDocument();
+    });
+
+    it('offers nothing to set up once voice is ready', async () => {
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      const onSetUpVoice = vi.fn();
+      renderSetup({ onSetUpVoice });
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.queryByTestId('brief-stt-missing-note')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('brief-set-up-voice-tts')).not.toBeInTheDocument();
+    });
+  });
+
   describe('back navigation', () => {
     it('calls onBack when the back button is clicked', async () => {
       mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
