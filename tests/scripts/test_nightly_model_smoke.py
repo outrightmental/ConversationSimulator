@@ -675,6 +675,93 @@ class TestWorkflowBudgetAgreement:
         assert _workflow_budget_s() == smoke.DEFAULT_WALL_CLOCK_BUDGET_S
 
 
+def _workflow_steps() -> list:
+    import yaml
+
+    return yaml.safe_load(_workflow_text())["jobs"]["model-smoke"]["steps"]
+
+
+def _step_running(fragment: str) -> dict:
+    """Return the single workflow step whose ``run`` contains ``fragment``."""
+    matches = [s for s in _workflow_steps() if fragment in (s.get("run") or "")]
+    assert len(matches) == 1, f"expected exactly one step running {fragment!r}"
+    return matches[0]
+
+
+def _steps_using(prefix: str) -> list:
+    return [s for s in _workflow_steps() if (s.get("uses") or "").startswith(prefix)]
+
+
+def _step_index(step: dict) -> int:
+    return _workflow_steps().index(step)
+
+
+class TestWorkflowChecksumInvariants:
+    """#457's "fail loudly on checksum drift" is enforced by the YAML, not the harness.
+
+    Two halves of that promise live in the workflow and nowhere else, and each
+    is one quiet edit away from being given up while every other test in this
+    file stays green:
+
+    * ``verify_model_checksum`` only runs on a full smoke when
+      ``--model-sha256`` is passed. Drop the flag and the harness downgrades to
+      a warning and loads whatever the cache restored — the exact cache-hit
+      drift this job exists to catch.
+    * The harness cannot keep a GGUF it rejected out of the Actions cache; only
+      the step ordering can. ``actions/cache``'s post step saves even when the
+      job failed, and the key is derived from the *expected* hash, so a single
+      poisoned entry would be restored by every later run.
+    """
+
+    def test_the_smoke_reverifies_the_file_it_is_about_to_load(self) -> None:
+        run = _step_running("--ci-hardware-factor")["run"]
+        assert "--model-sha256" in run, (
+            "without --model-sha256 the full smoke only warns that drift was "
+            "not checked, so a corrupt cache hit is fed to the model and the "
+            "run can still go green"
+        )
+
+    def test_the_cache_key_and_the_verified_hash_come_from_one_lookup(self) -> None:
+        import re
+
+        pattern = r"steps\.([A-Za-z0-9_-]+)\.outputs\.model_sha256"
+        restore = _steps_using("actions/cache/restore")
+        assert restore, "the model cache must be restored"
+        key_sources = {m for s in restore for m in re.findall(pattern, s["with"]["key"])}
+        smoke_sources = set(re.findall(pattern, _step_running("--ci-hardware-factor")["run"]))
+        assert key_sources and key_sources == smoke_sources, (
+            "the cache key and the hash the smoke verifies against must come "
+            f"from the same registry lookup (key: {key_sources}, smoke: {smoke_sources}); "
+            "two lookups can drift apart and cache a file under a hash nothing checked"
+        )
+
+    def test_an_unverified_model_is_never_written_to_the_cache(self) -> None:
+        assert not _steps_using("actions/cache@"), (
+            "actions/cache saves from a post step that runs even when the job "
+            "failed; use the split restore/save so the save can be gated"
+        )
+        save = _steps_using("actions/cache/save")
+        assert len(save) == 1, "exactly one step may write the model cache"
+        assert "success()" in str(save[0].get("if", "")), (
+            "the cache save must be gated on success(), or a GGUF that failed "
+            "checksum verification is cached under its expected hash and every "
+            "later run restores the same bad bytes"
+        )
+        download = _step_running("--download-only")
+        assert _step_index(download) < _step_index(save[0]), (
+            "the model must be downloaded and verified before it is cached"
+        )
+
+    def test_the_restored_and_saved_cache_entries_are_the_same(self) -> None:
+        restore = _steps_using("actions/cache/restore")[0]
+        save = _steps_using("actions/cache/save")[0]
+        assert restore["with"]["key"] == save["with"]["key"], (
+            "a save under a different key than the restore never produces a "
+            "cache hit, so every nightly re-downloads 2.5 GB"
+        )
+        assert restore["with"]["path"] == save["with"]["path"]
+
+
 class TestDeadline:
     def test_phase_durations_are_recorded(self) -> None:
         clock = smoke.Deadline(60.0)
