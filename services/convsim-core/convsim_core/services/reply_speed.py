@@ -17,7 +17,8 @@ This module turns that into one named choice with three settings:
 
 ``fast`` and ``detailed`` *scale* the scenario's authored word cap rather than
 replacing it, so a pack that deliberately writes terse NPCs stays terse relative
-to a pack that writes expansive ones. The token budget moves with it: the
+to a pack that writes expansive ones, and ``balanced`` leaves the author's
+number exactly as written. The token budget moves with it: the
 structured turn output lands in the 300–600 token range at the default 90-word
 cap, so a shorter reply needs less headroom and a longer one needs more.
 """
@@ -46,9 +47,18 @@ class ReplySpeedProfile:
     max_tokens: int
 
 
-#: Floors and ceilings for the scaled word cap. The floor keeps an NPC from
-#: being cut down to a grunt on a pack that already writes short lines; the
-#: ceiling keeps "detailed" from inviting the monologues RESPONSE_STYLE forbids.
+#: Floors and ceilings on what *scaling* may do. The floor keeps "fast" from
+#: cutting an NPC down to a grunt; the ceiling keeps "detailed" from inviting
+#: the monologues RESPONSE_STYLE forbids.
+#:
+#: Neither one overrides the author. ``scenario.schema.json`` allows
+#: ``max_words`` anywhere in 10–500, so applied as plain bounds these would
+#: rewrite a cap outside them at every speed: a pack that writes 10-word
+#: replies came out at 30 under all three — "Quick replies" *tripling* the cap
+#: it was asked to shorten, and the three options indistinguishable — and a
+#: pack that writes 300 came out at 200 on `balanced`, which is supposed to be
+#: the pre-#501 behaviour exactly. They now only bound the distance scaling may
+#: travel from the authored value.
 MIN_SCALED_MAX_WORDS = 30
 MAX_SCALED_MAX_WORDS = 200
 
@@ -86,6 +96,16 @@ def load_reply_speed(conn: sqlite3.Connection) -> ReplySpeed:
 
 
 def scaled_max_words(authored_max_words: int, speed: object) -> int:
-    """Apply the reply-speed scale to a scenario's authored NPC word cap."""
-    scaled = round(authored_max_words * profile_for(speed).word_scale)
-    return max(MIN_SCALED_MAX_WORDS, min(MAX_SCALED_MAX_WORDS, scaled))
+    """Apply the reply-speed scale to a scenario's authored NPC word cap.
+
+    The result always sits between the authored cap and the clamp bound in the
+    direction the speed scales, so "fast" can only ever shorten and "detailed"
+    can only ever lengthen — and the default leaves the author's number alone.
+    """
+    scale = profile_for(speed).word_scale
+    if scale == 1.0:
+        return authored_max_words
+    scaled = round(authored_max_words * scale)
+    if scale < 1.0:
+        return max(min(MIN_SCALED_MAX_WORDS, authored_max_words), scaled)
+    return min(max(MAX_SCALED_MAX_WORDS, authored_max_words), scaled)

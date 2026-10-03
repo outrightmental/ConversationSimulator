@@ -51,8 +51,40 @@ def test_scaling_is_relative_to_the_authored_cap():
 
 
 def test_scaled_cap_is_clamped_at_both_ends():
-    assert scaled_max_words(10, "fast") == MIN_SCALED_MAX_WORDS
-    assert scaled_max_words(1000, "detailed") == MAX_SCALED_MAX_WORDS
+    # Unclamped, halving 90 and 50 gives 45 and 25; the floor bites on the
+    # second.
+    assert scaled_max_words(90, "fast") == 45
+    assert scaled_max_words(50, "fast") == MIN_SCALED_MAX_WORDS
+    # Unclamped, 1.5× of 120 and 180 gives 180 and 270; the ceiling bites on
+    # the second.
+    assert scaled_max_words(120, "detailed") == 180
+    assert scaled_max_words(180, "detailed") == MAX_SCALED_MAX_WORDS
+
+
+def test_clamps_never_override_the_authored_cap():
+    """``scenario.schema.json`` allows max_words anywhere in 10–500.
+
+    Applied as plain bounds the clamps rewrote any cap outside them at every
+    speed: a pack writing 10-word replies came out at 30 under all three, so
+    "Quick replies" tripled the cap it was asked to shorten and the three
+    options were indistinguishable; a pack writing 300 came out at 200 on
+    `balanced`, which is meant to be the pre-#501 behaviour exactly.
+    """
+    # Already terser than the floor: nothing to shorten, nothing to lengthen.
+    assert scaled_max_words(10, "fast") == 10
+    assert scaled_max_words(10, "balanced") == 10
+    # Already longer than the ceiling: `detailed` may not shorten it, and the
+    # default may not touch it at all.
+    assert scaled_max_words(300, "balanced") == 300
+    assert scaled_max_words(300, "detailed") == 300
+    assert scaled_max_words(500, "balanced") == 500
+
+
+@pytest.mark.parametrize("authored", [10, 20, 40, 90, 150, 300, 500])
+def test_fast_never_lengthens_and_detailed_never_shortens(authored):
+    assert scaled_max_words(authored, "fast") <= authored
+    assert scaled_max_words(authored, "balanced") == authored
+    assert scaled_max_words(authored, "detailed") >= authored
 
 
 @pytest.mark.parametrize("value", [None, "", "turbo", 3, "FAST"])
