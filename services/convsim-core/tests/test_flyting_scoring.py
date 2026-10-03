@@ -310,6 +310,13 @@ class TestScorecardSchema:
         jsonschema.Draft202012Validator(self._schema).validate(payload)
         assert payload["gate"]["foul"] == "bribing_the_ref"
 
+    def test_a_volley_the_judge_fouled_validates(self):
+        """The flags enum is closed, so ``judge_foul`` has to be in it."""
+        payload = score(verdict=judgment(fouls=["out_of_fiction"])).to_dict()
+        jsonschema.Draft202012Validator(self._schema).validate(payload)
+        assert payload["gate"]["foul"] == "out_of_fiction"
+        assert "judge_foul" in payload["flags"]
+
     def test_a_mechanically_scored_volley_validates_with_a_null_judge(self):
         payload = score(verdict=None).to_dict()
         jsonschema.Draft202012Validator(self._schema).validate(payload)
