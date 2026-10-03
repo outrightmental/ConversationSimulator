@@ -1,0 +1,188 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The shape of this repository's tracker, in one file.
+#
+# Three systems, no overlap (issue #491):
+#
+#   Labels      WHERE the work lands — the development-effort pie chart.
+#               One axis of product areas, plus a small workflow axis that no
+#               other GitHub feature covers. Nothing here duplicates a field.
+#   Fields      WHAT KIND of work it is (native issue Type) and HOW URGENT
+#               (the project's Priority field). Never labels.
+#   Milestones  WHEN it ships — release trains with deadlines, so velocity is
+#               readable. Every open issue belongs to exactly one.
+#
+# Enforced by scripts/project-structure.py:
+#   python scripts/project-structure.py validate   # offline — run in CI
+#   python scripts/project-structure.py audit      # live tracker vs. this file
+#   python scripts/project-structure.py apply      # converge the live tracker
+#
+# Prose for humans: CONTRIBUTING.md § Labels, docs/governance.md.
+
+project:
+  owner: outrightmental
+  number: 12
+  title: Conversation Simulator
+  # Fields this file writes to. Option names must match GitHub's own spelling
+  # exactly, em dashes included.
+  priority_field: Priority   # project single-select
+  phase_field: Phase         # project single-select
+  # Native repository issue types — the replacement for the type labels.
+  issue_types: [Task, Bug, Feature, Epic]
+  priorities: [P0 — blocker, P1 — next, P2 — later]
+
+# ── Labels ───────────────────────────────────────────────────────────────────
+# The complete set. A label not listed here does not belong on the tracker.
+labels:
+  # Area — the pie chart. One or two per issue when the surface is clear;
+  # epics that span areas carry none.
+  - name: area:engine
+    color: "1d76db"
+    description: Scenario engine, core API, persistence — convsim-core
+  - name: area:ui
+    color: "1d76db"
+    description: Web UI, desktop shell, UX, onboarding
+  - name: area:models
+    color: "1d76db"
+    description: Local AI runtimes — LLM, STT, TTS — and the model manager
+  - name: area:packs
+    color: "1d76db"
+    description: Scenario packs, schemas, validation, Creator Workbench
+  - name: area:safety
+    color: "1d76db"
+    description: Safety policy, privacy, security, local-first guarantees
+  - name: area:steam
+    color: "1d76db"
+    description: Steam edition — store, packaging, signing, release pipeline
+  - name: area:docs
+    color: "1d76db"
+    # Was the `docs` type label. Documentation is a product surface, not a kind
+    # of work, so the signal is kept as an area and the type moves to the field.
+    renamed_from: docs
+    description: README, docs/, and the docs site
+  - name: area:infra
+    color: "1d76db"
+    # New: the monorepo plumbing that the retired `chore` label used to absorb.
+    # Without it, CI and build work is an unlabelled slice of the pie chart.
+    description: Monorepo tooling, CI, build and release automation
+
+  # Workflow — who picks it up, and how. No field covers these.
+  - name: manual
+    color: "24292f"
+    description: Prevents vibrator from automatically picking up this issue
+  - name: review
+    color: "6e7781"
+    description: Vibrator implements this issue but leaves the final PR for human review
+  - name: good first issue
+    color: "7057ff"
+    description: Good for newcomers — scoped, documented, low-risk
+  - name: help wanted
+    color: "008672"
+    description: Maintainer welcomes a PR here
+  - name: meta
+    color: "cfd3d7"
+    # The milestone rule's only escape hatch: housekeeping that ships no
+    # product change has nothing to burn down.
+    description: Tracker and repository housekeeping — exempt from the milestone requirement
+
+# ── Retired labels ───────────────────────────────────────────────────────────
+# Each one duplicated a field. Listed in precedence order: the first match on an
+# issue decides its type, so `epic` beats `bug` beats `enhancement`, and an issue
+# carrying both `chore` and `docs` lands on Task either way.
+#
+# `apply` migrates the signal into the field before deleting the label, and
+# never overwrites a field a human already set.
+retired_labels:
+  - name: epic
+    type: Epic
+  - name: bug
+    type: Bug
+  - name: enhancement
+    type: Feature
+  - name: chore
+    type: Task
+  - name: docs
+    type: Task
+    # Deleting would drop the only record of which work was documentation.
+    rename_to: area:docs
+  - name: "priority:P0"
+    priority: P0 — blocker
+  - name: "priority:P1"
+    priority: P1 — next
+  - name: "priority:P2"
+    priority: P2 — later
+
+# ── Milestones ───────────────────────────────────────────────────────────────
+# Release trains. Deliberately comparable in size (7–9 issues) and cadence
+# (4–7 weeks) so the velocity chart compares like with like.
+#
+# History is not retrofitted here: the board's Phase field already records the
+# eras that shipped, and a milestone invented today for work closed in July has
+# no burndown to show. The one historical milestone that was really used —
+# "Steam Release Roadmap" — stays closed and untouched.
+milestones:
+  - title: v0.4 — Demo and Next Fest
+    due_on: 2026-10-31
+    state: open
+    description: >-
+      A free demo build in front of players: Steam Next Fest submission, its own
+      client identity, and a first session that explains itself without a
+      maintainer in the room.
+  - title: v1.0 — Paid launch
+    due_on: 2026-11-28
+    state: open
+    description: >-
+      The $9.99 Steam edition goes live — bundled desktop engine, real-model CI
+      gate, store and DLC registration, and the two launch epics closed out.
+  - title: v1.1 — Post-launch
+    due_on: 2027-01-16
+    state: open
+    description: >-
+      The groomed backlog released to the factory once launch is behind us:
+      auto-update, accessibility, performance targets, and the UGC on-ramp.
+
+# ── Rules the audit enforces ─────────────────────────────────────────────────
+rules:
+  # Every issue, open or closed, is a row on the board.
+  require_project_membership: true
+  # Every open issue burns down somewhere, except the housekeeping escape hatch.
+  require_milestone_when_open: true
+  milestone_exempt_label: meta
+  # Type and Priority replaced labels, so they have to be filled in for
+  # anything still in flight.
+  require_type_when_open: true
+  require_priority_when_open: true
+  # The pie chart only works if open work says where it lands. Epics span
+  # areas by design and are excluded.
+  require_area_when_open: true
+  area_exempt_types: [Epic]
+  # Closed work is history: it must be attributed to the era that shipped it
+  # (Phase) or to a milestone, so nothing falls out of the record.
+  require_phase_or_milestone_when_closed: true
+
+# ── One-time backfill ────────────────────────────────────────────────────────
+# The triage pass that brought 239 existing issues up to the rules above
+# (issue #491). New issues get their milestone, type, priority, and area at
+# triage time — this block is a record, not a routine. Re-running it is a no-op:
+# `apply` never overwrites a value that is already set.
+backfill:
+  milestones:
+    v0.4 — Demo and Next Fest: [487, 488, 494, 495, 499, 500, 501, 508]
+    v1.0 — Paid launch: [315, 316, 361, 362, 364, 366, 456, 457]
+    v1.1 — Post-launch: [454, 461, 462, 463, 464, 465, 466]
+  priorities:
+    P0 — blocker: [495, 501, 508]
+    P1 — next: [487, 499, 500]
+    P2 — later: [488, 491, 494]
+  labels:
+    # CI, packaging, and repo plumbing that carried only the retired `chore`
+    # label and would otherwise leave the pie chart with a blank slice.
+    area:infra: [1, 6, 78, 79, 85, 391, 460]
+    area:ui: [488, 500, 501, 508]
+    area:models: [487]
+    area:steam: [494, 495, 499, 508]
+    meta: [491]
+  # Closed work that predates the Phase backfill: post-v0.3 polish and fixes,
+  # all closed between 2026-08-22 and 2026-10-03.
+  phases:
+    06 · Release polish: [472, 473, 476, 477, 480, 481, 485, 486, 489, 490]

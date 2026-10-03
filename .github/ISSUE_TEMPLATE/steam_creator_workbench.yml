@@ -3,7 +3,8 @@ description: >
   Report a bug in the Creator Workbench when running under the Steam edition:
   pack authoring, scenario editing, asset management, schema validation, or
   workbench-specific UI issues.
-labels: ["bug", "area:steam", "area:packs"]
+labels: ["area:steam", "area:packs"]
+type: Bug
 body:
   - type: markdown
     attributes:

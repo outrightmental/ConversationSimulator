@@ -2,7 +2,8 @@ name: Steam — platform bug
 description: >
   Report a bug specific to the Steam edition: launcher, overlay, controller
   input, Steam Deck, code signing, or platform-specific crash.
-labels: ["bug", "area:steam"]
+labels: ["area:steam"]
+type: Bug
 body:
   - type: markdown
     attributes:
