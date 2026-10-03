@@ -28,7 +28,6 @@ pinned revision.  A file that does not match is deleted, never installed.
 """
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -383,15 +382,15 @@ def engine_command_note(engine: VoiceEngine, platform: str) -> str | None:
 def find_whisper_binary() -> str | None:
     """Return the resolved ``whisper-cli`` path, honouring the configured override.
 
-    Mirrors the lookup ``WhisperCppWorker`` performs so onboarding never reports
-    an engine as present that the worker would then fail to find.
+    Delegates to the worker's own resolver rather than re-implementing it, so
+    onboarding cannot report an engine as present that the worker would then
+    fail to find. A copy of the explicit-override branch would be one edit away
+    from disagreeing with ``WhisperCppWorker.health`` — green row, failed
+    utterance — which is the dead end this whole flow exists to remove.
     """
     from convsim_core.stt.whisper_cpp import WhisperCppConfig, _find_binary
 
-    explicit = WhisperCppConfig().binary_path
-    if explicit:
-        return explicit if os.path.isfile(explicit) and os.access(explicit, os.X_OK) else None
-    return _find_binary(None)
+    return _find_binary(WhisperCppConfig().binary_path)
 
 
 def onnxruntime_installed() -> bool:

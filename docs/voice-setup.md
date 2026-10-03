@@ -171,10 +171,11 @@ so the plan can never report an engine the worker would then fail to find. That
 lookup follows the same sidecar resolution convention as `llama-server` and
 the Kokoro server (`docs/sidecar-bundling.md`):
 
-1. `CONVSIM_WHISPER_CPP_BINARY_PATH` — explicit override. The plan is stricter
-   than the worker here: an override pointing at nothing reports *missing*
-   rather than present, so onboarding never shows a green row for a path that
-   cannot be executed.
+1. `CONVSIM_WHISPER_CPP_BINARY_PATH` — explicit override, and a dead end by
+   design: an override pointing at nothing reports *missing* rather than
+   falling through to the steps below, so onboarding never shows a green row
+   for a path that cannot be executed, and never quietly transcribes with a
+   different binary than the one that was configured.
 2. `<CONVSIM_BUNDLED_RUNTIME_DIR>/whisper-cli[.exe]` — Steam depot builds ship
    the binary in `runtimes/` and hand the backend that variable instead of
    editing `PATH` (`publishing/STEAM_DEPOT_CONTENTS.md`). A `PATH`-only lookup
