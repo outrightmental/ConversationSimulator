@@ -12,7 +12,7 @@ Usage (how the registry's lightweight tier was pinned)::
 
     python scripts/pin-model.py Qwen/Qwen3-1.7B-GGUF Qwen3-1.7B-Q8_0.gguf \\
         --id qwen3-1.7b-instruct-q8_0 --role lightweight \\
-        --min-vram 2 --recommended-vram 4
+        --min-vram 3 --recommended-vram 4
 
 Prints a YAML block for model-registry/registry.yaml. Review the licence,
 hardware hints and runtime defaults before committing, then run

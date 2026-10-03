@@ -53,7 +53,7 @@ and model from the dropdowns.
 
 | Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
 |---|---|---|---|---|---|
-| Lightweight | Qwen3 1.7B Instruct Q8_0 | 1.8 GB | ~5 min | 2 GB | Yes (quickest on CPU) |
+| Lightweight | Qwen3 1.7B Instruct Q8_0 | 1.8 GB | ~5 min | 3 GB | Yes (quickest on CPU) |
 | Starter | Qwen3 4B Instruct Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
 | Standard | Qwen3 8B Instruct Q4_K_M | 5.0 GB | ~14 min | 6 GB | Yes (very slow) |
 | High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~25 min | 10 GB | Not practical |

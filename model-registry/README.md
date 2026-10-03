@@ -25,7 +25,7 @@ refuses to start a download if either field is missing or equals `PENDING`.
 
 | Tier         | Model                              | Size    | Min VRAM |
 | ------------ | ---------------------------------- | ------- | -------- |
-| Lightweight  | Qwen3 1.7B Instruct Q8\_0          | 1.8 GB  | 2 GB     |
+| Lightweight  | Qwen3 1.7B Instruct Q8\_0          | 1.8 GB  | 3 GB     |
 | Starter      | Qwen3 4B Instruct Q4\_K\_M         | 2.5 GB  | 4 GB     |
 | Standard     | Qwen3 8B Instruct Q4\_K\_M         | 5.0 GB  | 6 GB     |
 | High-quality | Qwen3 14B Instruct Q4\_K\_M        | 9.0 GB  | 10 GB    |
@@ -38,7 +38,7 @@ both of those resolve "the starter tier", so a second one would make the pick
 depend on file order (`test_exactly_one_starter_tier` enforces it).
 
 **Lightweight** is the tier below it: the shortest download, and the only entry
-a 2 GB-VRAM or integrated-graphics machine can run — at a cost in NPC coherence,
+a sub-4 GB-VRAM or integrated-graphics machine can run — at a cost in NPC coherence,
 because a 1.7B model is less consistent than the 4B at the structured output an
 NPC turn and a scored debrief need. Never a recommendation: the setup flow
 offers the starter, and the other tiers are reached deliberately (a demo

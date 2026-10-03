@@ -74,7 +74,7 @@ installs.
 | Model | Qwen3 1.7B Instruct Q8_0 | Qwen3 4B Instruct Q4_K_M |
 | Registry id | `qwen3-1.7b-instruct-q8_0` | `qwen3-4b-instruct-q4_k_m` |
 | Download | 1.8 GB | 2.5 GB |
-| VRAM floor | 2 GB | 4 GB |
+| VRAM floor | 3 GB | 4 GB |
 | Exercised by the real-model smoke and the release checklist | **No** | Yes |
 
 Why Q8_0 and not Q4_K_M: Qwen's own GGUF repo for the 1.7B publishes a single
@@ -83,9 +83,11 @@ as the candidate does not exist upstream (`curl -s
 https://huggingface.co/api/models/Qwen/Qwen3-1.7B-GGUF/tree/main`). That is the
 better end of the trade anyway: Q8_0 is near-lossless, so the risk is purely
 1.7B-versus-4B rather than a small model *and* an aggressive quantisation. At
-1.8 GB it is still a 28 % shorter first download than the starter, and its 2 GB
-VRAM floor is the only entry in the registry an integrated-graphics or 2 GB-GPU
-machine can run at all — a class of player who today cannot finish demo setup.
+1.8 GB it is still a 28 % shorter first download than the starter, and its 3 GB
+VRAM floor (1.83 GB of weights plus 0.94 GB of KV cache at the entry's 8192-token
+context) makes it the only entry in the registry an integrated-graphics or
+sub-4 GB-GPU machine can run at all — a class of player who today cannot finish
+demo setup.
 
 Why it is not the default yet. The demo's quality bar is defined by *incoherent
 NPC turns* and *missing debriefs* being blockers: the turn pipeline asks the

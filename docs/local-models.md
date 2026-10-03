@@ -31,7 +31,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 
 | Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
 |---|---|---|---|---|---|
-| Lightweight | Qwen3 1.7B Instruct Q8_0 | 1.8 GB | ~5 min | 2 GB | Yes (quickest on CPU) |
+| Lightweight | Qwen3 1.7B Instruct Q8_0 | 1.8 GB | ~5 min | 3 GB | Yes (quickest on CPU) |
 | Starter | Qwen3 4B Instruct Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
 | Standard | Qwen3 8B Instruct Q4_K_M | 5.0 GB | ~14 min | 6 GB | Yes (very slow) |
 | High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~25 min | 10 GB | Not practical |
@@ -54,11 +54,11 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 
 - **License:** Apache-2.0
 - **Size:** 1.8 GB — about 5 minutes on a 50 Mbps connection
-- **Best for:** machines with 2–4 GB VRAM, integrated graphics, or the shortest
+- **Best for:** machines with 3–4 GB VRAM, integrated graphics, or the shortest
   possible first download
 - **Context length:** 8 192 tokens
-- **Notes:** The smallest and quickest model in the registry, and the only one a
-  2 GB-VRAM machine can run. Q8_0 rather than a 4-bit quantisation on purpose:
+- **Notes:** The smallest and quickest model in the registry, and the only one
+  that fits under 4 GB of VRAM. Q8_0 rather than a 4-bit quantisation on purpose:
   the quantisation is near-lossless, so what you give up is the smaller model
   itself. Expect NPCs to track the conversation less consistently and debrief
   scoring to be rougher than on the starter tier. Start here if the starter
