@@ -93,7 +93,7 @@ vi.mock('../api/client', () => ({
             why_manual: 'No checksummed binary is published for every platform.',
             docs_url: 'https://github.com/ggml-org/whisper.cpp#quick-start',
             command: 'brew install whisper.cpp', command_note: null,
-            startable: false, installed: false, found_at: null,
+            startable: false, installed: false, found_at: null, serving: false,
           },
           {
             id: 'kokoro-server', capability: 'tts', name: 'Kokoro TTS server',
@@ -101,7 +101,7 @@ vi.mock('../api/client', () => ({
             docs_url: 'https://github.com/remsky/Kokoro-FastAPI#readme',
             command: 'docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest',
             command_note: null,
-            startable: true, installed: false, found_at: null,
+            startable: true, installed: false, found_at: null, serving: false,
           },
         ],
         platform: 'darwin', kokoro_state: 'stopped', onnxruntime_installed: false,
