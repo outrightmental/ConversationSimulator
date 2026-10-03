@@ -22,9 +22,24 @@ import json
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 
 REPO_DEFAULT = "outrightmental/ConversationSimulator"
+
+# The one declared label both pack signals land in.  `area:packs` is scoped
+# "Scenario packs, schemas, validation, Creator Workbench" in
+# .github/project-structure.yml, and that manifest is the complete label set:
+# there is no `pack-bug` and no `creator-workbench` label, so the searches this
+# script used to run returned zero forever and the worksheet read a live signal
+# as absent.  Which reports inside the area are pack imports and which are
+# Workbench is a judgement call no label records, so the area total is counted
+# once here and the split is left to the maintainer filling in the worksheet.
+#
+# Spelled out here as `label:"area:packs"` so that
+# `scripts/project-structure.py validate` reads the search this constant runs
+# and fails CI if the label ever stops being declared.
+PACK_AREA_LABEL = "area:packs"
 
 
 def _gh(*args: str, paginate: bool = True) -> dict | list | None:
@@ -95,11 +110,22 @@ def fetch_community_pack_repos() -> int:
 
 
 def fetch_label_issue_count(repo: str, label: str) -> int:
-    """Return open + closed issue count for a label."""
-    data = _gh(f"/repos/{repo}/issues?labels={label}&state=all&per_page=100")
+    """Return open + closed issue count for a label.
+
+    The name is percent-encoded: every declared label is of the form
+    `area:packs`, and an unencoded colon in a query value is at the mercy of
+    whatever normalises the URL on the way out.
+
+    Pull requests are dropped.  `/repos/{repo}/issues` returns them alongside
+    issues, and the `area:*` labels this now reads go on pull requests as well
+    as issues — so counting the raw rows would report the maintainers' own
+    commits as creator demand.  That was invisible while the label searched for
+    (`pack-bug`) existed nowhere and the count was always zero.
+    """
+    data = _gh(f"/repos/{repo}/issues?labels={quote(label, safe='')}&state=all&per_page=100")
     if not isinstance(data, list):
         return 0
-    return len(data)
+    return sum(1 for entry in data if isinstance(entry, dict) and "pull_request" not in entry)
 
 
 def fetch_fork_count(repo: str) -> int:
@@ -182,8 +208,7 @@ def main() -> None:
         print("_No pack release assets found, or gh API unavailable._")
     print()
 
-    pack_bug_count = fetch_label_issue_count(repo, "pack-bug")
-    workbench_count = fetch_label_issue_count(repo, "creator-workbench")
+    pack_area_count = fetch_label_issue_count(repo, PACK_AREA_LABEL)
     community_repos = fetch_community_pack_repos()
 
     print("### Signal summary")
@@ -191,8 +216,8 @@ def main() -> None:
     print("| Signal | Measurement method | Count / observation |")
     print("|--------|--------------------|---------------------|")
     print(f"| Community packs: GitHub repos tagged `convsim-pack` | GitHub search `topic:convsim-pack` | {community_repos} |")
-    print(f"| Pack import issues filed on GitHub | `label:pack-bug` issue count | {pack_bug_count} |")
-    print(f"| Creator Workbench issues filed | `label:creator-workbench` issue count | {workbench_count} |")
+    print(f"| Pack import issues filed on GitHub | GitHub search `label:\"{PACK_AREA_LABEL}\"`, counting pack validation and import reports | {pack_area_count} in `{PACK_AREA_LABEL}` — split by hand |")
+    print(f"| Creator Workbench issues filed | GitHub search `label:\"{PACK_AREA_LABEL}\"`, counting Creator Workbench reports | included in the {pack_area_count} above — split by hand |")
     print("| Community packs: itch.io items tagged `conversation-simulator` | itch.io browse page | _manual check required_ |")
     print("| Discord `#pack-sharing` channel activity | Post count + unique contributors | _manual check required_ |")
     print()

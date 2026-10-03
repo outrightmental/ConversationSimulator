@@ -56,7 +56,7 @@ If the app will not start or the Support screen is unreachable, open a
 - A clear description of what happened and what you expected
 - Steps to reproduce
 
-[new-issue]: https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml&labels=beta-feedback
+[new-issue]: https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml
 
 ---
 

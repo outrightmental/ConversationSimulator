@@ -54,8 +54,8 @@ links). Measure what is visible.
 | Official pack: GitHub release download count | GitHub API → release asset download count for each pack zip | |
 | Community packs: GitHub repos tagged `convsim-pack` | GitHub search `topic:convsim-pack` | |
 | Community packs: itch.io items tagged `conversation-simulator` | itch.io browse page | |
-| Pack import issues filed on GitHub | `label:pack-bug` issue count | |
-| Creator Workbench issues filed | `label:creator-workbench` issue count | |
+| Pack import issues filed on GitHub | GitHub search `label:"area:packs"`, counting pack validation and import reports | |
+| Creator Workbench issues filed | GitHub search `label:"area:packs"`, counting Creator Workbench reports | |
 | Discord `#pack-sharing` or equivalent channel activity | Post count + unique contributors (90-day window) | |
 
 Summary of pack distribution signals:

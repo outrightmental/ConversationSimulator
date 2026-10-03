@@ -23,7 +23,7 @@ const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issu
 const TROUBLESHOOTING_BASE =
   'https://docs.conversationsimulator.com/start/troubleshooting/'
 const BETA_REPORT_URL =
-  'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml&labels=beta-feedback'
+  'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml'
 
 export default function Home() {
   const health = useApiHealth()
