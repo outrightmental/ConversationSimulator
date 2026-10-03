@@ -74,3 +74,60 @@ class TestOfficialCalibration:
             pytest.skip("Flyting School pack not found")
         covered = {suite.scenario_id for suite in runner.run_pack(pack_dir)}
         assert covered == set(runner._flyting_scenarios(pack_dir))
+
+
+class TestJudgedSampling:
+    """``--limit N`` is the nightly's whole judge budget, so it must buy calls.
+
+    Every expectation in these suites carries a band, gated volleys included, so
+    "prefer the judged ones" is not a strong enough rule on its own: a suite
+    that opens with a dud and two fouls would spend its entire sample on volleys
+    that never reach a model, pass, and report nothing about judge drift.
+    """
+
+    def test_a_limited_sample_prefers_volleys_that_reach_the_judge(self, runner):
+        data = {
+            "volleys": [
+                {"id": "short", "expect": {"gate": "dud", "band": "dud"}},
+                {"id": "foul", "expect": {"gate": "foul", "band": "dud"}},
+                {"id": "aimed", "expect": {"gate": "ok", "band": "solid"}},
+                {"id": "strong", "expect": {"gate": "ok", "band": "strong"}},
+            ]
+        }
+        picked = [entry["id"] for entry in runner._entries_for(data, 2)]
+        assert picked == ["aimed", "strong"]
+
+    def test_a_gated_volley_is_still_sampled_once_the_judged_ones_are_in(self, runner):
+        data = {
+            "volleys": [
+                {"id": "short", "expect": {"gate": "dud", "band": "dud"}},
+                {"id": "aimed", "expect": {"gate": "ok", "band": "solid"}},
+                {"id": "no_expectations", "expect": {}},
+            ]
+        }
+        # File order is preserved in the output, so this asserts membership.
+        assert [entry["id"] for entry in runner._entries_for(data, 2)] == ["short", "aimed"]
+
+    def test_no_limit_runs_every_volley(self, runner):
+        data = {"volleys": [{"id": "a", "expect": {}}, {"id": "b", "expect": {}}]}
+        assert [entry["id"] for entry in runner._entries_for(data, None)] == ["a", "b"]
+
+    def test_a_missing_gate_expectation_counts_as_reaching_the_judge(self, runner):
+        """An author who omits ``gate`` is describing an ordinary volley."""
+        assert runner._reaches_the_judge({"expect": {"band": "solid"}}) is True
+        assert runner._reaches_the_judge({"expect": {"gate": "foul"}}) is False
+
+    def test_every_official_suite_spends_a_small_sample_on_the_judge(
+        self, runner, pack_dirs
+    ):
+        """The nightly dispatches ``--limit 3``; each suite must then cost 3 calls."""
+        import yaml
+
+        for pack_dir in pack_dirs:
+            for path in sorted((pack_dir / "calibration").glob("*.yaml")):
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+                sample = runner._entries_for(data, 3)
+                judged = [e for e in sample if runner._reaches_the_judge(e)]
+                assert len(judged) == min(
+                    3, sum(1 for e in data["volleys"] if runner._reaches_the_judge(e))
+                ), f"{path.name} spends its judged sample on gated volleys"

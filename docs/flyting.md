@@ -356,10 +356,12 @@ reference volleys in the launch pack, 29 of which reach the judge, and roughly
 25-30 s each against the starter model on a developer machine — about a quarter
 of an hour for the pack, and far longer on a CPU CI runner, which measures a
 grammar-constrained turn in minutes rather than seconds. So the judged tier is
-not in the nightly by default — `--limit N` takes a bounded sample (judged
-volleys first), and `model-smoke-nightly.yml` accepts `flyting_judged=true` on
-a manual dispatch to run that sample against the same cached starter model and
-upload the report. The report carries every volley's dimensions, verified hooks,
+not in the nightly by default — `--limit N` takes a bounded sample, spending it
+on the volleys that actually reach the judge rather than on gated ones CI
+already checks every commit (so `--limit 3` is three judge calls per suite,
+fifteen for the launch pack), and `model-smoke-nightly.yml` accepts
+`flyting_judged=true` on a manual dispatch to run that sample against the same
+cached starter model and upload the report. The report carries every volley's dimensions, verified hooks,
 dropped hooks and flags, so a band that moved is readable without a re-run.
 
 **What the judged bands are pinned to.** The launch pack's judged expectations

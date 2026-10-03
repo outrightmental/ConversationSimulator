@@ -58,6 +58,11 @@ from convsim_core.flyting.volley import VolleyInputError  # noqa: E402
 # Expectation keys that need a judge; everything else is deterministic.
 JUDGED_KEYS = frozenset({"band", "min_score", "max_score", "hooks"})
 
+# Gate outcomes that zero a volley before the judge is ever invoked. A volley
+# expected to end in one of these costs no model call, so it cannot be part of a
+# judged sample's budget — see _entries_for.
+_GATED_OUTCOMES = frozenset({"dud", "foul"})
+
 
 @dataclass
 class VolleyResult:
@@ -237,20 +242,47 @@ async def _score_with_judge(
     return service.compose(prepared, judgment, volley_number=1)
 
 
+def _reaches_the_judge(entry: Dict[str, Any]) -> bool:
+    """Whether running this volley will actually cost a judge call.
+
+    A volley the gates zero never reaches the model, and its expectations are
+    pure functions of the volley and the pack — which is why the deterministic
+    tier already checks them on every commit. Its declared ``gate`` is how the
+    suite says so without running anything.
+    """
+    expect = entry.get("expect") or {}
+    return str(expect.get("gate") or "ok") not in _GATED_OUTCOMES
+
+
+def _sample_priority(entry: Dict[str, Any]) -> int:
+    """Lower sorts earlier: the volleys a judged sample is actually for.
+
+    0 — a judged expectation on a volley that reaches the judge. This is the
+        only kind of volley a judged run can learn anything from.
+    1 — a judged expectation on a gated volley (``band: dud`` on a foul, say).
+        Cheap, and already covered deterministically.
+    2 — no judged expectation at all.
+    """
+    expect = entry.get("expect") or {}
+    if not any(key in JUDGED_KEYS for key in expect):
+        return 2
+    return 0 if _reaches_the_judge(entry) else 1
+
+
 def _entries_for(data: Dict[str, Any], limit: Optional[int]) -> List[Dict[str, Any]]:
     """The volleys to run, trimmed to ``limit`` if one was given.
 
     A limited run is a *sample*, and the only expensive volleys are the ones a
-    judge has to read, so the budget goes to the volleys carrying judged
-    expectations. Gated volleys never reach the model anyway.
+    judge has to read, so the budget goes to the volleys that both carry a
+    judged expectation *and* clear the gates. Spending it on gated volleys would
+    buy nothing: they never reach the model, and CI checks them on every commit.
+    Getting this wrong is quiet — the run still passes, having asked the judge
+    almost nothing — so the ordering is tested.
     """
     entries = [entry for entry in (data.get("volleys") or []) if isinstance(entry, dict)]
     if limit is None or limit >= len(entries):
         return entries
-    judged_first = sorted(
-        entries,
-        key=lambda e: not any(k in JUDGED_KEYS for k in (e.get("expect") or {})),
-    )
+    judged_first = sorted(entries, key=_sample_priority)
     chosen = {id(e) for e in judged_first[: max(0, limit)]}
     # Keep file order, so a report reads in the order the suite was authored.
     return [entry for entry in entries if id(entry) in chosen]
@@ -377,9 +409,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--limit",
         type=int,
         default=None,
-        help="Check at most this many volleys per suite, judged ones first. One "
-             "judge call per volley is the whole cost of a judged run, so this is "
-             "how a judged sample is kept inside a time budget.",
+        help="Check at most this many volleys per suite, preferring the ones a "
+             "judge actually reads. One judge call per volley is the whole cost "
+             "of a judged run, so this is how a judged sample is kept inside a "
+             "time budget.",
     )
     args = parser.parse_args(argv)
 
