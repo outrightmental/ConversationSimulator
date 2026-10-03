@@ -94,6 +94,8 @@ opening:
 goals:
   player_visible:
     - Practice the conversation
+  hidden:
+    - The NPC is secretly bored and wants to leave
 difficulty:
   default: hard
   options:
@@ -194,6 +196,19 @@ describe('GET /api/scenarios — dynamic pack merge', () => {
     // pack scenarios must be voice_supported like the built-ins — otherwise
     // the library's voice filter/chip would silently exclude them.
     expect(dynamic.voice_supported).toBe(true);
+  });
+
+  // The brief shows the objective to the player (issue #500), so the
+  // player-visible half of `goals` has to reach the client — and the hidden
+  // half, which is the NPC's covert agenda, must not.
+  it('serves the player-visible goals and never the hidden ones', async () => {
+    await importPack();
+    const res = await app.inject({ method: 'GET', url: '/api/scenarios' });
+    const dynamic = res
+      .json<ScenarioInfo[]>()
+      .find((s) => s.scenario_id === 'community_library_scenario')!;
+    expect(dynamic.player_visible_goals).toEqual(['Practice the conversation']);
+    expect(res.body).not.toContain('secretly bored');
   });
 
   it('does not double-serve a scenario whose id also exists as a static built-in', async () => {
