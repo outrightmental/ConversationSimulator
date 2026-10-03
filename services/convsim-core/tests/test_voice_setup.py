@@ -241,7 +241,7 @@ def test_a_source_build_produces_a_self_contained_binary():
         assert "-DBUILD_SHARED_LIBS=OFF" in whisper.commands[platform], platform
 
 
-def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note():
+def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note(monkeypatch):
     """Building on Windows leaves the binary in the build tree, so the note must place it.
 
     The route it names must be one the running service can observe. A PATH edit
@@ -261,7 +261,44 @@ def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note():
     assert "check again" in note.lower(), note
     assert "no restart" in note.lower(), note
 
-    # macOS needs none: brew puts whisper-cli on PATH itself.
+    # macOS needs no follow-up once the command has run: brew puts whisper-cli
+    # on PATH itself. Pin which program is consulted, so a machine without
+    # Homebrew does not quietly turn this into the brew note below.
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert voice_registry.engine_command_note(whisper, "darwin") is None
+
+
+def test_the_mac_command_says_so_when_homebrew_is_not_there(monkeypatch):
+    """`brew install …` on a stock Mac is "command not found" — a dead end.
+
+    Homebrew is not part of macOS, and macOS is the one platform whose command
+    is a package-manager one-liner rather than a source build. Handing it over
+    unqualified is the same dead end as the winget package that does not exist
+    and as Kokoro's docker command on a machine without Docker, both of which
+    this flow already names.
+
+    The note must stay off Linux and Windows, whose commands never run brew:
+    they have a platform follow-up of their own, and that takes precedence.
+    """
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    note = voice_registry.engine_command_note(whisper, "darwin")
+    assert note is not None, "a brew command on a Mac without brew cannot even start"
+    assert "brew" in note.lower(), note
+    # It must name the way out, not just the obstacle — and the source build is
+    # the route for someone who does not want Homebrew at all.
+    assert "brew.sh" in note, note
+    assert "source" in note.lower(), note
+
+    # The two build platforms keep their toolchain note, brew or no brew.
+    for platform in ("linux", "win32"):
+        other = voice_registry.engine_command_note(whisper, platform)
+        assert other is not None and "brew" not in other.lower(), (platform, other)
+
+    # With Homebrew present the command is self-contained, so the row is quiet.
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda name: f"/usr/bin/{name}")
     assert voice_registry.engine_command_note(whisper, "darwin") is None
 
 

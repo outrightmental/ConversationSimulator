@@ -237,6 +237,22 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
                 "cmake --build build --config Release"
             ),
         },
+        # macOS is the one platform whose command is a package-manager
+        # one-liner, and Homebrew is not part of macOS — a stock Mac answers
+        # `brew install whisper.cpp` with "command not found". That is the same
+        # dead end as the winget package that does not exist, so the row says so
+        # rather than letting the player find out in their own terminal.
+        #
+        # Only macOS can see this note: `command_notes` takes precedence in
+        # `engine_command_note`, and Linux and Windows both have an entry there
+        # — which is correct, because neither of their commands runs brew.
+        requires_tool="brew",
+        requires_tool_note=(
+            "This command installs whisper.cpp with Homebrew, and brew was not found "
+            "on this machine — until it is, the command cannot start. Install Homebrew "
+            "(brew.sh) and run it again, or use "
+            '"Other ways to install it" below to build whisper.cpp from source.'
+        ),
         command_notes={
             # Both commands build from source, so neither can start without a
             # toolchain this app does not ship. Saying nothing would send the
@@ -334,11 +350,15 @@ def engine_command_note(engine: VoiceEngine, platform: str) -> str | None:
 
     1. a per-platform follow-up the command cannot do for itself (Windows
        building ``whisper-cli`` into a directory nothing on PATH will search);
-    2. a missing prerequisite the command *runs* (``docker``), reported only
-       when it is actually absent, so the note is noise for nobody.
+    2. a missing prerequisite the command *runs* (``docker``, ``brew``),
+       reported only when it is actually absent, so the note is noise for
+       nobody.
 
-    No engine declares both today. If one ever does, the platform follow-up
-    wins: it is the more specific of the two.
+    The precedence is load-bearing, not a tiebreak: ``whisper-cli`` declares
+    both, and its prerequisite (``brew``) belongs only to the macOS command.
+    Linux and Windows build from source and have a platform follow-up of their
+    own, so winning there keeps a brew note off the two platforms whose
+    commands never touch brew.
     """
     if engine.command_notes is not None:
         note = engine.command_notes.get(_normalise_platform(platform))

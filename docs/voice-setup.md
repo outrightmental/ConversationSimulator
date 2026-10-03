@@ -183,7 +183,7 @@ upstream `cmake` build instead of a package-manager one-liner.
 
 | Platform | Command | Note under it |
 |----------|---------|---------------|
-| macOS | `brew install whisper.cpp` | None — brew puts `whisper-cli` on `PATH`. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
+| macOS | `brew install whisper.cpp` | None once it runs — brew puts `whisper-cli` on `PATH` itself. When `brew` is *not* on this machine: how to get Homebrew, and that the source build is the alternative. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
 | Linux | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, then `cp build/bin/whisper-cli ~/.convsim/bin/` | Toolchain: `git`, `cmake`, a C++ compiler. Then **Check again**; no restart. |
 | Windows | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, as three separate lines | Toolchain as above, plus: copy `whisper-cli.exe` out of `build\bin\Release` into `.convsim\bin`. Then **Check again**; no restart. |
 
@@ -228,13 +228,17 @@ this order:
    end this screen exists to remove.
 2. **A missing prerequisite the command runs** (`requires_tool` +
    `requires_tool_note`), reported only when `shutil.which` cannot find it, so
-   the row is silent for anyone who already has it. Kokoro's container command
-   is the only case today: without Docker it answers `docker: command not
-   found`, so the note names Docker and the non-container alternative rather
-   than leaving the player to discover it in a terminal.
+   the row is silent for anyone who already has it. Two commands qualify:
+   Kokoro's container command, which without Docker answers `docker: command
+   not found`, and whisper.cpp's macOS one-liner, which without Homebrew
+   answers `brew: command not found`. Homebrew is not part of macOS, so a stock
+   Mac meets that; each note names the program *and* the alternative route
+   (run the server directly; build whisper.cpp from source).
 
-No engine declares both; if one ever does, the platform caveat wins as the more
-specific of the two.
+`whisper-cli` declares both, which makes the precedence load-bearing rather
+than a tiebreak: its `requires_tool` belongs only to the macOS command, and the
+two source-build platforms carry a `command_notes` entry that wins there — so
+no brew note reaches the platforms whose commands never run brew.
 
 Windows players who would rather not build can take `whisper-bin-x64.zip` from
 a `bNNNN` tag on the [whisper.cpp releases

@@ -98,7 +98,10 @@ does not, press **Check again**.
 Homebrew is the only package manager that ships whisper.cpp, so Linux and
 Windows build it. Building needs `git`, `cmake` and a C++ compiler, which the
 app does not bundle — the setup screen names them under the command so the
-first thing you meet is not `git: command not found`. The build produces a
+first thing you meet is not `git: command not found`. On macOS, Homebrew itself
+is the thing you might not have: it is not part of macOS, so if `brew` is
+missing the screen says so under the command and points you at
+[brew.sh](https://brew.sh) or the source build. The build produces a
 self-contained program, so once it has been copied into place you can delete
 the cloned source folder.
 
