@@ -62,6 +62,34 @@ _SECOND_PERSON = frozenset({
 _VOWEL_GROUP_RE = re.compile(r"[aeiouy]+")
 _ALPHA_RE = re.compile(r"[a-z']+")
 
+# ``NormalizedVolley.words`` deliberately keeps the hyphen and the typographic
+# apostrophe, because both belong to the word a player typed. Craft metrics
+# measure one word at a time, so a token has to be reduced to its measurable
+# parts first: the curly apostrophe folded to a straight one (the same fold
+# ``corpus.tokenize`` and the judge's evidence check already apply), and a
+# compound split into the words it is made of.
+_SMART_APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "ʼ": "'"})
+_COMPOUND_SPLIT_RE = re.compile(r"[-‐‑‒–—]+")
+
+
+def _measurable_parts(word: str) -> List[str]:
+    """The alphabetic words inside one volley token, lowercased.
+
+    Without this, every token the ``[a-z']+`` filter could not match whole was
+    dropped from the entire stage — which is to say every hyphenated compound
+    and every word typed with a typographic apostrophe. Two consequences, both
+    visible to a player: "You’re nothing but a gilded post" failed the
+    second-person aim check, costing it the ``no_aim`` flag and four points of
+    mechanical sting; and "Well-bred, ill-tempered, under-witted." measured as
+    zero words of anything, which the gibberish gate then scored as a dud.
+    """
+    lowered = word.lower().translate(_SMART_APOSTROPHES)
+    return [
+        part
+        for part in _COMPOUND_SPLIT_RE.split(lowered)
+        if _ALPHA_RE.fullmatch(part) and part.strip("'")
+    ]
+
 # Orthographic onset normalisations: the spellings that would otherwise make
 # alliteration obviously wrong.
 _ONSET_REWRITES: Tuple[Tuple[str, str], ...] = (
@@ -291,8 +319,7 @@ def compute_craft_metrics(
     min_alliteration_run: int = 3,
 ) -> CraftMetrics:
     """Measure one volley's craft. Pure, deterministic, identical on every machine."""
-    words = [w for w in volley.words if _ALPHA_RE.fullmatch(w.lower())]
-    lowered = [w.lower() for w in words]
+    lowered = [part for word in volley.words for part in _measurable_parts(word)]
     content = [w for w in lowered if w not in _FUNCTION_WORDS]
 
     recognizable = [w for w in lowered if _is_recognizable(w)]

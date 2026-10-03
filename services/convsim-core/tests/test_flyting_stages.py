@@ -177,6 +177,41 @@ class TestCraftMetrics:
         assert verse.rhyme_pairs >= 1
         assert verse.sound_reward > plain.sound_reward
 
+    def test_a_typographic_apostrophe_still_aims_at_the_target(self):
+        """A curly apostrophe is what most keyboards and phones actually produce.
+
+        ``[a-z']+`` could not match "You’re" whole, so the token was dropped
+        from every craft metric: the aim check read no second person, the volley
+        was flagged ``no_aim``, mechanical sting fell from 6 to 2, and the
+        debrief told the player their line "never pointed at anyone".
+        """
+        curly = compute_craft_metrics(analyze_volley("You’re nothing but a gilded post."))
+        straight = compute_craft_metrics(analyze_volley("You're nothing but a gilded post."))
+        assert curly.second_person
+        assert curly.content_word_count == straight.content_word_count
+        assert compute_craft_metrics(analyze_volley("Thou’rt a powdered nothing.")).second_person
+
+    def test_a_hyphenated_compound_is_measured_rather_than_discarded(self):
+        """And a volley made only of them is not gibberish.
+
+        Hyphenated tokens matched the whole-token filter no better than curly
+        apostrophes did, so they contributed to nothing — not rarity, not
+        variety, not sound, not the recognizable ratio that the gibberish gate
+        reads. Three real words therefore measured as zero words, and Stage 0
+        duds that as keyboard mash.
+        """
+        metrics = compute_craft_metrics(analyze_volley("Well-bred, ill-tempered, under-witted."))
+        assert metrics.recognizable_ratio == 1.0
+        assert metrics.recognizable_ratio >= MIN_RECOGNIZABLE_RATIO
+        assert metrics.content_word_count >= 4  # both halves of each compound
+
+        # The pack's own encouraged diction is hyphenated, so it has to land in
+        # the rarity pool rather than vanish from it.
+        period = compute_craft_metrics(
+            analyze_volley("Your honour is a ha'penny-gilt trinket, sir.")
+        )
+        assert "ha'penny" in period.rarest_words
+
     def test_craft_floor_is_on_the_judge_scale(self):
         metrics = compute_craft_metrics(analyze_volley(GOOD_VOLLEY))
         assert 0 <= metrics.craft_floor <= 10
