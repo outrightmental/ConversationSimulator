@@ -51,7 +51,7 @@ unverified binary the app shows you the exact command to install it yourself.
 ## The model files (the app installs these)
 
 Press the download button and the app fetches the recommended set — about
-**145 MB** — from the original publishers, checks each file against a known
+**143 MB** — from the original publishers, checks each file against a known
 SHA-256, and only then installs it. Nothing is transferred until you press the
 button, and the screen discloses the source URL, licence, exact size, checksum
 and destination of every file first.
