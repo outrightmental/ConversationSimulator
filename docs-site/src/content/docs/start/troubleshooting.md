@@ -226,6 +226,13 @@ Common culprits: a previous instance of the app that was not stopped cleanly
 (see [The engine keeps running after I quit](#engine-wont-exit)), or another
 application using ports in the 7354–7358 range.
 
+**The app reports "Port 7355 is already in use by another program"**
+
+The desktop app asks whatever is on port 7355 for `GET /api/health`. If the
+answer comes from a Conversation Simulator engine it attaches to that instead of
+starting a second one; this message means the answer came from something else.
+Close that program and start the app again.
+
 ---
 
 ## The engine keeps running after I quit {#engine-wont-exit}
@@ -259,13 +266,6 @@ Then please [open an issue](https://github.com/outrightmental/ConversationSimula
 and attach `app.log` and `runtime.log` from `~/.convsim/logs/`. The last lines of
 `app.log` say how far the shutdown got, which is the one thing we cannot work
 out from the outside.
-
-**The app reports "Port 7355 is already in use by another program"**
-
-The desktop app asks whatever is on port 7355 for `GET /api/health`. If the
-answer comes from a Conversation Simulator engine it attaches to that instead of
-starting a second one; this message means the answer came from something else.
-Close that program and start the app again.
 
 ---
 
