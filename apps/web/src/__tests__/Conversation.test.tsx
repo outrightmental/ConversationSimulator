@@ -2062,6 +2062,30 @@ describe('Conversation screen', () => {
       expect(status).toHaveTextContent('NPC is thinking…')
     })
 
+    it('keeps the ticking panel out of the transcript live region', async () => {
+      // The transcript is role="log" with aria-live="polite", so a live region
+      // re-announces everything inside it on every text change. The panel's
+      // clock changes every second: nested in there it would be ~300
+      // announcements over a five-minute turn, which is exactly what the
+      // aria-hidden clock and the 30 s announcement grid exist to avoid. The
+      // panel's placement below the transcript is what makes that work, so pin
+      // it — a future tidy-up that moves it inside would silently undo all of it.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await submit()
+
+      const transcript = screen.getByRole('log', { name: /conversation transcript/i })
+      expect(transcript).toHaveAttribute('aria-live', 'polite')
+      for (const testId of [
+        'npc-turn-progress',
+        'npc-turn-progress-clock',
+        'npc-turn-progress-status',
+        'npc-turn-progress-announcement',
+      ]) {
+        expect(transcript).not.toContainElement(screen.getByTestId(testId))
+      }
+    })
+
     it('does not learn a duration from a turn that failed', async () => {
       // A turn that errored out at 30s says nothing about how long a reply takes.
       let failTurn: (r: { ok: false; error: ApiError }) => void = () => {}
