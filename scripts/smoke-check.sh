@@ -192,6 +192,10 @@ check_file "apps/desktop/src-tauri/icons-demo/128x128.png"
 check_file "apps/desktop/src-tauri/icons-demo/128x128@2x.png"
 check_file "apps/desktop/src-tauri/icons-demo/icon.icns"
 check_file "apps/desktop/src-tauri/icons-demo/icon.ico"
+# The Steamworks client icon is not compiled into anything — it is uploaded by
+# hand to the demo app's Graphical Assets (demo gate D-10).  It is checked here
+# because it is generated from the same mark by the same script, so a tree that
+# has the bundle set but not this one is a half-applied regeneration.
 check_file "publishing/assets/icons/demo_client_icon.ico"
 
 echo ""
