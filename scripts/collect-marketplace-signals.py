@@ -115,11 +115,17 @@ def fetch_label_issue_count(repo: str, label: str) -> int:
     The name is percent-encoded: every declared label is of the form
     `area:packs`, and an unencoded colon in a query value is at the mercy of
     whatever normalises the URL on the way out.
+
+    Pull requests are dropped.  `/repos/{repo}/issues` returns them alongside
+    issues, and the `area:*` labels this now reads go on pull requests as well
+    as issues — so counting the raw rows would report the maintainers' own
+    commits as creator demand.  That was invisible while the label searched for
+    (`pack-bug`) existed nowhere and the count was always zero.
     """
     data = _gh(f"/repos/{repo}/issues?labels={quote(label, safe='')}&state=all&per_page=100")
     if not isinstance(data, list):
         return 0
-    return len(data)
+    return sum(1 for entry in data if isinstance(entry, dict) and "pull_request" not in entry)
 
 
 def fetch_fork_count(repo: str) -> int:
