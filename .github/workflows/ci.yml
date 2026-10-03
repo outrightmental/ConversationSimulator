@@ -29,9 +29,15 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
+      # The version is printed because apt's shellcheck lags Homebrew's by two
+      # releases, and the two disagree about info-level findings (0.9.0 has no
+      # SC2329 and reports SC2317 instead) — info findings fail the lint, so a
+      # script that is clean locally can still fail here. Knowing which version
+      # spoke turns that into a one-line diagnosis.
       - name: Lint shell scripts
         run: |
           echo "Local: shellcheck scripts/*.sh"
+          shellcheck --version
           shellcheck scripts/*.sh
 
   # ── Workflow linting ────────────────────────────────────────────────────────
@@ -244,7 +250,14 @@ jobs:
   desktop-check:
     name: Desktop Rust check
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45, not 30. The 30 was set when desktop-smoke.sh ran two `cargo check`
+    # passes; it then gained a `cargo test` step (issue #485) without a raise,
+    # which is a third compile AND the only one that links — `cargo check` emits
+    # metadata only, so none of its artifacts are reusable for a build that
+    # produces a binary. On a cold cache that is a full codegen pass of the Tauri
+    # dependency tree inside a budget sized for none. The headroom is claimed
+    # here because this branch grows the crate's test module substantially.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       # Plain apt, the same way release.yml installs these. The cache-apt-pkgs
@@ -268,7 +281,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
-      - name: Check desktop crate compiles
+      - name: Check desktop crate compiles and pass its unit tests
         env:
           # Non-secret repo variable: pack-id ↔ DLC App ID mapping used by the
           # DLC ownership check.  Empty in open-source / contributor builds —
@@ -292,7 +305,14 @@ jobs:
   desktop-rust-steam-windows:
     name: Desktop Rust check and test (Windows)
     runs-on: windows-latest
-    timeout-minutes: 45
+    # 60, not 45. The 45 predates the `cargo test` step below, which arrived
+    # with issue #485 and kept it: that step is a second compile of the whole
+    # dependency tree, not an increment on the first — `cargo check` emits
+    # metadata only, so none of its artifacts are reusable for a build that
+    # links, and the two steps also differ in feature resolution. This is the
+    # slower platform and the only one that compiles `kill_tree`'s `taskkill`
+    # branch, so it gets more headroom than the Linux job's 45, not less.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Install Rust stable toolchain
