@@ -38,17 +38,17 @@
 # 10 min gap is deliberate margin, not an accounting of known work: the steps
 # before the smoke (checkout, pip install, cache restore and, on a cache miss,
 # the download plus the cache save) run against the same job clock and are
-# invisible to the script's own deadline, but they measure ~1 min in total.
+# invisible to the script's own deadline, but they measure 31–51 s in total.
 # The margin is sized for the network-bound part of that, which a slow
 # Hugging Face or Actions-cache night can stretch by minutes.  The download is
 # the one of those steps that could stretch without limit, so it carries its own
 # 5 min budget (DOWNLOAD_BUDGET_S in the script) and fails as `download` rather
 # than spending the margin the smoke still needs.
 #
-#   set up job + checkout + setup-python     ~10 s
-#   pip install ×3 (cached wheels)           ~16 s cold, ~13 s warm
-#   model cache restore (2.3 GiB)            ~25 s on a hit, <1 s on a miss
-#   download + SHA-256 verify (cache miss)   ~9 s     — bounded at 5 min
+#   set up job + checkout + setup-python     ~5 s
+#   pip install ×3 (cached wheels)           ~16 s cold, ~14 s warm
+#   model cache restore (2.3 GiB)            ~24 s on a hit, <1 s on a miss
+#   download + SHA-256 verify (cache miss)   ~10 s    — bounded at 5 min
 #   cache save (cache miss only)             ~10 s
 #   SHA-256 re-verify before load            <10 s    — bounded, see below
 #   model load + core start + session        ~8 s
@@ -57,19 +57,20 @@
 #   ------------------------------------------------
 #   total                                   ~11 min, warm cache or cold
 #
-# The non-inference figures are measured, from this job's own logs for the ten
-# nightlies to 2026-10-03.  Two of them are counter-intuitive and worth knowing
-# before tuning anything: a cache MISS (~9 s to fetch and hash the GGUF) is
-# cheaper than a cache HIT (~25 s to restore the same bytes), so the cache
-# saves the network and not the clock; and everything before the conversation
-# is ~1 min of a 30 min job, so the budget is inference and nothing else.
+# The non-inference figures are measured, from this job's own logs for the
+# twelve nightlies whose logs GitHub still held on 2026-10-03.  Two of them are
+# counter-intuitive and worth knowing before tuning anything: a cache MISS is no
+# more expensive than a cache HIT — ~10 s to fetch and hash the GGUF plus ~10 s
+# to save it, against ~19–28 s to restore the same bytes — so the cache saves
+# the network and not the clock; and everything before the conversation is
+# 31–51 s of a 30 min job, so the budget is inference and nothing else.
 # The re-verify row is the one with no direct measurement — the previous
 # single-turn harness did not re-verify — and is bounded by the cold row above,
-# where downloading 2.3 GiB *and* hashing it together took 9 s.
+# where downloading 2.3 GiB *and* hashing it together took 10 s.
 #
 # The inference figures are projected from the one latency this job has
-# actually measured — a single behavioral-interview turn, ten nightlies:
-# 66/93/98/103/104/111/112/114/115/115 s — rounded up to ~120 s per turn
+# actually measured — a single behavioral-interview turn, twelve nightlies:
+# 66/71/93/94/98/103/104/111/112/114/115/115 s — rounded up to ~120 s per turn
 # because turns 2 and 3 render a longer transcript than turn 1, with the
 # debrief allowed twice a turn.  Replace both with real per-phase durations
 # from the first green nightly's report artifact.
@@ -85,17 +86,18 @@
 #   CI budget = documented budget × CI_HARDWARE_FACTOR (currently 20)
 #
 # The factor is calibrated empirically: a full behavioral-interview turn on
-# this runner has measured 66–115 s across the ten nightlies to 2026-10-03
-# (median ~108 s — large grammar-constrained prompt, 4B-Q4 model, CPU-only),
-# i.e. ~11.6× the 10 s documented budget at the slow end, which is the end the
-# factor is set from.  20× gives a 10 s × 20 = 200 s CI budget and, with
-# the script's 1.20 regression tolerance, a 240 s ceiling — roughly 2× headroom
-# over the observed latency so normal runner-to-runner variance does not flap
-# the nightly, while a genuine >2× regression still fails.  The headline
-# full_response_ms is the MEDIAN of the scripted turns, so one unlucky turn
-# cannot flap the job.  This factor only models CI-hardware slowness; the
-# product's 10 s target-hardware SLO is unchanged.  Re-measure and re-tune if
-# the runner class or starter model changes.
+# this runner has measured 66–115 s across the twelve nightlies whose logs
+# GitHub still held on 2026-10-03 (median ~104 s — large grammar-constrained
+# prompt, 4B-Q4 model, CPU-only), i.e. ~11.5× the 10 s documented budget at the
+# slow end, which is the end the factor is set from.  20× gives a
+# 10 s × 20 = 200 s CI budget and, with the script's 1.20 regression tolerance,
+# a 240 s ceiling — roughly 2× headroom over the observed latency so normal
+# runner-to-runner variance does not flap the nightly, while a genuine >2×
+# regression still fails.  The headline full_response_ms is the MEDIAN of the
+# scripted turns, so one unlucky turn cannot flap the job.  This factor only
+# models CI-hardware slowness; the product's 10 s target-hardware SLO is
+# unchanged.  Re-measure and re-tune if the runner class or starter model
+# changes.
 
 name: Model smoke nightly
 

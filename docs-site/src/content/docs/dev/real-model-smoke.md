@@ -57,9 +57,9 @@ The NPC *opening* line is authored scenario text, not a generation — so the
 scripted player turns, not the opening, are what prove the model is working.
 
 A turn that is real model output is not automatically a *reply*, and the
-per-turn parse flags cannot tell the difference. All ten nightly runs of the
-previous single-turn harness still in GitHub's log retention logged an NPC
-answer whose leading characters were byte-identical to the scenario's
+per-turn parse flags cannot tell the difference. All twelve nightly runs of the
+previous single-turn harness whose logs GitHub still held on 2026-10-03 logged
+an NPC answer whose leading characters were byte-identical to the scenario's
 `opening_npc_says` — the model reciting the opening question back instead of
 answering it. `used_fallback` stays false for those turns (the utterance is
 neither empty nor the canned safe one), so the run went green on a conversation
@@ -68,9 +68,9 @@ and applies the same policy it applies to fallbacks: one such turn warns,
 *every* generated turn doing it fails, because then the model answered nothing
 and the run proves nothing.
 
-Read that ten-for-ten with its cause attached, because it is not evidence that
-the starter model always recites. The single player turn those runs submitted
-was `"Reply with exactly one sentence: Hello, I am ready."` — an instruction
+Read that twelve-for-twelve with its cause attached, because it is not evidence
+that the starter model always recites. The single player turn those runs
+submitted was `"Reply with exactly one sentence: Hello, I am ready."` — an instruction
 addressed to the model rather than something an interview candidate says — and
 this job replaces it with the three in-character turns in
 `SCRIPTED_PLAYER_TURNS`, which the real starter model answered properly in local
@@ -255,7 +255,7 @@ The 10-minute gap between the two is deliberate margin, not an accounting of
 known work. `timeout-minutes` covers the whole job, and the harness only starts
 after checkout, three `pip install` steps, the model cache restore and — on a
 cache miss — the download and the cache save that follows it, which together
-measure **~1 min** on the nightlies run so far, not the several
+measure **31–51 s** on the nightlies run so far, not the several
 minutes a 2.5 GB transfer sounds like. The gap is sized for the part of that
 work that is network-bound rather than for its measured cost: a slow
 Hugging Face or Actions-cache night can cost minutes that the harness's own
@@ -266,10 +266,10 @@ On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 
 | Phase | Cold cache | Warm cache |
 |---|---|---|
-| Set up job + checkout + `setup-python` | ~10 s | ~10 s |
-| `pip install` ×3 (prompt-composer, convsim-core, llama-cpp-python wheel) | ~16 s | ~13 s |
-| Model cache restore (2.3 GiB) | — (miss: <1 s) | ~25 s |
-| Model download from Hugging Face + SHA-256 verify (2.3 GiB) ◊ | ~9 s | — |
+| Set up job + checkout + `setup-python` | ~5 s | ~5 s |
+| `pip install` ×3 (prompt-composer, convsim-core, llama-cpp-python wheel) | ~16 s | ~14 s |
+| Model cache restore (2.3 GiB) | — (miss: <1 s) | ~24 s |
+| Model download from Hugging Face + SHA-256 verify (2.3 GiB) ◊ | ~10 s | — |
 | Cache save (2.3 GiB, its own step before the smoke) | ~10 s | — |
 | SHA-256 re-verify before the weights are loaded ‡ | <10 s | <10 s |
 | `llama-server` model load + `convsim-core` start + session create | ~8 s | ~8 s |
@@ -277,16 +277,19 @@ On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 | Debrief generation † | ~4 min | ~4 min |
 | **Total** | **~11 min** | **~11 min** |
 
-The non-inference rows are measured, from the job's own logs for the ten
-nightlies to 2026-10-03 — the cold-cache rows from the one of those that missed
-the cache. Two things in them are worth knowing before tuning anything:
+The non-inference rows are measured, from the job's own logs for the twelve
+nightlies whose logs GitHub still held on 2026-10-03 — the cold-cache rows from
+the one of those that missed the cache. Two things in them are worth knowing
+before tuning anything:
 
-- **A cache miss is cheaper than a cache hit.** Downloading the GGUF from
-  Hugging Face and hashing it takes ~9 s; restoring the same bytes from the
-  Actions cache takes ~25 s. Caching the model saves the *network*, not the
-  clock, and abandoning a poisoned cache entry costs nothing.
-- **Everything before the conversation is noise.** All of it together is ~1 min
-  of a 30 min job. The budget is inference, and only inference.
+- **A cache miss costs no more than a cache hit.** Fetching the GGUF from
+  Hugging Face and hashing it takes ~10 s, and saving it to the Actions cache
+  another ~10 s; restoring the same bytes on a hit takes 19–28 s. Caching the
+  model saves the *network*, not the clock, and abandoning a poisoned cache
+  entry costs nothing.
+- **Everything before the conversation is noise.** All of it together measured
+  31–51 s across those twelve runs, in a 30 min job. The budget is inference,
+  and only inference.
 
 ◊ The download is the one pre-smoke step that could stretch without limit, and
 it runs where the harness's own deadline cannot see it, so it carries its own
@@ -296,18 +299,19 @@ transfer, so a connection that goes quiet repeatedly — or merely crawls — wo
 otherwise spend the whole margin above and then hand the smoke a job clock with
 no room in it, which is the one way left to reach an unattributable
 cancellation. Exceeding either bound is exit 2 with its own remedy. 5 min is
-~33× the measured 9 s, so a transfer has to be pathologically slow to hit it.
+~30× the measured 10 s, so a transfer has to be pathologically slow to hit it.
 
 ‡ The harness re-verifies the on-disk file at the start of every run, which the
 previous single-turn harness did not, so this row has no direct measurement.
 The bound comes from the cold-cache row above: downloading 2.3 GiB *and*
-hashing it took 9 s in total, so the hash alone is a few seconds.
+hashing it took 10 s in total, so the hash alone is a few seconds.
 
 † The two inference rows are *projected*, because the multi-turn conversation
 and the debrief have never run on a runner. The projection comes from the only
-latency this job has measured — one behavioral-interview turn, ten nightlies:
-66 / 93 / 98 / 103 / 104 / 111 / 112 / 114 / 115 / 115 s — rounded up to ~120 s
-per turn, since turns 2 and 3 render a longer transcript than turn 1, and a
+latency this job has measured — one behavioral-interview turn, twelve
+nightlies: 66 / 71 / 93 / 94 / 98 / 103 / 104 / 111 / 112 / 114 / 115 / 115 s —
+rounded up to ~120 s per turn, since turns 2 and 3 render a longer transcript
+than turn 1, and a
 debrief allowed twice a turn (`DEBRIEF_SLOWDOWN_FACTOR`). Replace both rows with
 the real `phase_durations_s` from the first green nightly's report artifact.
 
@@ -336,9 +340,10 @@ CI ceiling = documented budget × CI_HARDWARE_FACTOR × REGRESSION_TOLERANCE
 ```
 
 `CI_HARDWARE_FACTOR` (20) is calibrated empirically: a full behavioral-interview
-turn on this runner has measured 66–115 s across the ten nightlies to
-2026-10-03 (median ~108 s), i.e. ~11.6× the 10 s documented budget at the slow
-end. The factor is set from that slow end, not the median, and still leaves
+turn on this runner has measured 66–115 s across the twelve nightlies whose
+logs GitHub still held on 2026-10-03 (median ~104 s), i.e. ~11.5× the 10 s
+documented budget at the slow end. The factor is set from that slow end, not the
+median, and still leaves
 roughly 2× headroom — note the 66 s run against the 115 s one, which is the
 night-to-night spread a single-sample calibration would have missed. A genuine
 >2× regression still fails. The headline `full_response_ms` is the **median** of

@@ -1086,18 +1086,18 @@ def _replays_opening(npc_text: str, opening_text: str) -> bool:
     """True when an NPC reply opens by reciting the authored opening verbatim.
 
     The scenario's opening line sits in the transcript the turn prompt renders,
-    and the starter model can answer a player turn by copying it back: all ten
-    nightly runs of the previous single-turn harness still in GitHub's log
-    retention logged an NPC reply whose leading characters matched
-    ``opening_npc_says`` exactly.  That is not a reply, but nothing downstream
-    notices — the utterance is non-empty and it is not
+    and the starter model can answer a player turn by copying it back: all
+    twelve nightly runs of the previous single-turn harness whose logs GitHub
+    still held on 2026-10-03 logged an NPC reply whose leading characters
+    matched ``opening_npc_says`` exactly.  That is not a reply, but nothing
+    downstream notices — the utterance is non-empty and it is not
     ``SAFE_FALLBACK_UTTERANCE``, so ``used_fallback`` stays false and the
     per-turn parse flags report a healthy turn.  Proving the turns are real
     therefore needs this check as well as those flags.
 
-    Those ten runs are evidence that the failure mode exists, not that it is the
-    norm: the player turn they submitted was "Reply with exactly one sentence:
-    Hello, I am ready." — an instruction to the model, not something an
+    Those twelve runs are evidence that the failure mode exists, not that it is
+    the norm: the player turn they submitted was "Reply with exactly one
+    sentence: Hello, I am ready." — an instruction to the model, not something an
     interview candidate says — and this harness replaces it with the
     in-character ``SCRIPTED_PLAYER_TURNS``, which the real starter model
     answered properly in local verification.  So the expected rate here is zero
