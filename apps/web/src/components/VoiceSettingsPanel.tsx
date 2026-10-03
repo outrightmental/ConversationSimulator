@@ -31,7 +31,7 @@ interface ReadinessCardProps {
   status: ReadinessStatus
   detail: string
   guidance?: string
-  /** Rendered under the guidance when the component is not ready — the way out. */
+  /** Rendered under the guidance once the component is known to be missing. */
   fix?: React.ReactNode
 }
 
@@ -76,7 +76,11 @@ function ReadinessCard({ label, testId, status, detail, guidance, fix }: Readine
             {guidance}
           </p>
         )}
-        {fix && status !== 'ready' && (
+        {/* Not `status !== 'ready'`: while the health call is still in flight
+            that would offer to install something we do not yet know is missing,
+            and then withdraw the offer — the same reason `guidance` above waits
+            for a definite answer. The header CTA is always available. */}
+        {fix && status !== 'ready' && status !== 'checking' && (
           <div style={{ marginTop: '0.3rem' }}>{fix}</div>
         )}
       </div>
