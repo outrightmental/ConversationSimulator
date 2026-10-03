@@ -256,6 +256,50 @@ describe('Conversation screen', () => {
       // … and no scary error banner covers a working conversation.
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
+
+    it('restores the meters when resuming, not just the transcript', async () => {
+      // Issue #501 §1 and §3: meter values only ever arrived with a turn, so a
+      // player who stepped out to Settings came back to a conversation with no
+      // meters at all — on the screen whose opening line tells them to watch
+      // the two meters above it — until they sent another message.
+      mockApi.startSession.mockResolvedValue({
+        ok: false,
+        error: { kind: 'network', message: 'INVALID_TRANSITION' },
+      })
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: 'behavioral_interview',
+          transcript_saved: true,
+          turns: [
+            { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in.', flow_state_after: 'PlayerTurnListening' },
+            { turn_number: 1, role: 'player', content: 'Happy to be here.', flow_state_after: 'NpcThinking' },
+            { turn_number: 2, role: 'npc', content: 'Walk me through your background.', flow_state_after: 'PlayerTurnListening' },
+          ],
+        },
+      })
+      mockApi.getSession.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: 'behavioral_interview',
+          state: 'PlayerTurnListening',
+          created_at: '2026-07-01T00:00:00Z',
+          setup: {},
+          turn_count: 1,
+          visible_state: { trust: 62, patience: 70 },
+        },
+      } as never)
+      renderConversation()
+
+      await waitFor(() => expect(screen.getByTestId('state-vars')).toBeInTheDocument())
+      expect(screen.getByTestId('state-meter-trust')).toHaveTextContent('62')
+      expect(screen.getByTestId('state-meter-patience')).toHaveTextContent('70')
+      // Nothing moved on arrival: the values the session was left at are the
+      // baseline, not a change from anything.
+      expect(screen.getByTestId('state-meter-delta-trust')).not.toHaveTextContent('+')
+    })
   })
 
   describe('NPC panel', () => {
