@@ -408,7 +408,7 @@ def _rgba_bytes(png: Path) -> bytes:
     ).stdout
 
 
-def _packbits(data: bytes) -> bytes:
+def _packbits(data: bytes, tail_literal: bool = False) -> bytes:
     """ICNS run-length encoding of one colour channel.
 
     The variant ICNS uses, not the QuickTime one: a control byte below 128
@@ -416,7 +416,14 @@ def _packbits(data: bytes) -> bytes:
     next byte ``n - 125`` times — so a run only pays for itself at three.
     The decoder stops once it has the channel's pixel count, so there is no
     terminator; the channels are concatenated in A, R, G, B order.
+
+    ``tail_literal`` spends two bytes to encode the channel's last sample as a
+    one-byte literal rather than letting it fall inside a run. Only the final
+    channel of a chunk asks for it, and only to be kind to a decoder that
+    stops one byte short of the payload — see ``_argb_chunk``.
     """
+    if tail_literal and data:
+        return _packbits(data[:-1]) + b"\x00" + data[-1:]
     out = bytearray()
     i, n = 0, len(data)
     while i < n:
@@ -441,23 +448,37 @@ def _argb_chunk(png: Path, size: int) -> bytes:
     """An ``ic04``/``ic05`` payload: the "ARGB" magic, then A, R, G and B.
 
     The samples are straight-alpha, not premultiplied — the same thing
-    ``iconutil`` itself writes.
+    ``iconutil`` itself writes. (Apple zeroes the colour under fully
+    transparent pixels where this keeps the plate colour; that is the only
+    difference, and it is invisible either way.)
 
-    Do not check these two chunks with ``iconutil -c iconset``. It un-
-    premultiplies on the way out, so every partly transparent pixel comes back
-    blown out toward white — a 16 px edge pixel of this icon reads
-    (255, 159, 255) instead of (109, 40, 217). That is an artefact of the
-    export path, not of the file: build an ICNS from these same frames with
-    ``iconutil -c icns`` and extract it again and Apple's own output is damaged
-    identically. Check with the renderer macOS actually draws icons through
-    instead — ``NSImage(contentsOfFile:)``, then ``colorAt`` on the
+    The blue channel — the last one, so the one whose final byte is also the
+    payload's — is encoded with ``tail_literal``. ``iconutil``'s reader stops
+    one byte short of the payload, on Apple's own files too. There that costs
+    one sample, because Apple always ends a channel on a literal; it would
+    cost this encoder a whole trailing run, which is up to 130 samples and in
+    practice wiped the blue out of the icon's bottom two rows — a band of
+    (109, 40, 0) where the plate should be. Two bytes buys the same one-sample
+    degradation Apple's own files get.
+
+    Even so, do not check these two chunks with ``iconutil -c iconset``: it
+    un-premultiplies on the way out, so every partly transparent pixel comes
+    back blown out toward white — a 16 px edge pixel of this icon reads
+    (255, 159, 255) instead of (109, 40, 217). *That* part is an artefact of
+    the export path and not of the file: build an ICNS from these same frames
+    with ``iconutil -c icns``, extract it again, and Apple's own output is
+    blown out identically. Check with the renderer macOS actually draws icons
+    through instead — ``NSImage(contentsOfFile:)``, then ``colorAt`` on the
     representation of the size you care about — which reads these chunks back
     exactly, and reads Apple's own within a level or two.
     """
     rgba = _rgba_bytes(png)
     assert len(rgba) == size * size * 4, f"{png}: expected {size}x{size} RGBA"
     channels = (rgba[3::4], rgba[0::4], rgba[1::4], rgba[2::4])
-    return b"ARGB" + b"".join(_packbits(c) for c in channels)
+    return b"ARGB" + b"".join(
+        _packbits(c, tail_literal=i == len(channels) - 1)
+        for i, c in enumerate(channels)
+    )
 
 
 def write_icns(frames: dict[int, Path], dest: Path) -> None:

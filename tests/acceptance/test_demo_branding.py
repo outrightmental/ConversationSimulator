@@ -372,6 +372,26 @@ def _unpack_icns_rle(data: bytes, expected: int) -> tuple[bytes, int]:
     return bytes(out), pos
 
 
+def _icns_argb_last_op(payload: bytes, size: int) -> int:
+    """The control byte of the final RLE op in an ``ic04``/``ic05`` payload.
+
+    Below 128 it is a literal run, at or above it a repeat — and a repeat's
+    value byte is the one byte a short reader drops. See the test below.
+    """
+    assert payload[:4] == b"ARGB", f"expected an ARGB payload, got {payload[:4]!r}"
+    body, pos = payload[4:], 0
+    for _ in range(3):                      # skip A, R and G
+        _, used = _unpack_icns_rle(body[pos:], size * size)
+        pos += used
+    blue, control = body[pos:], None
+    pos = 0
+    while pos < len(blue):
+        control = blue[pos]
+        pos += 2 if control >= 128 else 2 + control
+    assert control is not None, "the blue channel is empty"
+    return control
+
+
 def _decode_icns_argb(payload: bytes, size: int) -> list[tuple[int, int, int, int]]:
     """Decode an ``ic04``/``ic05`` payload to RGBA pixels."""
     assert payload[:4] == b"ARGB", f"expected an ARGB payload, got {payload[:4]!r}"
@@ -615,6 +635,27 @@ class TestIconContainers:
         width, height, expected = _decode_png(frames[size], f"icon.ico {size}px frame")
         assert (width, height) == (size, size)
         assert decoded == expected, f"{kind.decode()} does not match the {size} px frame"
+
+    @pytest.mark.parametrize("kind,size", [(b"ic04", 16), (b"ic05", 32)])
+    def test_icns_argb_payload_ends_on_a_literal(self, kind, size):
+        """The last RLE op must not be a repeat, whose value byte ends the payload.
+
+        ``iconutil``'s ARGB reader stops one byte short of the payload — on
+        Apple's own files as well. Apple always ends a channel on a literal,
+        so it loses one sample there and nobody notices. Ending on a repeat
+        instead loses the whole run: before ``tail_literal``, the blue channel
+        closed with a 42- and an 83-sample run and ``iconutil -c iconset``
+        gave back a band of (109, 40, 0) across the bottom two rows of both
+        reps, on fully opaque pixels. ``NSImage`` reads either form correctly,
+        but this file is also uploaded to Steamworks' Mac Icon field and
+        decoded by something we do not control.
+        """
+        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
+        control = _icns_argb_last_op(chunks[kind], size)
+        assert control < 128, (
+            f"{kind.decode()} ends on a repeat of {control - 125} samples; a "
+            "reader that stops one byte early loses all of them"
+        )
 
 
 # ---------------------------------------------------------------------------
