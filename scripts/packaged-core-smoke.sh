@@ -93,7 +93,16 @@ fail() { printf "  FAIL  %s\n" "$1" >&2; ERRORS=$((ERRORS + 1)); }
 info() { printf "  INFO  %s\n" "$1"; }
 
 usage() {
-    grep '^#' "$0" | grep -v '!/usr/bin' | sed 's/^# \{0,1\}//'
+    # The header block only: comment lines from after the shebang up to the
+    # first line of code.
+    #
+    # Not `grep '^#' "$0"`, which is the idiom in scripts/release-smoke.sh. That
+    # works there because the script keeps its commentary indented inside
+    # functions, so the only comments at column 0 ARE the header. This one
+    # explains each check and each constant at column 0 throughout, and an
+    # unbounded grep printed all of it — 150 lines of implementation notes, the
+    # lint directives among them — in place of the usage text.
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
     exit 0
 }
 
