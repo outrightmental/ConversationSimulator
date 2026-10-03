@@ -12,6 +12,7 @@ import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
 import { RemediationCard } from '../setup/RemediationCard'
 import { openExternal } from '../lib/openExternal'
+import { clearTurnSamples } from '../lib/turnEstimate'
 import { useIsDemo } from '../edition'
 import type { PreflightResponse, PreflightFixAction } from '@convsim/shared'
 
@@ -255,6 +256,10 @@ export default function Settings() {
       setClearError(null)
       const r = await api.clearLocalData()
       if (r.ok) {
+        // Turn timings live in this browser, not in the data folder the API
+        // clears, so they have to be dropped here — the button promises "cached
+        // data from your device" and a record of how slow this machine is counts.
+        clearTurnSamples()
         setDeletedCount(r.data.deleted_sessions)
         setDeleteError(null)
         setExportError(null)
