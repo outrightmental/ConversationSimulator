@@ -191,11 +191,19 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
 
 def template_errors(manifest: dict[str, Any], templates: dict[str, dict[str, Any]]) -> list[str]:
     """Issue forms may only use declared labels, and must set `type:` rather
-    than reach for a type label."""
+    than reach for a type label.
+
+    The `type:` key is required, not merely validated: `require_type_when_open`
+    means an issue filed without a Type is out of compliance the moment it is
+    opened, and the form is the only place that can set one before a human
+    sees it.  A form that omits it manufactures the drift the audit then
+    reports.
+    """
     errors: list[str] = []
     live = set(label_names(manifest))
     retired = set(retired_names(manifest))
     types = set((manifest.get("project") or {}).get("issue_types") or [])
+    require_type = bool((manifest.get("rules") or {}).get("require_type_when_open"))
     for name, data in sorted(templates.items()):
         for label in data.get("labels") or []:
             if label in retired:
@@ -206,7 +214,13 @@ def template_errors(manifest: dict[str, Any], templates: dict[str, dict[str, Any
             elif label not in live:
                 errors.append(f"{name}: labels: includes undeclared label {label!r}")
         issue_type = data.get("type")
-        if issue_type is not None and issue_type not in types:
+        if issue_type is None:
+            if require_type:
+                errors.append(
+                    f"{name}: has no `type:` — every issue this form opens would "
+                    f"land with no Type, which rules.require_type_when_open forbids"
+                )
+        elif issue_type not in types:
             errors.append(f"{name}: type: {issue_type!r} is not a known issue type")
     return errors
 
@@ -1001,15 +1015,21 @@ def self_test() -> int:
         ("clean issue form passes",
          template_errors(manifest, {"a.yml": {"labels": ["area:docs"], "type": "Bug"}}), []),
         ("issue form using a retired label is pointed at `type:`",
-         template_errors(manifest, {"a.yml": {"labels": ["bug"]}}),
+         template_errors(manifest, {"a.yml": {"labels": ["bug"], "type": "Bug"}}),
          ["a.yml: labels: includes retired label 'bug' — use the issue form's "
           "`type:` key or an area label instead"]),
         ("issue form using an undeclared label is reported",
-         template_errors(manifest, {"a.yml": {"labels": ["area:nope"]}}),
+         template_errors(manifest, {"a.yml": {"labels": ["area:nope"], "type": "Bug"}}),
          ["a.yml: labels: includes undeclared label 'area:nope'"]),
         ("issue form with an unknown type is reported",
          template_errors(manifest, {"a.yml": {"type": "Chore"}}),
          ["a.yml: type: 'Chore' is not a known issue type"]),
+        ("issue form with no `type:` is reported",
+         template_errors(manifest, {"a.yml": {"labels": ["area:docs"]}}),
+         ["a.yml: has no `type:` — every issue this form opens would land with "
+          "no Type, which rules.require_type_when_open forbids"]),
+        ("a form needs no `type:` when the rule is off",
+         template_errors({**manifest, "rules": {}}, {"a.yml": {"labels": ["area:docs"]}}), []),
 
         # -- CONTRIBUTING
         ("CONTRIBUTING table matching the manifest passes",
@@ -1172,7 +1192,7 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     manifest_labels = label_names(manifest)
     print(f"  OK  {len(manifest_labels)} labels declared, {len(retired_names(manifest))} retired")
     print(f"  OK  {len(manifest.get('milestones', []))} milestones declared")
-    print("  OK  issue forms use declared labels and types only")
+    print("  OK  issue forms all set a type: and use declared labels only")
     print("  OK  CONTRIBUTING.md documents exactly the declared labels")
     print("")
     return 0
