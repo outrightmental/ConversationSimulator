@@ -320,6 +320,19 @@ class TestSubmittingVolleys:
         body = volley(client, session_id, GOOD_VOLLEY)
         assert body["player_volley"]["audience_reaction"]
 
+    def test_the_audience_event_carries_the_scenes_own_reaction_id(self, client):
+        # scene.schema.json offers event_id so a transcript or debrief can group
+        # reactions, so the id has to reach the event row.
+        session_id = start_run(client)
+        reaction = volley(client, session_id, GOOD_VOLLEY)["player_volley"]
+        assert reaction["audience_reaction"]
+        export = client.get(f"/api/sessions/{session_id}/export").json()
+        fired = [e for e in export["events"] if e["event_type"] == "audience_reaction"]
+        assert fired, export["events"]
+        payload = fired[-1]["payload"]
+        assert payload["line"] == reaction["audience_reaction"]
+        assert payload["event_id"].startswith("steps_")
+
     def test_a_volley_past_the_hard_cap_is_refused(self, client):
         session_id = start_run(client)
         response = client.post(

@@ -323,6 +323,15 @@ async def process_volley(
         extra_flags=extra_flags,
     )
 
+    # The scene's own id for the reaction that fired. scene.schema.json offers
+    # event_id "so a transcript or debrief can group them", and every official
+    # scene sets one, so the id has to reach the event row rather than stopping
+    # at the line it labels.
+    audience_event_id: Optional[str] = None
+    if player_score.audience_reaction and service.context.audience is not None:
+        fired = service.context.audience.reaction_for(player_score.score)
+        audience_event_id = fired.event_id if fired is not None else None
+
     # ── The opponent answers ────────────────────────────────────────────────
     npc_line: Optional[str] = None
     npc_score: Optional[VolleyScore] = None
@@ -429,6 +438,7 @@ async def process_volley(
         received_at=received_at,
         run_outcome=run_outcome,
         save_transcript=save_transcript,
+        audience_event_id=audience_event_id,
     )
 
     return VolleyTurnResult(
@@ -485,6 +495,7 @@ def _persist(
     received_at: str,
     run_outcome: Optional[str],
     save_transcript: bool,
+    audience_event_id: Optional[str] = None,
 ) -> tuple[Optional[int], Optional[int]]:
     """Write both turns, both scorecards, the events, and the run state atomically."""
     now = datetime.now(timezone.utc).isoformat()
@@ -580,7 +591,11 @@ def _persist(
         if player_score.audience_reaction:
             events.append((
                 session_id, turn_number, "audience_reaction",
-                json.dumps({"line": player_score.audience_reaction, "score": player_score.score}), now,
+                json.dumps({
+                    "line": player_score.audience_reaction,
+                    "score": player_score.score,
+                    "event_id": audience_event_id,
+                }), now,
             ))
         if run_outcome:
             events.append((
