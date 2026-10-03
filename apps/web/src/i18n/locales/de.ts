@@ -13,7 +13,7 @@ export const de: LocaleMessages = {
     modelNotLoaded:
       'Kein KI-Modell geladen. Öffnen Sie die Einstellungen, um ein Modell zu installieren.',
     runtimeUnavailable:
-      'Die lokale Laufzeitumgebung ist nicht verfügbar. Prüfen Sie die Protokolle.',
+      'Die KI-Engine ist nicht verfügbar. Prüfen Sie die Protokolle.',
     safetyViolation: 'Der Inhalt wurde durch die Sicherheitsrichtlinie blockiert.',
     turnLimitExceeded: 'Das Zuglimit für dieses Szenario wurde erreicht.',
     turnTimeout: 'Der Zug hat das Zeitlimit überschritten. Bitte versuchen Sie es erneut.',
@@ -185,10 +185,10 @@ export const de: LocaleMessages = {
     readDocs: 'Dokumentation lesen',
     status: {
       heading: 'Status',
-      localRuntime: 'Lokale Laufzeitumgebung',
-      llm: 'LLM',
-      stt: 'STT',
-      tts: 'TTS',
+      localRuntime: 'KI-Engine',
+      llm: 'KI-Modell',
+      stt: 'Spracheingabe',
+      tts: 'Sprachausgabe',
       networkRequired: 'Netzwerk zum Spielen erforderlich',
       packs: 'Pakete',
       checking: 'Überprüfe…',

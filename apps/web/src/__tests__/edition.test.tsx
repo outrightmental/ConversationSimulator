@@ -423,8 +423,8 @@ describe('Home — demo edition', () => {
     await screen.findAllByTestId('demo-conversation-card')
     expect(screen.queryByRole('heading', { name: /training plan/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /your training/i })).not.toBeInTheDocument()
-    expect(screen.queryByText(/^STT:/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/^TTS:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Voice input:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Voice output:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Packs:/)).not.toBeInTheDocument()
   })
 
@@ -454,7 +454,7 @@ describe('Home — demo edition', () => {
   it('keeps the engine status and help sections', async () => {
     stubFetches(DEMO_HEALTH, FIVE)
     renderHome()
-    expect(await screen.findByText((_, el) => el?.tagName === 'LI' && el.textContent?.trim() === 'Local runtime: Ready')).toBeInTheDocument()
+    expect(await screen.findByText((_, el) => el?.tagName === 'LI' && el.textContent?.trim() === 'AI engine: Ready')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /^help$/i })).toBeInTheDocument()
   })
 })

@@ -1104,10 +1104,10 @@ Must show:
 Status card example:
 
 ```text
-Local runtime: Ready
-LLM: Qwen3 8B Instruct Q4_K_M
-STT: Whisper small.en
-TTS: Kokoro af_heart
+AI engine: Ready
+AI model: Qwen3 8B Instruct Q4_K_M
+Voice input: Whisper small.en
+Voice output: Kokoro af_heart
 Network required to play: No
 ```
 

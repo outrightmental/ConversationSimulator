@@ -106,10 +106,10 @@ describe('Home — ready state', () => {
     expect(screen.getByRole('heading', { name: /conversation simulator/i })).toBeInTheDocument()
   })
 
-  it('shows Local runtime: Ready list item when health is ok', async () => {
+  it('shows AI engine: Ready list item when health is ok', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    expect(await screen.findByText(liText('Local runtime: Ready'))).toBeInTheDocument()
+    expect(await screen.findByText(liText('AI engine: Ready'))).toBeInTheDocument()
   })
 
   it('shows the active model name when LLM is ready', async () => {
@@ -144,7 +144,7 @@ describe('Home — ready state', () => {
   it('offers no Resume link when nothing is in progress', async () => {
     stubFetches(makeHealth(), makePacks(1), makeLogbook(), [], { sessions: [] })
     renderHome()
-    await screen.findByText(liText('Local runtime: Ready'))
+    await screen.findByText(liText('AI engine: Ready'))
     expect(screen.queryByTestId('home-resume-link')).not.toBeInTheDocument()
   })
 
@@ -185,7 +185,7 @@ describe('Home — no-model state', () => {
   it('shows LLM list item as Not installed', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    expect(await screen.findByText(liText('LLM: Not installed'))).toBeInTheDocument()
+    expect(await screen.findByText(liText('AI model: Not installed'))).toBeInTheDocument()
   })
 
   it('offers Install a GGUF model option', async () => {
@@ -271,7 +271,7 @@ describe('Home — status card links', () => {
   it('has at least five links to /settings covering LLM, STT, TTS, install, and import', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    await screen.findByText(liText('Local runtime: Ready'))
+    await screen.findByText(liText('AI engine: Ready'))
     const settingsLinks = screen
       .getAllByRole('link')
       .filter((el) => el.getAttribute('href') === '/settings')
@@ -279,7 +279,7 @@ describe('Home — status card links', () => {
     expect(settingsLinks.length).toBeGreaterThanOrEqual(5)
   })
 
-  it('Local runtime badge links to the recovery section when offline', async () => {
+  it('AI engine badge links to the recovery section when offline', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderHome()
     await screen.findByRole('alert')
@@ -291,10 +291,10 @@ describe('Home — status card links', () => {
 })
 
 describe('Home — runtime-error state', () => {
-  it('shows Local runtime: Unavailable list item when API is unreachable', async () => {
+  it('shows AI engine: Unavailable list item when API is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderHome()
-    expect(await screen.findByText(liText('Local runtime: Unavailable'))).toBeInTheDocument()
+    expect(await screen.findByText(liText('AI engine: Unavailable'))).toBeInTheDocument()
   })
 
   it('shows a recovery alert when runtime is down', async () => {
@@ -316,7 +316,7 @@ describe('Home — runtime-error state', () => {
     renderHome()
     const alert = await screen.findByRole('alert')
     expect(alert).not.toHaveTextContent(/api server/i)
-    expect(alert).not.toHaveTextContent(/local runtime/i)
+    expect(alert).not.toHaveTextContent(/AI engine/i)
   })
 
   it('does not show the no-model section when runtime is unreachable', async () => {
@@ -337,7 +337,7 @@ describe('Home — runtime-error state', () => {
   it('does not show a last_error alert when last_error is null', async () => {
     stubFetches(makeHealth({ last_error: null }), makePacks(0))
     renderHome()
-    await screen.findByText(liText('Local runtime: Ready'))
+    await screen.findByText(liText('AI engine: Ready'))
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -474,7 +474,7 @@ describe('Home — missing-pack section', () => {
   it('hides missing-pack notice when no model is configured', async () => {
     stubFetches(makeHealth({ llm_ready: false }), makePacks(0))
     renderHome()
-    await screen.findByText(liText('LLM: Not installed'))
+    await screen.findByText(liText('AI model: Not installed'))
     expect(
       screen.queryByRole('status', { name: /no scenario packs installed/i }),
     ).toBeNull()

@@ -19,7 +19,7 @@ This guide walks through your first conversation. Complete [installation](instal
 .\scripts\dev.ps1
 ```
 
-Open <http://127.0.0.1:7354> in your browser. The home screen shows green status indicators when convsim-core and the LLM runtime are ready.
+Open <http://127.0.0.1:7354> in your browser. The home screen's Status panel shows green indicators — **AI engine** and **AI model** — once both are ready.
 
 ---
 

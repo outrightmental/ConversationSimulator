@@ -8,7 +8,7 @@ export const en = {
     scenarioNotFound: 'The requested scenario was not found.',
     sessionNotFound: 'Session not found.',
     modelNotLoaded: 'No AI model is loaded. Open Settings to install a model.',
-    runtimeUnavailable: 'The local runtime is unavailable. Check the logs for details.',
+    runtimeUnavailable: 'The AI engine is unavailable. Check the logs for details.',
     safetyViolation: 'The content was blocked by the safety policy.',
     turnLimitExceeded: 'The turn limit for this scenario has been reached.',
     turnTimeout: 'The turn timed out. Please try again.',
@@ -186,10 +186,15 @@ export const en = {
     readDocs: 'Read docs',
     status: {
       heading: 'Status',
-      localRuntime: 'Local runtime',
-      llm: 'LLM',
-      stt: 'STT',
-      tts: 'TTS',
+      // Named in the player's words, not the engine's (issue #501 §2):
+      // 'runtime' is one of the four words the playtest called out, and
+      // 'LLM' / 'STT' / 'TTS' are three acronyms a first-time player has no
+      // way to read. These are the first labels anyone sees — they are on
+      // Home — so the plain names are the only names, at both wording levels.
+      localRuntime: 'AI engine',
+      llm: 'AI model',
+      stt: 'Voice input',
+      tts: 'Voice output',
       networkRequired: 'Network required to play',
       packs: 'Packs',
       checking: 'Checking…',

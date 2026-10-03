@@ -113,13 +113,13 @@ describe('App shell', () => {
   it('shows healthy status when backend returns ok', async () => {
     mockFetch({ status: 'ok' })
     renderAt('/')
-    expect(await screen.findByText('Local runtime: Ready')).toBeInTheDocument()
+    expect(await screen.findByText('AI engine: Ready')).toBeInTheDocument()
   })
 
   it('shows unavailable status when backend is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderAt('/')
-    expect(await screen.findByText('Local runtime: Unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('AI engine: Unavailable')).toBeInTheDocument()
   })
 })
 
