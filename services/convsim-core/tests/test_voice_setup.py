@@ -26,6 +26,7 @@ import convsim_core.runtime  # noqa: F401 — register built-in adapters
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
 from convsim_core.services import voice_registry
+from convsim_core.services.setup_install_service import StageState
 from convsim_core.services.voice_download import (
     ChecksumMismatch,
     DownloadCancelled,
@@ -587,6 +588,89 @@ def test_cancel_marks_the_job_cancelled_not_failed(client, monkeypatch):
     assert client.delete(f"/api/voice/setup/install/{job_id}").status_code == 204
 
     assert _await_terminal(client, job_id)["status"] == "cancelled"
+
+
+def test_cancel_between_assets_is_not_reported_as_complete(client, monkeypatch, voice_paths):
+    """A cancel that lands between two assets must not finish the job 'complete'.
+
+    download_voice_asset notices the event on its first chunk, so cancelling
+    mid-transfer was always handled. An asset already on disk takes the skip
+    branch instead, which never looks at the event — so a cancel arriving in the
+    gap between two assets ran the loop out and reported success, after the
+    client had already been told 204.
+    """
+    # Present on disk, so this asset's stage skips rather than downloading —
+    # the path that ignored the cancel.
+    voice_paths["vad_model"].parent.mkdir(parents=True, exist_ok=True)
+    voice_paths["vad_model"].write_bytes(b"onnx")
+
+    async def _download_then_cancel(*, dest_path, cancel_event=None, **_):
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(b"downloaded")
+        # Stands in for the player pressing Cancel as this file lands.
+        assert cancel_event is not None
+        cancel_event.set()
+        return 10
+
+    monkeypatch.setattr(
+        "convsim_core.routers.voice_setup.download_voice_asset", _download_then_cancel
+    )
+
+    job_id = client.post(
+        "/api/voice/setup/install",
+        json={"asset_ids": ["whisper-base-en", "silero-vad"]},
+    ).json()["id"]
+
+    job = _await_terminal(client, job_id)
+    assert job["status"] == "cancelled"
+    # The asset that finished before the cancel keeps its real outcome; the one
+    # that never started stays pending rather than claiming to have failed.
+    assert job["stages"][0]["state"] == "complete"
+    assert job["stages"][1]["state"] == "pending"
+    assert job["stages"][1]["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_is_honoured_when_every_asset_is_already_present(db, voice_paths):
+    """The variant with no download call at all, so no exception path exists.
+
+    Re-pointing the worker at an installed model posts the same install, which
+    skips every stage. Driving ``_run_install`` directly is the only way to open
+    the cancel window deterministically: through the API the task would finish
+    before a DELETE could land.
+    """
+    from convsim_core.routers.voice_setup import _run_install
+    from convsim_core.services.voice_setup_service import create_job, get_job, stage_label
+
+    for path in (voice_paths["stt_model"], voice_paths["vad_model"]):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"present")
+
+    conn = db.connection()
+    asset_ids = ["whisper-base-en", "silero-vad"]
+    assets = [voice_registry.get_asset(i) for i in asset_ids]
+    job_id = create_job(
+        conn,
+        asset_ids=asset_ids,
+        stages=[StageState(id=a.id, label=stage_label(a), state="pending") for a in assets],
+    )
+
+    cancel = asyncio.Event()
+    cancel.set()
+    await _run_install(
+        job_id=job_id,
+        asset_ids=asset_ids,
+        conn=conn,
+        stt_worker=MagicMock(),
+        cancel_event=cancel,
+    )
+
+    job = get_job(conn, job_id)
+    assert job is not None
+    assert job["status"] == "cancelled"
+    assert [s["state"] for s in job["stages"]] == ["pending", "pending"]
+    # A cancelled job must not re-point the worker at anything.
+    assert get_stt_model_path(conn) is None
 
 
 def test_cancelling_a_finished_job_is_a_conflict(client, monkeypatch):

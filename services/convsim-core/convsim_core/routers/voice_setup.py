@@ -183,6 +183,22 @@ async def _run_install(
     newest_stt_path: str | None = None
 
     for index, asset in enumerate(assets):
+        # Cancel between assets, not only mid-transfer. download_voice_asset
+        # sees the event on its first chunk, so an asset that actually downloads
+        # aborts there — but the skip branch below never consults it, so a cancel
+        # landing in the gap between two assets used to run the loop out and
+        # report the job 'complete' after the client had been told 204. With
+        # every asset already on disk there is no download call at all, so this
+        # is the only place such a job can observe a cancel.
+        #
+        # This stage keeps its 'pending' state: nothing was attempted for it.
+        # The mid-download path below marks its stage failed because that one
+        # did run.
+        if cancel_event.is_set():
+            logger.info("voice-install(%d): cancelled before %s", job_id, asset.id)
+            update_job_status(conn, job_id, "cancelled", "Cancelled by user.")
+            return
+
         stage = stages[index]
         dest = resolved_install_path(asset)
 
