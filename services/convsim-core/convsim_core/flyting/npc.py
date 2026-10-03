@@ -29,6 +29,7 @@ from convsim_prompt import (
     NpcData,
     UNTRUSTED_CONTENT_BEGIN,
     UNTRUSTED_CONTENT_END,
+    defuse_fences,
     validate_npc_output,
 )
 
@@ -62,19 +63,24 @@ _REACTION_RULES = (
 
 def _persona_lines(npc: NpcData) -> list[str]:
     return [
-        f"You are {npc.display_name}.",
-        f"Occupation: {npc.public_persona.occupation}",
-        f"Speaking style: {npc.public_persona.speaking_style}",
-        f"Demeanour: {npc.public_persona.demeanor}",
+        f"You are {defuse_fences(npc.display_name)}.",
+        f"Occupation: {defuse_fences(npc.public_persona.occupation)}",
+        f"Speaking style: {defuse_fences(npc.public_persona.speaking_style)}",
+        f"Demeanour: {defuse_fences(npc.public_persona.demeanor)}",
     ]
 
 
 def _register_lines(config: FlytingConfig) -> list[str]:
     lines: list[str] = []
     if config.lexicon.encouraged:
-        lines.append("Diction that fits the scene: " + ", ".join(config.lexicon.encouraged))
+        lines.append(
+            "Diction that fits the scene: "
+            + ", ".join(defuse_fences(w) for w in config.lexicon.encouraged)
+        )
     if config.lexicon.discouraged:
-        lines.append("Never use: " + ", ".join(config.lexicon.discouraged))
+        lines.append(
+            "Never use: " + ", ".join(defuse_fences(w) for w in config.lexicon.discouraged)
+        )
     if config.lexicon.anachronism_policy != "off":
         lines.append("Keep every reference inside the period of the scene.")
     if config.register.require_surface_politeness:
@@ -83,7 +89,7 @@ def _register_lines(config: FlytingConfig) -> list[str]:
             "pleasantry. Overt rudeness would be a scandal."
         )
     if config.register.notes:
-        lines.append(config.register.notes)
+        lines.append(defuse_fences(config.register.notes))
     if config.verse.required:
         lines.append(
             "This is verse flyting: alliterate, and keep a steady beat across the line."
@@ -111,28 +117,29 @@ def compose_counter_volley_prompt(
     system_lines.append(f"Tier: {tier.label}. {tier.persona_note}")
     system_lines.append(f"Keep it under {tier.max_words} words.")
     system_lines.append(UNTRUSTED_CONTENT_BEGIN)
-    system_lines.append(f"Scene: {scenario_title}")
+    system_lines.append(f"Scene: {defuse_fences(scenario_title)}")
     if setting_brief:
-        system_lines.append(setting_brief)
+        system_lines.append(defuse_fences(setting_brief))
     system_lines.extend(_persona_lines(npc))
     system_lines.append(
-        f"Your opponent is {player_role_label}" + (f": {player_role_brief}" if player_role_brief else ".")
+        f"Your opponent is {defuse_fences(player_role_label)}"
+        + (f": {defuse_fences(player_role_brief)}" if player_role_brief else ".")
     )
     if player_attack_surface:
         system_lines.append("What is fair game about your opponent:")
         for trait in player_attack_surface:
-            system_lines.append(f"  - {trait.brief}")
+            system_lines.append(f"  - {defuse_fences(trait.brief)}")
     system_lines.extend(_register_lines(config))
     if recent_lines:
         system_lines.append("Earlier in this exchange:")
         for line in recent_lines:
-            system_lines.append(f"  - \"{line}\"")
+            system_lines.append(f"  - \"{defuse_fences(line)}\"")
     system_lines.append(UNTRUSTED_CONTENT_END)
 
     user = "\n".join([
         UNTRUSTED_CONTENT_BEGIN,
         "Your opponent just said:",
-        player_last_line or "(nothing — you open the exchange)",
+        defuse_fences(player_last_line) or "(nothing — you open the exchange)",
         UNTRUSTED_CONTENT_END,
         "Answer it with one taunt.",
     ])
@@ -151,7 +158,7 @@ def compose_reaction_prompt(
     system_lines: list[str] = list(_REACTION_RULES)
     system_lines.append(f"Content rating ceiling: {content_rating}.")
     system_lines.append(UNTRUSTED_CONTENT_BEGIN)
-    system_lines.append(f"Scene: {scenario_title}")
+    system_lines.append(f"Scene: {defuse_fences(scenario_title)}")
     system_lines.extend(_persona_lines(npc))
     system_lines.extend(_register_lines(config))
     system_lines.append(UNTRUSTED_CONTENT_END)
@@ -159,7 +166,7 @@ def compose_reaction_prompt(
     user = "\n".join([
         UNTRUSTED_CONTENT_BEGIN,
         "The player just said:",
-        player_last_line,
+        defuse_fences(player_last_line),
         UNTRUSTED_CONTENT_END,
         "React in one short line. Do not counter.",
     ])

@@ -12,6 +12,7 @@ from convsim_prompt import (
     JUDGE_LAYER_ORDER,
     JUDGE_THEMES,
     JudgeRubric,
+    MAX_HOOK_BONUS,
     MAX_VERIFIED_HOOKS,
     UNTRUSTED_CONTENT_BEGIN,
     UNTRUSTED_CONTENT_END,
@@ -335,6 +336,18 @@ class TestJudgeRubric:
     def test_hook_bonus_is_capped_at_four_entries(self):
         rubric = JudgeRubric.from_yaml({"hook_bonus": [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]})
         assert len(rubric.hook_bonus) == 4
+
+    def test_hook_bonus_is_clamped_to_the_schemas_bounds(self):
+        # The validator rejects this at import, but a pack can be edited in
+        # place afterwards, and hook_bonus multiplies straight into T with
+        # nothing downstream to catch it: [100] was a x101 topicality
+        # multiplier, and in a bout it went straight into momentum.
+        rubric = JudgeRubric.from_yaml({"hook_bonus": [100, -3]})
+        assert rubric.hook_bonus == (MAX_HOOK_BONUS, 0.0)
+
+    def test_theme_decay_is_clamped_to_a_factor(self):
+        assert JudgeRubric.from_yaml({"theme_decay": 9}).theme_decay == 1.0
+        assert JudgeRubric.from_yaml({"theme_decay": -1}).theme_decay == 0.0
 
     def test_normalized_weights_sum_to_one(self):
         rubric = JudgeRubric.from_yaml({"weights": {"sting": 2, "wit": 2, "craft": 2, "fidelity": 2}})
