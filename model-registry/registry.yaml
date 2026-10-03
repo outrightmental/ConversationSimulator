@@ -9,8 +9,10 @@ schema_version: "0.1"
 models:
   # ── Lightweight tier ─────────────────────────────────────────────────────────
   # The smallest and fastest tier: the shortest first download and the lowest
-  # VRAM floor, so the app runs on 3 GB-VRAM and integrated-graphics machines
-  # the starter tier locks out. A 1.7B model is less consistent than the 4B at
+  # VRAM floor, so a 3 GB-VRAM or integrated-graphics machine has a model that
+  # fits in VRAM. Nothing refuses it the starter today — llama.cpp offloads the
+  # layers that fit and runs the rest on the CPU — but that is minute-long
+  # turns. A 1.7B model is less consistent than the 4B at
   # the structured output an NPC turn and a scored debrief need, so this is an
   # option, not the recommendation — `role: starter` is still what the first-run
   # wizard installs. Qwen publishes this model as Q8_0 only (no Q4_K_M), which
