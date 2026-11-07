@@ -158,7 +158,8 @@ def get_install_record(
     row = conn.execute(
         """
         SELECT id, registry_id, filename, file_path, size_bytes,
-               install_status, progress_bytes, error_message, verified_sha256, installed_at
+               install_status, progress_bytes, error_message, error_code,
+               verified_sha256, installed_at
         FROM installed_models
         WHERE id = ?
         """,
@@ -202,7 +203,8 @@ def mark_install_ready(
             verified_sha256 = ?,
             file_path = ?,
             progress_bytes = ?,
-            error_message = NULL
+            error_message = NULL,
+            error_code = NULL
         WHERE id = ?
         """,
         (size_bytes, verified_sha256, file_path, size_bytes, install_id),
@@ -216,16 +218,23 @@ def mark_install_failed(
     error_message: str,
     *,
     status: str = "failed",
+    error_code: str | None = None,
 ) -> None:
-    """Mark an install record with a terminal failure status."""
+    """Mark an install record with a terminal failure status.
+
+    *error_code* is the machine-readable kind of the failure (see
+    ``model_download_service.classify_download_error``). Clients decide what
+    to offer from the code; the message is for people.
+    """
     conn.execute(
         """
         UPDATE installed_models
         SET install_status = ?,
-            error_message = ?
+            error_message = ?,
+            error_code = ?
         WHERE id = ?
         """,
-        (status, error_message, install_id),
+        (status, error_message, error_code, install_id),
     )
     conn.commit()
 

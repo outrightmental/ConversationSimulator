@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import FirstRunWizard from '../screens/FirstRunWizard'
 import { SETUP_KEYS } from '../privacyPrefs'
-import type { ModelsResponse, BenchmarkResponse, PreflightCheck } from '@convsim/shared'
+import type { ModelsResponse, BenchmarkResponse, PreflightCheck, SetupInstallJob } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -1292,5 +1292,114 @@ describe('FirstRunWizard — demo edition', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// ── Install failure codes ─────────────────────────────────────────────────────
+// The engine records a machine-readable error_code with each failed job. The
+// network panel (with Retry) must follow that code: the messages the HTTP
+// library renders for a lost connection match no wording ("All connection
+// attempts failed", or nothing at all for a read timeout), so a text match
+// alone never offered Retry to a player whose connection dropped. The text
+// match stays as the fallback for a job that failed before codes existed.
+
+describe('FirstRunWizard install failure codes', () => {
+  type FailureCode = NonNullable<SetupInstallJob['error_code']>
+
+  function failedJob(errorMessage: string, errorCode?: FailureCode): SetupInstallJob {
+    return {
+      ...RUNNING_JOB,
+      status: 'failed' as const,
+      stages: RUNNING_JOB.stages.map((s) =>
+        s.id === 'model' ? { ...s, state: 'failed' as const, error: errorMessage } : s,
+      ),
+      error_message: errorMessage,
+      ...(errorCode !== undefined ? { error_code: errorCode } : {}),
+    }
+  }
+
+  async function failInstallWith(job: SetupInstallJob) {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: job })
+    await vi.advanceTimersByTimeAsync(2000)
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('offers the network panel with Retry when the engine reports NETWORK, whatever the message says', async () => {
+    await failInstallWith(failedJob('All connection attempts failed', 'NETWORK'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert', { name: /network error/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/network connection lost/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument()
+
+    // Retry works as it always has: back to the confirm screen for the same
+    // model, and Confirm & install starts a fresh install job for it.
+    fireEvent.click(screen.getByRole('button', { name: /^retry$/i }))
+    expect(await screen.findByRole('heading', { name: /confirm model install/i })).toBeInTheDocument()
+    mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: RUNNING_JOB })
+    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    expect(mockApi.startSetupInstall).toHaveBeenCalledTimes(2)
+    expect(mockApi.startSetupInstall).toHaveBeenLastCalledWith('qwen3-4b-instruct-q4_k_m')
+  })
+
+  it('offers Retry for a NETWORK failure whose message names no network problem', async () => {
+    await failInstallWith(failedJob('Download failed.', 'NETWORK'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert', { name: /network error/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument()
+  })
+
+  it('does not offer the network panel for a CHECKSUM failure', async () => {
+    await failInstallWith(failedJob('SHA-256 checksum mismatch after two attempts.', 'CHECKSUM'))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(screen.queryByRole('alert', { name: /network error/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/network connection lost/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/checksum mismatch/i)
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+  })
+
+  it('lets the code win over a message that happens to mention the connection', async () => {
+    await failInstallWith(failedJob('Server error 503: connection refused by upstream', 'HTTP'))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(screen.queryByRole('alert', { name: /network error/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/503/)
+  })
+
+  // A job that failed before the engine recorded codes reads error_code null
+  // (the migrated row); an engine that predates the field omits it.
+  it.each([
+    ['null, as on a migrated row', null],
+    ['absent, as from an older engine', undefined],
+  ])('still recognises an old-style record by its text when the code is %s', async (_label, code) => {
+    const job = failedJob('network error: connection refused')
+    await failInstallWith(code === null ? { ...job, error_code: null } : job)
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert', { name: /network error/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument()
+  })
+
+  it('does not offer the network panel for an old-style record whose text names no network problem', async () => {
+    await failInstallWith({ ...failedJob('SHA-256 checksum mismatch after two attempts.'), error_code: null })
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(screen.queryByRole('alert', { name: /network error/i })).not.toBeInTheDocument()
   })
 })

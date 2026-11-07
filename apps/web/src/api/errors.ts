@@ -11,6 +11,10 @@ export interface ApiError {
   kind: ErrorKind
   message: string
   status?: number
+  /** Machine-readable kind the service recorded for this failure, when it has
+   *  one (a setup-install job's error_code). Surfaces decide from it; the
+   *  message is for people. */
+  code?: string
 }
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError }
@@ -65,6 +69,7 @@ export function errorHeadline(error: ApiError): string {
 export function buildDiagnosticsText(error: ApiError, context?: string): string {
   const lines: string[] = ['ConversationSimulator diagnostics', `kind: ${error.kind}`]
   if (error.status !== undefined) lines.push(`status: ${error.status}`)
+  if (error.code !== undefined) lines.push(`code: ${error.code}`)
   lines.push(`message: ${error.message}`)
   if (context) lines.push(`context: ${context}`)
   lines.push(`time: ${new Date().toISOString()}`)

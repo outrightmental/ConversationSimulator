@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,7 +16,15 @@ from fastapi.testclient import TestClient
 import convsim_core.runtime  # noqa: F401 — register built-in adapters
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
-from convsim_core.services.model_download_service import execute_download, verify_sha256
+from convsim_core.services.model_download_service import (
+    ERROR_CODE_CHECKSUM,
+    ERROR_CODE_HTTP,
+    ERROR_CODE_NETWORK,
+    ERROR_CODE_UNKNOWN,
+    classify_download_error,
+    execute_download,
+    verify_sha256,
+)
 from convsim_core.services.model_manager_service import (
     create_install_record,
     get_install_record,
@@ -105,6 +114,368 @@ def test_verify_sha256_large_file(tmp_path):
     f.write_bytes(data)
     assert verify_sha256(f, _sha256_of(data)) is True
     assert verify_sha256(f, "0" * 64) is False
+
+
+# ── classify_download_error: the machine-readable kind next to the message ────
+
+
+def _http_status_error(status: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "http://example.test/model.gguf")
+    response = httpx.Response(status, request=request)
+    return httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
+
+
+def _transport_error_classes() -> list[type[httpx.TransportError]]:
+    """Every concrete transport error class the installed httpx defines."""
+    classes = {
+        obj
+        for obj in vars(httpx).values()
+        if isinstance(obj, type) and issubclass(obj, httpx.TransportError)
+    }
+    # Keep the leaves: an abstract parent (NetworkError, TimeoutException,
+    # ProtocolError, TransportError itself) is never raised on its own.
+    return sorted(
+        (c for c in classes if not any(o is not c and issubclass(o, c) for o in classes)),
+        key=lambda c: c.__name__,
+    )
+
+
+def test_every_httpx_transport_error_class_is_covered_below():
+    # The parametrized list that follows names each class the download path can
+    # raise. If httpx adds one, this fails so the list (and the classifier) is
+    # looked at again rather than silently passing.
+    assert {c.__name__ for c in _transport_error_classes()} == {
+        "CloseError", "ConnectError", "ConnectTimeout", "LocalProtocolError",
+        "PoolTimeout", "ProxyError", "ReadError", "ReadTimeout",
+        "RemoteProtocolError", "UnsupportedProtocol", "WriteError", "WriteTimeout",
+    }
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        httpx.ConnectError("All connection attempts failed"),   # refused connection
+        httpx.ConnectError("[Errno -2] Name or service not known"),  # DNS failure
+        httpx.ConnectTimeout(""),
+        httpx.ReadTimeout(""),
+        httpx.WriteTimeout(""),
+        httpx.PoolTimeout(""),
+        httpx.ReadError(""),
+        httpx.WriteError(""),
+        httpx.CloseError(""),
+        httpx.RemoteProtocolError("peer closed connection without sending complete message body"),
+        httpx.LocalProtocolError(""),
+        httpx.ProxyError(""),
+        httpx.UnsupportedProtocol(""),
+    ],
+    ids=lambda e: type(e).__name__ + (f":{e}" if str(e) else ""),
+)
+def test_classify_transport_errors_as_network(exc):
+    code, message = classify_download_error(exc)
+    assert code == ERROR_CODE_NETWORK
+    assert message.strip(), "a network failure must carry a human-readable message"
+
+
+def test_classify_read_timeout_has_a_message_although_httpx_renders_none():
+    exc = httpx.ReadTimeout("")
+    assert str(exc) == ""  # what the service used to record verbatim
+    code, message = classify_download_error(exc)
+    assert code == ERROR_CODE_NETWORK
+    assert message == "The download timed out waiting for the server."
+
+
+def test_classify_names_the_failure_and_keeps_httpx_detail():
+    code, message = classify_download_error(
+        httpx.ConnectError("[Errno -2] Name or service not known")
+    )
+    assert code == ERROR_CODE_NETWORK
+    assert message == (
+        "Could not connect to the download server. ([Errno -2] Name or service not known)"
+    )
+
+
+@pytest.mark.parametrize("status", [403, 404, 429, 500, 503])
+def test_classify_http_status_errors_are_not_network(status):
+    code, message = classify_download_error(_http_status_error(status))
+    assert code == ERROR_CODE_HTTP
+    assert f"HTTP {status}" in message
+
+
+def test_classify_follows_an_explicit_cause_and_keeps_the_wrapper_message():
+    # The engine download wraps a lost connection in a RuntimeError of its own.
+    wrapper = "Cannot reach GitHub to fetch the latest release. Check your internet connection."
+    try:
+        try:
+            raise httpx.ConnectError("All connection attempts failed")
+        except httpx.ConnectError as inner:
+            raise RuntimeError(wrapper) from inner
+    except RuntimeError as exc:
+        code, message = classify_download_error(exc)
+    assert code == ERROR_CODE_NETWORK
+    assert message == wrapper
+
+
+def test_classify_does_not_follow_an_implicit_context():
+    # An error raised while handling a network error, without `from`, is not
+    # itself a network failure.
+    try:
+        try:
+            raise httpx.ReadTimeout("")
+        except httpx.ReadTimeout:
+            raise ValueError("bad bookkeeping")
+    except ValueError as exc:
+        code, _ = classify_download_error(exc)
+    assert code == ERROR_CODE_UNKNOWN
+
+
+def test_classify_other_exceptions_are_unknown_with_a_message():
+    code, message = classify_download_error(OSError(28, "No space left on device"))
+    assert code == ERROR_CODE_UNKNOWN
+    assert message == "[Errno 28] No space left on device"
+
+    code, message = classify_download_error(RuntimeError(""))
+    assert code == ERROR_CODE_UNKNOWN
+    assert message == "Download failed (RuntimeError)."
+
+
+def _make_failing_client(exc: BaseException) -> httpx.AsyncClient:
+    """A mock client whose stream() raises *exc* on entry, like a transport failure."""
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(side_effect=exc)
+    mock_cm.__aexit__ = AsyncMock(return_value=None)
+    mock_client = MagicMock(spec=httpx.AsyncClient)
+    mock_client.stream = MagicMock(return_value=mock_cm)
+    mock_client.aclose = AsyncMock()
+    return mock_client
+
+
+@pytest.mark.asyncio
+async def test_execute_download_records_network_code_and_message_on_read_timeout(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    await execute_download(
+        conn,
+        install_id,
+        "http://slow.test/model.gguf",
+        "a" * 64,
+        tmp_path / "models",
+        "test.gguf",
+        _client=_make_failing_client(httpx.ReadTimeout("")),
+    )
+
+    record = get_install_record(conn, install_id)
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_NETWORK
+    assert record["error_message"], "a ReadTimeout must not leave the message empty"
+
+
+@pytest.mark.asyncio
+async def test_execute_download_records_http_code_on_status_error(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    mock_client = _make_mock_client(b"unused")
+    response = mock_client.stream.return_value.__aenter__.return_value
+    response.raise_for_status = MagicMock(side_effect=_http_status_error(404))
+
+    await execute_download(
+        conn,
+        install_id,
+        "http://example.test/missing.gguf",
+        "a" * 64,
+        tmp_path / "models",
+        "test.gguf",
+        _client=mock_client,
+    )
+
+    record = get_install_record(conn, install_id)
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_HTTP
+    assert record["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_execute_download_records_unknown_code_on_a_disk_error(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    with patch(
+        "convsim_core.services.model_download_service.open",
+        side_effect=OSError(28, "No space left on device"),
+        create=True,
+    ):
+        await execute_download(
+            conn,
+            install_id,
+            "http://example.test/model.gguf",
+            "a" * 64,
+            tmp_path / "models",
+            "test.gguf",
+            _client=_make_mock_client(b"weights"),
+        )
+
+    record = get_install_record(conn, install_id)
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_UNKNOWN
+    assert record["error_message"] == "[Errno 28] No space left on device"
+
+
+@pytest.mark.asyncio
+async def test_execute_download_records_checksum_code_on_mismatch(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    await execute_download(
+        conn,
+        install_id,
+        "http://example.test/model.gguf",
+        "b" * 64,
+        tmp_path / "models",
+        "test.gguf",
+        _client=_make_mock_client(b"corrupted download"),
+    )
+
+    record = get_install_record(conn, install_id)
+    assert record["install_status"] == "checksum_mismatch"
+    assert record["error_code"] == ERROR_CODE_CHECKSUM
+
+
+@pytest.mark.asyncio
+async def test_execute_download_success_leaves_no_error_code(db, tmp_path):
+    content = b"fake gguf weights"
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    await execute_download(
+        conn,
+        install_id,
+        "http://example.test/model.gguf",
+        _sha256_of(content),
+        tmp_path / "models",
+        "test.gguf",
+        _client=_make_mock_client(content),
+    )
+
+    record = get_install_record(conn, install_id)
+    assert record["install_status"] == "ready"
+    assert record["error_code"] is None
+
+
+# ── execute_download against real sockets: the exceptions httpx really raises ─
+#
+# The mocks above hand-pick an exception. These run the real httpx transport
+# against local sockets, so the classes and texts are the ones a player's
+# failed download produces ("All connection attempts failed", an empty
+# ReadTimeout, a body cut short), not the ones a test author expects.
+
+
+def _closed_port() -> int:
+    """A local port nothing listens on, so a connection to it is refused."""
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@contextlib.asynccontextmanager
+async def _serve(handler):
+    """Run *handler* as a local HTTP server and yield its base URL."""
+    server = await asyncio.start_server(handler, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def _download_from(conn, install_id, url, tmp_path, timeout=2.0):
+    # trust_env=False: the test talks to 127.0.0.1 directly, never via a proxy.
+    async with httpx.AsyncClient(trust_env=False, timeout=timeout) as client:
+        await execute_download(
+            conn, install_id, url, "a" * 64, tmp_path / "models", "test.gguf",
+            _client=client,
+        )
+    return get_install_record(conn, install_id)
+
+
+@pytest.mark.asyncio
+async def test_real_refused_connection_is_recorded_as_network(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    record = await _download_from(
+        conn, install_id, f"http://127.0.0.1:{_closed_port()}/model.gguf", tmp_path
+    )
+
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_NETWORK
+    assert record["error_message"].startswith("Could not connect to the download server.")
+    assert not (tmp_path / "models" / "test.gguf.part").exists()
+
+
+@pytest.mark.asyncio
+async def test_real_read_timeout_is_recorded_as_network_with_a_message(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    # Accept the request and never answer it: httpx raises ReadTimeout(""). The
+    # handler returns when the client gives up and closes the connection.
+    async def _silent(reader, writer):
+        await reader.read()
+        writer.close()
+
+    async with _serve(_silent) as base:
+        record = await _download_from(
+            conn, install_id, f"{base}/model.gguf", tmp_path, timeout=0.3
+        )
+
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_NETWORK
+    assert record["error_message"] == "The download timed out waiting for the server."
+
+
+@pytest.mark.asyncio
+async def test_real_connection_cut_mid_body_is_recorded_as_network(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    async def _cut(reader, writer):
+        await reader.readuntil(b"\r\n\r\n")
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n" + b"x" * 100)
+        await writer.drain()
+        writer.close()
+
+    async with _serve(_cut) as base:
+        record = await _download_from(conn, install_id, f"{base}/model.gguf", tmp_path)
+
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_NETWORK
+    assert record["error_message"].startswith(
+        "The download stopped because of a network error."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_line", [b"404 Not Found", b"503 Service Unavailable"])
+async def test_real_http_error_status_is_recorded_as_http(db, tmp_path, status_line):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    async def _answer(reader, writer):
+        await reader.readuntil(b"\r\n\r\n")
+        writer.write(b"HTTP/1.1 " + status_line + b"\r\nContent-Length: 0\r\n\r\n")
+        await writer.drain()
+        writer.close()
+
+    async with _serve(_answer) as base:
+        record = await _download_from(conn, install_id, f"{base}/model.gguf", tmp_path)
+
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_HTTP
+    assert f"HTTP {status_line.split()[0].decode()}" in record["error_message"]
 
 
 # ── execute_download: mocked HTTP download ────────────────────────────────────

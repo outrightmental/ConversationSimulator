@@ -181,12 +181,24 @@ export interface SetupInstallStage {
   error: string | null;
 }
 
+/** Machine-readable kind of a failed install, recorded by the engine next to
+ *  the human message. NETWORK means the connection was lost or never made and
+ *  a retry can help; HTTP means the server answered with an error status;
+ *  CHECKSUM means the file arrived but failed its SHA-256 check; UNKNOWN is
+ *  anything else (disk, warmup, a bug). */
+export type SetupInstallErrorCode = 'NETWORK' | 'HTTP' | 'CHECKSUM' | 'UNKNOWN';
+
 export interface SetupInstallJob {
   id: number;
   status: SetupInstallJobStatus;
   registry_id: string | null;
   stages: SetupInstallStage[];
   error_message: string | null;
+  /** Set on every failure the engine records. null on a job that has not
+   *  failed and on one that failed before the engine recorded codes; absent
+   *  from an engine that predates the field. Without a code, clients fall back
+   *  to reading the message. */
+  error_code?: SetupInstallErrorCode | null;
   created_at: string;
   updated_at: string;
 }

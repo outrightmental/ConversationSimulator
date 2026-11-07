@@ -10,6 +10,12 @@ All downloads are streamed to a .part file, then:
   4. On network or disk error: the .part file is deleted (if present)
      and the record is marked 'failed'.
 
+Every failure is recorded with a machine-readable ``error_code`` next to the
+human ``error_message`` (see ``classify_download_error``).  The client offers
+Retry on a NETWORK failure; it must not have to match on the prose, which for
+httpx transport errors is often unhelpful ("All connection attempts failed")
+or empty (a ReadTimeout).
+
 A .part file that survives an interrupted download (e.g. the app was killed
 mid-transfer) is resumed on the next attempt: the download issues an HTTP
 Range request from the existing byte offset and appends, rather than
@@ -44,6 +50,68 @@ logger = logging.getLogger(__name__)
 
 _CHUNK_SIZE = 65_536  # 64 KB
 _PROGRESS_INTERVAL = 1_048_576  # report progress every 1 MB
+
+# Machine-readable failure kinds. Stable: the web client and the install status
+# API carry them as-is.
+ERROR_CODE_NETWORK = "NETWORK"    # connection, DNS, timeout, other transport failures
+ERROR_CODE_HTTP = "HTTP"          # the server answered, with a 4xx or 5xx
+ERROR_CODE_CHECKSUM = "CHECKSUM"  # the file arrived but its SHA-256 did not match
+ERROR_CODE_UNKNOWN = "UNKNOWN"    # anything else (disk, permissions, a bug)
+
+
+def _httpx_error_in_chain(exc: BaseException) -> httpx.HTTPError | None:
+    """Return *exc* if it is an httpx error, else the first httpx error it was raised from.
+
+    Only explicit chaining (``raise ... from``) is followed. The engine download
+    (``llama_cpp_download.download_binary``) reports a lost connection as a
+    RuntimeError with its own wording, raised from the httpx error.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, httpx.HTTPError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__
+    return None
+
+
+def classify_download_error(exc: BaseException) -> tuple[str, str]:
+    """Return ``(error_code, message)`` for an exception raised while downloading.
+
+    Connection, DNS and timeout failures, and every other ``httpx.TransportError``,
+    are network failures a retry can fix. An ``httpx.HTTPStatusError`` is not:
+    the server answered. Anything else is UNKNOWN. An exception raised from an
+    httpx error is classified by that httpx error and keeps its own message.
+
+    The message is never empty. httpx renders a ReadTimeout as ``""`` and a
+    refused connection as "All connection attempts failed", so for an httpx
+    error the text that reaches a person names the kind of failure, with the
+    first line of httpx's own text appended when it has any.
+    """
+    text = str(exc).strip()
+    cause = _httpx_error_in_chain(exc)
+
+    if isinstance(cause, httpx.HTTPStatusError):
+        code = ERROR_CODE_HTTP
+        base = f"The download server answered with HTTP {cause.response.status_code}."
+    elif isinstance(cause, httpx.TimeoutException):
+        code = ERROR_CODE_NETWORK
+        base = "The download timed out waiting for the server."
+    elif isinstance(cause, httpx.ConnectError):
+        code = ERROR_CODE_NETWORK
+        base = "Could not connect to the download server."
+    elif isinstance(cause, httpx.TransportError):
+        code = ERROR_CODE_NETWORK
+        base = "The download stopped because of a network error."
+    else:
+        return ERROR_CODE_UNKNOWN, text or f"Download failed ({type(exc).__name__})."
+
+    if cause is not exc and text:
+        return code, text
+    lines = text.splitlines()
+    detail = lines[0].strip() if lines else ""
+    return code, f"{base} ({detail})" if detail else base
 
 
 def _parse_content_range_total(value: str | None) -> int | None:
@@ -193,6 +261,7 @@ async def execute_download(
                 install_id,
                 "SHA-256 checksum mismatch. The downloaded file has been deleted.",
                 status="checksum_mismatch",
+                error_code=ERROR_CODE_CHECKSUM,
             )
             return
 
@@ -212,7 +281,8 @@ async def execute_download(
         )
 
     except Exception as exc:
-        logger.exception("download: error for install_id=%d", install_id)
+        error_code, message = classify_download_error(exc)
+        logger.exception("download: %s error for install_id=%d", error_code, install_id)
         if part_path.exists():
             part_path.unlink()
-        mark_install_failed(conn, install_id, str(exc))
+        mark_install_failed(conn, install_id, message, error_code=error_code)
