@@ -33,17 +33,30 @@ def _fixture_lines(name: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+#: What a server that forbids unknown body fields answers (HTTP 422).
+_EXTRAS_REJECTED_BODY = (
+    b'{"detail":[{"loc":["body","return_progress"],"msg":"extra fields not permitted"}]}'
+)
+#: llama-server's own 400 for a prompt that does not fit the context: nothing
+#: to do with the timing fields.
+_CONTEXT_EXCEEDED_BODY = (
+    b'{"error":{"code":400,"message":"the request exceeds the available context size, '
+    b'try increasing it","type":"exceed_context_size_error"}}'
+)
+
+
 class _SseResponse:
-    def __init__(self, lines: list[str], status_code: int = 200) -> None:
+    def __init__(self, lines: list[str], status_code: int = 200, body: bytes | None = None) -> None:
         self.status_code = status_code
         self._lines = lines
+        self._body = _EXTRAS_REJECTED_BODY if body is None else body
 
     async def aiter_lines(self) -> AsyncGenerator[str, None]:
         for line in self._lines:
             yield line
 
     async def aread(self) -> bytes:
-        return b'{"detail":[{"loc":["body","return_progress"],"msg":"extra fields not permitted"}]}'
+        return self._body
 
     async def __aenter__(self) -> "_SseResponse":
         return self
@@ -194,6 +207,48 @@ async def test_llama_other_errors_still_raise(llama):
     client = _llama_client(_SseResponse([], status_code=500))
     with pytest.raises(ConnectionError, match="HTTP 500"):
         await _run_llama(llama, client, _request())
+
+
+@pytest.mark.asyncio
+async def test_a_400_about_the_request_itself_keeps_the_fields_on(llama):
+    """llama-server answers 400 to any invalid request, context overflow included.
+
+    Such a 400 is the ordinary error it always was: it is raised as before, the
+    request is not re-sent, and the next request still asks for timings.
+    """
+    accepted = _SseResponse(_fixture_lines("synthetic_llama_server_no_timings.sse"))
+    client = _llama_client(
+        _SseResponse([], status_code=400, body=_CONTEXT_EXCEEDED_BODY),
+        accepted,
+    )
+    with pytest.raises(ConnectionError, match="HTTP 400"):
+        await _run_llama(llama, client, _request())
+
+    assert llama.engine_extras_accepted is True
+    assert client.stream.call_count == 1  # no re-send without the fields
+
+    await _run_llama(llama, client, _request())
+    second = client.stream.call_args_list[1].kwargs["json"]
+    assert all(k in second for k in _EXTRA_FIELDS)
+
+
+@pytest.mark.asyncio
+async def test_a_400_that_names_one_of_the_fields_turns_them_off(llama):
+    """A 400 counts as a rejection of the fields only when its error names one."""
+    rejected = _SseResponse(
+        [],
+        status_code=400,
+        body=b'{"error":{"code":400,"message":"unknown field: timings_per_token","type":"invalid_request_error"}}',
+    )
+    accepted = _SseResponse(_fixture_lines("synthetic_llama_server_no_timings.sse"))
+    client = _llama_client(rejected, accepted)
+    chunks = await _run_llama(llama, client, _request())
+
+    assert isinstance(chunks[-1], ChatFinal)
+    assert llama.engine_extras_accepted is False
+    first, second = (c.kwargs["json"] for c in client.stream.call_args_list)
+    assert all(k in first for k in _EXTRA_FIELDS)
+    assert not any(k in second for k in _EXTRA_FIELDS)
 
 
 # ---------------------------------------------------------------------------

@@ -216,9 +216,12 @@ chunks while it reads the prompt (surfaced as `ChatProgress`, stage
 cache, both speeds) and ends with a `usage` chunk whose `choices` is empty —
 the adapter reads `usage` and `timings` before skipping chunks without
 choices. None of these fields change what the model generates. A server that
-does not know them (llama-cpp-python's OpenAI server answers 422) gets the
-same request once more without them, the turn completes, and the timing
-fields stay `null` for the life of that adapter instance. Raw streams the
+rejects the request because of those fields (HTTP 422, or a 400 whose error
+names one of them) gets the same request once more without them; the turn
+completes and the timing fields stay `null` for the life of that adapter
+instance. Any other 400, such as a prompt over the context size or a chat
+template that cannot format the messages, is reported as the request error it
+is, and the fields stay on. Raw streams the
 adapter is tested against live under `services/convsim-core/tests/fixtures/`;
 a file named `synthetic_*` was written from the documented wire format rather
 than captured, and its README says how to replace it with a capture.
