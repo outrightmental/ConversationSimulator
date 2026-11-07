@@ -20,6 +20,17 @@ shows only models the app downloaded (install status `ready`); a GGUF file you
 registered yourself is stored as `complete` and is not listed. The section's
 **Open model manager →** link opens the model manager (**Set up your model**).
 
+A switch to another llama.cpp model or GGUF file does not reach an engine that
+is already running, which it is after **Set me up** and whenever the app starts
+with llama.cpp selected. `POST /api/models/use` starts the engine only when it
+is not answering, and the GGUF path's engine start treats the engine's "already
+running" answer as success. The choice is saved: Settings reports **Provider
+and model updated.** and the Home screen shows the new name. But the engine
+keeps the model it started with, and on the GGUF path the **Model benchmark**
+measures that model too. The new model is used after you quit and reopen the
+app, because the startup autostart tries the saved selection first. If the
+engine is not running, **Apply** starts it with the model you chose.
+
 The model manager offers the same three choices as first-run setup: the
 recommended model, **Use existing Ollama model**, and **Use a local GGUF file**.
 It reads the registry (`model-registry/registry.yaml`) but offers only the
@@ -66,7 +77,7 @@ The engine the app starts runs with one slot, the context size from the model's 
 
 ## Recommended models
 
-The app's screens install only the starter model. The other three are in the registry, but to use one at this release you download its file yourself (the registry lists the pinned URL and SHA-256) and select it as a [custom GGUF model](#using-a-custom-gguf-model). A file selected that way is not matched to its registry entry, so the engine starts it with the default 8 192-token context, not the context length listed below.
+The app's screens install only the starter model. The other three are in the registry, but to use one at this release you download its file yourself (the registry lists the pinned URL and SHA-256) and select it as a [custom GGUF model](#using-a-custom-gguf-model). A file selected that way is not matched to its registry entry, so the engine starts it with the default 8 192-token context, not the context length listed below. If the engine is already running, as it is after **Set me up**, the new file is used after you quit and reopen the app (see [How the model manager works](#how-the-model-manager-works)).
 
 ### Qwen3 4B Instruct Q4_K_M — starter
 
@@ -183,6 +194,8 @@ To use a GGUF file you obtained independently:
 2. Enter the full path to the file (e.g., `/home/you/Downloads/my-model.gguf`).
    A leading `~` is not expanded.
 3. Click **Use this file**. A short **Model benchmark** runs before **Continue to Home**.
+
+On first launch the engine is not running yet, so it starts with your file before the benchmark. You can also choose a file later from the model manager (**Settings → AI engine → Open model manager →**, then **Use a local GGUF file**). If the engine is already running then, it keeps its current model, the benchmark measures that model, and your file is used after you quit and reopen the app.
 
 The app stores the path and uses the file where it is; it does not copy it. It loads the file without checksum verification, because only registry-managed models have known checksums. Ensure you have the right to use the model under its license; the application cannot verify the license of a user-supplied file.
 

@@ -60,13 +60,24 @@ selected yourself is not listed there, so switch back to one with
 **Open model manager →** and **Use a local GGUF file**. The demo edition has no
 **AI engine** section.
 
+A switch to **Ollama** or **Fake (Demo)** takes effect at once. A switch to
+another llama.cpp model or GGUF file does not, when the engine is already
+running, which it is after **Set me up** and whenever the app starts with
+llama.cpp selected. The app saves your choice: Settings reports **Provider and
+model updated.** and the Home screen shows the new name. But the running engine
+keeps the model it started with, and the new model is used only after you quit
+and reopen the app. If the engine is not running, **Apply** starts it with the
+model you chose.
+
 ### Hardware recommendations
 
 The model registry lists four models. At this release the app's screens
 install only the starter model: the larger ones are in the registry, but no
 screen offers them. To use one, download its file yourself (the registry lists
 the URL and SHA-256 checksum) and select it as a
-[custom GGUF file](#custom-gguf-file).
+[custom GGUF file](#custom-gguf-file). If the engine is already running, as it
+is after **Set me up**, the new file is used after you quit and reopen the app;
+see [Changing the model later](#changing-the-model-later).
 
 | Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
 |---|---|---|---|---|---|
@@ -207,6 +218,12 @@ an earlier in-app model install put it, or as `llama-server` on your `PATH`.
    models have known checksums.
 5. A short **Model benchmark** runs. Click **Continue to Home** when it is
    done.
+
+On first launch the engine is not running yet, so it starts with your file
+before the benchmark. You can also choose a file later, from **Settings → AI
+engine → Open model manager →** and **Use a local GGUF file**. If the engine
+is already running then, it keeps its current model: the benchmark measures
+that model, and your file is used after you quit and reopen the app.
 
 ### How to verify it worked
 
