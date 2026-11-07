@@ -1484,6 +1484,63 @@ describe('Conversation screen', () => {
       await waitFor(() => expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument())
     })
 
+    it('counts the measured time to first words down with the clock, and withdraws it once it has passed', async () => {
+      // An engine that reports no reading progress (Ollama, or a llama-server
+      // that refuses the progress field) leaves only this machine's median
+      // time to first words. That median runs from the moment the turn went
+      // out, so it is a whole-wait figure: quoted unchanged, it promised the
+      // full 27 s again at 20 s and at 40 s.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'ollama', model_id: 'm', samples: 5, reading_tps: null, writing_tps: null, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await submitFirst()
+        const detail = () => screen.queryByTestId('npc-turn-progress-detail')
+        fire(progress('waiting', null, 1))
+        await waitFor(() => expect(detail()).toHaveTextContent('Reply starts in about 22–34 s.'))
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(detail()).toHaveTextContent('Reply starts in about 14–21 s.')
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(detail()).toHaveTextContent('Reply starts in about 6–9 s.')
+        // Past the median there is nothing honest left to quote: the stage and
+        // the clock carry on alone.
+        await vi.advanceTimersByTimeAsync(20_000)
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('40s')
+        expect(detail()).not.toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('counts a reading estimate down from the report it was built from', async () => {
+      // The last report of a read can be the last word for a while: once the
+      // prompt is read, nothing more arrives until the first sentence does.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 2, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await submitFirst()
+        const detail = () => screen.queryByTestId('npc-turn-progress-detail')
+        // Fully read: one short sentence at 2 tokens/s, 12 s from this report.
+        fire(progress('reading', { processed: 2036, total: 2036, cached: 0 }, 1))
+        await waitFor(() => expect(detail()).toHaveTextContent('Reply starts in about 10–15 s.'))
+        await vi.advanceTimersByTimeAsync(6_000)
+        expect(detail()).toHaveTextContent('Reply starts in about 5–8 s.')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('shows no estimate when the expected wait is under the threshold', async () => {
       mockApi.getRollingSpeeds.mockResolvedValue({
         ok: true,

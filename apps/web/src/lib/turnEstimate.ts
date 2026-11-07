@@ -160,6 +160,10 @@ export const FIRST_SENTENCE_TOKENS = 24
 export interface ReplyStartInputs {
   /** Prompt tokens the engine has still to read, from the latest progress report; null before the first. */
   unreadPromptTokens: number | null
+  /** How long ago that progress report arrived, in milliseconds. */
+  sinceReportMs: number
+  /** How long the player has been waiting on this turn, in milliseconds. */
+  waitedMs: number
   /** This machine's median reading speed, tokens per second, or null. */
   readingTps: number | null
   /** This machine's median writing speed, tokens per second, or null. */
@@ -169,15 +173,19 @@ export interface ReplyStartInputs {
 }
 
 /**
- * The expected milliseconds until the reply starts, or null with nothing to go on.
+ * The expected milliseconds from now until the reply starts, or null with
+ * nothing to go on.
  *
  * With a progress report and both speeds: the unread prompt at the reading
- * speed, plus one short sentence at the writing speed. Before the first
- * progress report, the measured time to first words on this machine, when any
- * turn has been recorded. Never a figure from the docs or a model size.
+ * speed, plus one short sentence at the writing speed, less the time since
+ * that report arrived. Otherwise the measured time to first words on this
+ * machine, when any turn has been recorded, less the time already waited:
+ * that median counts from the moment the turn went out, so quoting it
+ * unchanged would promise the whole wait again on every tick of the clock.
+ * Never below zero, and never a figure from the docs or a model size.
  */
 export function estimateReplyStartMs(inputs: ReplyStartInputs): number | null {
-  const { unreadPromptTokens, readingTps, writingTps, measuredFirstWordsMs } = inputs
+  const { unreadPromptTokens, sinceReportMs, waitedMs, readingTps, writingTps, measuredFirstWordsMs } = inputs
   if (
     unreadPromptTokens !== null &&
     Number.isFinite(unreadPromptTokens) &&
@@ -188,12 +196,17 @@ export function estimateReplyStartMs(inputs: ReplyStartInputs): number | null {
   ) {
     const readMs = (Math.max(0, unreadPromptTokens) / readingTps) * 1000
     const writeMs = (FIRST_SENTENCE_TOKENS / writingTps) * 1000
-    return Math.round(readMs + writeMs)
+    return remaining(readMs + writeMs, sinceReportMs)
   }
   if (measuredFirstWordsMs !== null && Number.isFinite(measuredFirstWordsMs) && measuredFirstWordsMs > 0) {
-    return Math.round(measuredFirstWordsMs)
+    return remaining(measuredFirstWordsMs, waitedMs)
   }
   return null
+}
+
+function remaining(totalMs: number, passedMs: number): number {
+  const passed = Number.isFinite(passedMs) ? Math.max(0, passedMs) : 0
+  return Math.max(0, Math.round(totalMs - passed))
 }
 
 /** The range quoted to the player around a point estimate: a median is not a promise. */

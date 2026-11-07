@@ -131,7 +131,9 @@ import {
 } from '../lib/turnEstimate'
 
 describe('estimateReplyStartMs', () => {
-  const speeds = { readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null }
+  // A report that has just arrived, on a turn that has just gone out.
+  const now = { sinceReportMs: 0, waitedMs: 0 }
+  const speeds = { ...now, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null }
 
   it('is longer for a turn that must read 2,000 tokens than for one that reads 200', () => {
     const cold = estimateReplyStartMs({ ...speeds, unreadPromptTokens: 2000 })
@@ -144,18 +146,36 @@ describe('estimateReplyStartMs', () => {
   })
 
   it('returns none with no speeds and no measured first words', () => {
-    expect(estimateReplyStartMs({ unreadPromptTokens: 2000, readingTps: null, writingTps: null, measuredFirstWordsMs: null })).toBeNull()
-    expect(estimateReplyStartMs({ unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null })).toBeNull()
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: 2000, readingTps: null, writingTps: null, measuredFirstWordsMs: null })).toBeNull()
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null })).toBeNull()
   })
 
   it('uses this machine\'s measured time to first words before the engine reports progress', () => {
-    expect(estimateReplyStartMs({ unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(12_400)
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(12_400)
   })
 
   it('prefers the formula once a progress report says how much is left to read', () => {
-    expect(estimateReplyStartMs({ unreadPromptTokens: 0, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: 0, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(
       Math.round((FIRST_SENTENCE_TOKENS / 6.5) * 1000),
     )
+  })
+
+  it('counts the measured time to first words down with the wait, since it is a whole-wait figure', () => {
+    // The median runs from the moment the turn went out, so ten seconds in
+    // there are ten seconds fewer to go, and past the median there is no
+    // honest figure left to quote.
+    const fallback = { unreadPromptTokens: null, readingTps: null, writingTps: null, measuredFirstWordsMs: 27_000, sinceReportMs: 0 }
+    expect(estimateReplyStartMs({ ...fallback, waitedMs: 0 })).toBe(27_000)
+    expect(estimateReplyStartMs({ ...fallback, waitedMs: 10_000 })).toBe(17_000)
+    expect(estimateReplyStartMs({ ...fallback, waitedMs: 40_000 })).toBe(0)
+  })
+
+  it('counts the formula down from the report it was built from, not from the start of the wait', () => {
+    const read = { unreadPromptTokens: 870, readingTps: 87, writingTps: 6, measuredFirstWordsMs: null }
+    // 10 s of reading and 4 s of writing, as of the report.
+    expect(estimateReplyStartMs({ ...read, sinceReportMs: 0, waitedMs: 30_000 })).toBe(14_000)
+    expect(estimateReplyStartMs({ ...read, sinceReportMs: 5_000, waitedMs: 35_000 })).toBe(9_000)
+    expect(estimateReplyStartMs({ ...read, sinceReportMs: 20_000, waitedMs: 50_000 })).toBe(0)
   })
 
   it('quotes a range around the point estimate, never a single second', () => {

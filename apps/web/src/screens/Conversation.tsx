@@ -106,6 +106,9 @@ type TurnProgress = {
   prompt: { processed: number | null; total: number | null; cached: number | null } | null
   outputTokens: number
   elapsedMs: number
+  /** When this report arrived, on the screen's own wait clock: the estimate
+   *  built from it counts down from here, not from whenever it is drawn. */
+  receivedAtMs: number
 }
 
 type Banner = {
@@ -666,6 +669,7 @@ export default function Conversation() {
                 prompt: event.payload.prompt,
                 outputTokens: event.payload.output_tokens,
                 elapsedMs: event.payload.elapsed_ms,
+                receivedAtMs: Date.now() - waitStartedAtRef.current,
               })
               // The core is working on this turn: give the request its full
               // deadline again rather than starting to poll for a reply that
@@ -1304,15 +1308,19 @@ export default function Conversation() {
     // second, unstreamed generation after the first one failed its check: the
     // last progress report described the first one, and this machine's time to
     // first words describes neither, so any number here would be invented.
-    const stage = turnProgress?.stage
-    if (stage !== 'waiting' && stage !== 'reading') return null
-    const prompt = turnProgress?.prompt
+    if (!turnProgress || (turnProgress.stage !== 'waiting' && turnProgress.stage !== 'reading')) return null
+    const prompt = turnProgress.prompt
     const unread =
       prompt && prompt.total !== null && prompt.processed !== null
         ? Math.max(0, prompt.total - prompt.processed)
         : null
+    // Time from now, so it is recomputed on every tick of the wait clock: a
+    // figure that stood still while the clock beside it ran would be wrong
+    // by however long the player had already waited.
     const ms = estimateReplyStartMs({
       unreadPromptTokens: unread,
+      sinceReportMs: Math.max(0, waitElapsedMs - turnProgress.receivedAtMs),
+      waitedMs: waitElapsedMs,
       readingTps: rollingSpeeds?.reading_tps ?? null,
       writingTps: rollingSpeeds?.writing_tps ?? null,
       measuredFirstWordsMs: rollingSpeeds?.first_words_ms ?? null,
