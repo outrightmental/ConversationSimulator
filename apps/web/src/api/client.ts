@@ -43,6 +43,8 @@ import type {
   LogbookExport,
   PreflightResponse,
   SetupInstallJob,
+  RollingSpeeds,
+  TurnTiming,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -497,9 +499,15 @@ export const api = {
       emotion?: string | null
       flow_state_after?: string | null
       created_at?: string
+      /** What the turn cost (issue #519); NPC rows only. */
+      timing?: TurnTiming | null
     }>
   }>> {
     return get(`/sessions/${sessionId}/transcript`)
+  },
+  /** This machine's recent turn speeds for the active model (issue #519). */
+  getRollingSpeeds(): Promise<ApiResult<RollingSpeeds>> {
+    return get<RollingSpeeds>('/performance/rolling')
   },
   getDataFolder(): Promise<ApiResult<{ path: string }>> {
     return get<{ path: string }>('/privacy/data-folder')

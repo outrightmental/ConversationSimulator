@@ -18,9 +18,12 @@ import httpx
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.registry import register
 from convsim_core.runtime.types import (
+    ChatChunk,
     ChatFinal,
     ChatRequest,
+    ChatTimings,
     ChatToken,
+    FinishReason,
     ModelInfo,
     RuntimeCapabilities,
     RuntimeHealth,
@@ -67,6 +70,64 @@ def _size_category(size_bytes: int | None) -> str | None:
     if gib < 12:
         return "medium"
     return "large"
+
+
+def _count(value: Any) -> int | None:
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _ns_to_ms(value: Any) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    return round(float(value) / 1_000_000.0, 3)
+
+
+def _timings_from_done(chunk: dict[str, Any]) -> ChatTimings | None:
+    """Map the fields of Ollama's final ``done`` chunk onto ChatTimings (#519).
+
+    Ollama reports durations in nanoseconds. ``prompt_eval_cached_count`` exists
+    from Ollama v0.34.0; without it the cached and evaluated counts, and so the
+    reading speed, stay None — a prompt that was mostly served from cache would
+    otherwise read as impossibly fast.
+    """
+    prompt = _count(chunk.get("prompt_eval_count"))
+    output = _count(chunk.get("eval_count"))
+    prompt_ms = _ns_to_ms(chunk.get("prompt_eval_duration"))
+    generation_ms = _ns_to_ms(chunk.get("eval_duration"))
+    load_ms = _ns_to_ms(chunk.get("load_duration"))
+    if prompt is None and output is None and prompt_ms is None and generation_ms is None:
+        return None
+    cached = _count(chunk.get("prompt_eval_cached_count"))
+    evaluated = prompt - cached if prompt is not None and cached is not None else None
+    reading_tps = (
+        round(evaluated / (prompt_ms / 1000.0), 2)
+        if evaluated is not None and prompt_ms is not None and prompt_ms > 0 and evaluated > 0
+        else None
+    )
+    writing_tps = (
+        round(output / (generation_ms / 1000.0), 2)
+        if output is not None and generation_ms is not None and generation_ms > 0 and output > 0
+        else None
+    )
+    return ChatTimings(
+        prompt_tokens=prompt,
+        cached_tokens=cached,
+        evaluated_tokens=evaluated,
+        output_tokens=output,
+        prompt_ms=prompt_ms,
+        generation_ms=generation_ms,
+        load_ms=load_ms,
+        reading_tps=reading_tps,
+        writing_tps=writing_tps,
+    )
+
+
+def _finish_reason(done_reason: Any) -> FinishReason | None:
+    if done_reason == "stop":
+        return "stop"
+    if done_reason == "length":
+        return "length"
+    return None
 
 
 def _map_model_info(raw: dict[str, Any]) -> ModelInfo:
@@ -133,10 +194,10 @@ class OllamaChatRuntime(ChatRuntime):
         data = resp.json()
         return [_map_model_info(m) for m in data.get("models", [])]
 
-    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         return self._stream(request)
 
-    async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         model_id = request.model_id
         if not model_id:
             models = await self.list_models()
@@ -168,6 +229,8 @@ class OllamaChatRuntime(ChatRuntime):
         full_text = ""
         input_tokens = 0
         output_tokens = 0
+        timings: ChatTimings | None = None
+        finish_reason: FinishReason | None = None
 
         try:
             async with self._client.stream(
@@ -189,6 +252,10 @@ class OllamaChatRuntime(ChatRuntime):
                     if done:
                         input_tokens = chunk.get("prompt_eval_count", 0)
                         output_tokens = chunk.get("eval_count", 0)
+                        # The final chunk is the only place Ollama reports what
+                        # the request cost (issue #519): keep all of it.
+                        timings = _timings_from_done(chunk)
+                        finish_reason = _finish_reason(chunk.get("done_reason"))
         # A failure to connect at all still means "Ollama is not running",
         # ConnectTimeout included — so it is matched ahead of the read timeout.
         # ConnectionError, not RuntimeError: the turn endpoint maps it to a 503
@@ -230,6 +297,8 @@ class OllamaChatRuntime(ChatRuntime):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             structured=structured,
+            timings=timings,
+            finish_reason=finish_reason,
         )
 
     async def health(self) -> RuntimeHealth:

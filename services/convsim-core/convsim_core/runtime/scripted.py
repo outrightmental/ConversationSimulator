@@ -16,8 +16,10 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from convsim_core.runtime.base import ChatRuntime
+from convsim_core.runtime.fake import deterministic_progress, deterministic_timings
 from convsim_core.runtime.registry import register
 from convsim_core.runtime.types import (
+    ChatChunk,
     ChatFinal,
     ChatRequest,
     ChatToken,
@@ -286,10 +288,10 @@ class ScriptedChatRuntime(ChatRuntime):
     async def list_models(self) -> list[ModelInfo]:
         return list(_MODELS)
 
-    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         return self._stream(request)
 
-    async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         if request.json_schema is not None:
             if _DEBRIEF_SCHEMA_DISCRIMINANT in (request.json_schema.get("properties") or {}):
                 chosen = _DEBRIEF_RESPONSE
@@ -302,17 +304,24 @@ class ScriptedChatRuntime(ChatRuntime):
             structured = None
 
         words = response_text.split()
+        input_tokens = sum(len(m.content.split()) for m in request.messages)
+        # Same deterministic progress and timings as the fake runtime, so a
+        # tutorial turn produces a complete timing record (issue #519).
+        for progress in deterministic_progress(input_tokens):
+            await asyncio.sleep(0)
+            yield progress
         for word in words:
             await asyncio.sleep(0)
             yield ChatToken(text=word + " ")
 
-        input_tokens = sum(len(m.content.split()) for m in request.messages)
         yield ChatFinal(
             text=response_text,
             model_id=_TUTORIAL_MODEL_ID,
             input_tokens=input_tokens,
             output_tokens=len(words),
             structured=structured,
+            timings=deterministic_timings(input_tokens, len(words)),
+            finish_reason="stop",
         )
 
     def _pick_npc_turn(self, request: ChatRequest) -> dict:

@@ -56,6 +56,24 @@ Whether saving is on or off, transcripts are never transmitted anywhere:
 To clear all saved transcripts: use **Clear all local data** in **Settings**,
 or call `POST /api/privacy/clear` on the local API.
 
+### Turn timing
+
+**Default:** recorded locally with the session; deleted with it.
+
+Beside each NPC turn the app keeps one record of what that turn cost: how long
+the engine spent reading the prompt and writing the reply, when the first
+token arrived, token counts (prompt, reused from cache, written), the engine's
+reading and writing speeds, whether a repair call was made, how long speech
+synthesis took when voice is on, and which model and runtime produced it. It
+contains **no text** — no prompt, no reply, no player input — only durations
+and counts.
+
+The record is stored as a `turn_timing` event in the same local database as
+the transcript, so it is deleted with the session, by **Clear all local
+data**, and is included in a session export. `GET /api/performance/rolling`
+reads the recent records to say how fast replies have been on this machine.
+Nothing about it is transmitted anywhere.
+
 ### Raw audio
 
 **Default:** never saved.
@@ -142,6 +160,8 @@ The export contains:
 - Session metadata (scenario ID, start time, ending type, turn count).
 - Full turn-by-turn exchange (player input as transcribed text, NPC response).
 - Structured debrief results.
+- Every per-turn event, including each NPC turn's timing record (durations
+  and token counts only — see [Turn timing](#turn-timing)).
 
 Exports are written to wherever you choose to save them. The app does not
 transmit exports anywhere.

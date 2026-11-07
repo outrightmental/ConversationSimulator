@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,16 +12,85 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.registry import register
 from convsim_core.runtime.types import (
+    ChatChunk,
     ChatFinal,
+    ChatProgress,
     ChatRequest,
+    ChatTimings,
     ChatToken,
+    FinishReason,
     ModelInfo,
     RuntimeCapabilities,
     RuntimeHealth,
     RuntimeStatus,
 )
 
+logger = logging.getLogger(__name__)
+
 _HEALTH_TIMEOUT = 5.0
+#: Statuses a server answers with when the request carries a field it does not
+#: know. llama-cpp-python's OpenAI server validates the body with pydantic and
+#: returns 422; a stricter proxy may say 400.
+_EXTRAS_REJECTED_STATUSES = frozenset({400, 422})
+
+
+def _as_int(value: Any) -> int | None:
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _as_float(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _rate(count: int | None, ms: float | None) -> float | None:
+    if count is None or ms is None or ms <= 0:
+        return None
+    return round(count / (ms / 1000.0), 2)
+
+
+def _timings_from_engine(
+    raw: dict[str, Any] | None, usage_prompt: int, usage_completion: int
+) -> ChatTimings | None:
+    """Map llama-server's ``timings`` object onto ChatTimings (issue #519).
+
+    ``prompt_n`` is what the engine actually read this request, ``cache_n``
+    what it reused, so the whole prompt is their sum. ``predicted_n`` is the
+    output. Speeds are the engine's own when it gave them, else derived from
+    its counts and milliseconds. Anything the engine left out stays None.
+    """
+    if not raw:
+        return None
+    evaluated = _as_int(raw.get("prompt_n"))
+    cached = _as_int(raw.get("cache_n"))
+    if evaluated is not None and cached is not None:
+        prompt_total: int | None = evaluated + cached
+    else:
+        prompt_total = usage_prompt or None
+    output = _as_int(raw.get("predicted_n"))
+    if output is None:
+        output = usage_completion or None
+    prompt_ms = _as_float(raw.get("prompt_ms"))
+    generation_ms = _as_float(raw.get("predicted_ms"))
+    reading_tps = _as_float(raw.get("prompt_per_second")) or _rate(evaluated, prompt_ms)
+    writing_tps = _as_float(raw.get("predicted_per_second")) or _rate(output, generation_ms)
+    return ChatTimings(
+        prompt_tokens=prompt_total,
+        cached_tokens=cached,
+        evaluated_tokens=evaluated,
+        output_tokens=output,
+        prompt_ms=prompt_ms,
+        generation_ms=generation_ms,
+        reading_tps=reading_tps,
+        writing_tps=writing_tps,
+    )
+
+
+def _finish_reason(raw: Any) -> FinishReason | None:
+    if raw == "stop":
+        return "stop"
+    if raw == "length":
+        return "length"
+    return None
 #: Loopback connects either succeed at once or not at all, so the connect phase
 #: never needs the generous budget the generation stream gets.
 _CONNECT_TIMEOUT = 5.0
@@ -81,6 +151,19 @@ class LlamaCppRuntime(ChatRuntime):
         self._timeout = cfg.timeout
         self._chat_timeout = cfg.chat_timeout
         self._json_schema_enabled = cfg.json_schema_enabled
+        # Whether the server accepts the engine-specific request fields that
+        # make it report what a turn cost (issue #519): ``stream_options``,
+        # ``return_progress`` and ``timings_per_token``. llama-server does.
+        # llama-cpp-python's OpenAI server answers 422 to a shape it does not
+        # know, so the first rejection turns them off for the life of this
+        # adapter and the request is re-sent without them; the turn completes,
+        # with those figures left null.
+        self._engine_extras_accepted = True
+
+    @property
+    def engine_extras_accepted(self) -> bool:
+        """False once the server rejected the timing/progress request fields."""
+        return self._engine_extras_accepted
 
     @property
     def id(self) -> str:
@@ -133,13 +216,10 @@ class LlamaCppRuntime(ChatRuntime):
             if m.get("id")
         ]
 
-    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         return self._stream(request)
 
-    async def _stream(
-        self, request: ChatRequest
-    ) -> AsyncGenerator[ChatToken | ChatFinal, None]:
-        model_id = request.model_id or self._model_id or "default"
+    def _build_payload(self, request: ChatRequest, model_id: str, *, with_extras: bool) -> dict:
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
         payload: dict = {
@@ -171,9 +251,34 @@ class LlamaCppRuntime(ChatRuntime):
                 "schema": request.json_schema,
             }
 
+        if with_extras:
+            # Ask the engine to say what the request cost (issue #519). The
+            # usage block makes the final chunk carry real token counts (they
+            # were always 0 on the pinned build without it); ``return_progress``
+            # streams ``prompt_progress`` while the prompt is read, which is the
+            # only honest progress bar a local model can drive; and
+            # ``timings_per_token`` attaches the engine's own ``timings`` block
+            # — tokens read, tokens reused from cache, and both speeds. None of
+            # these change what the model generates.
+            payload["stream_options"] = {"include_usage": True}
+            payload["return_progress"] = True
+            payload["timings_per_token"] = True
+
+        return payload
+
+    async def _stream(
+        self, request: ChatRequest
+    ) -> AsyncGenerator[ChatChunk, None]:
+        model_id = request.model_id or self._model_id or "default"
+        with_extras = self._engine_extras_accepted
+        payload = self._build_payload(request, model_id, with_extras=with_extras)
+
         full_text = ""
         input_tokens = 0
         output_tokens = 0
+        engine_timings: dict[str, Any] | None = None
+        finish_reason: FinishReason | None = None
+        retry_without_extras = False
 
         # Generation gets its own budget: a slow local model can legitimately go
         # quiet for a minute or more during prompt eval, which the control-plane
@@ -192,39 +297,66 @@ class LlamaCppRuntime(ChatRuntime):
                 ) as resp:
                     if resp.status_code != 200:
                         body = await resp.aread()
-                        raise ConnectionError(
-                            f"llama-server returned HTTP {resp.status_code}: "
-                            f"{body.decode(errors='replace')[:200]}"
-                        )
+                        if with_extras and resp.status_code in _EXTRAS_REJECTED_STATUSES:
+                            # This server does not know the timing/progress
+                            # fields. Remember that and send the request again
+                            # without them below, outside the connection.
+                            self._engine_extras_accepted = False
+                            retry_without_extras = True
+                        else:
+                            raise ConnectionError(
+                                f"llama-server returned HTTP {resp.status_code}: "
+                                f"{body.decode(errors='replace')[:200]}"
+                            )
+                    else:
+                        async for line in resp.aiter_lines():
+                            line = line.strip()
+                            if not line or line == "data: [DONE]":
+                                continue
+                            if not line.startswith("data: "):
+                                continue
 
-                    async for line in resp.aiter_lines():
-                        line = line.strip()
-                        if not line or line == "data: [DONE]":
-                            continue
-                        if not line.startswith("data: "):
-                            continue
+                            raw = line[len("data: "):]
+                            try:
+                                chunk = json.loads(raw)
+                            except json.JSONDecodeError:
+                                continue
 
-                        raw = line[len("data: "):]
-                        try:
-                            chunk = json.loads(raw)
-                        except json.JSONDecodeError:
-                            continue
+                            # Read everything that rides outside ``choices``
+                            # BEFORE the empty-choices skip below: with usage
+                            # requested, the last chunk has no choices, and that
+                            # is exactly where ``usage`` and ``timings`` arrive.
+                            timings_obj = chunk.get("timings")
+                            if isinstance(timings_obj, dict):
+                                engine_timings = timings_obj
 
-                        # Capture token usage from any chunk that includes it
-                        usage = chunk.get("usage")
-                        if usage:
-                            input_tokens = usage.get("prompt_tokens", 0)
-                            output_tokens = usage.get("completion_tokens", 0)
+                            usage = chunk.get("usage")
+                            if usage:
+                                input_tokens = usage.get("prompt_tokens", 0)
+                                output_tokens = usage.get("completion_tokens", 0)
 
-                        choices = chunk.get("choices", [])
-                        if not choices:
-                            continue
+                            progress = chunk.get("prompt_progress")
+                            if isinstance(progress, dict):
+                                yield ChatProgress(
+                                    stage="reading",
+                                    processed=_as_int(progress.get("processed")),
+                                    total=_as_int(progress.get("total")),
+                                    cached=_as_int(progress.get("cache")),
+                                )
 
-                        delta = choices[0].get("delta", {})
-                        content = delta.get("content")
-                        if content:
-                            full_text += content
-                            yield ChatToken(text=content)
+                            choices = chunk.get("choices", [])
+                            if not choices:
+                                continue
+
+                            choice = choices[0]
+                            reason = _finish_reason(choice.get("finish_reason"))
+                            if reason is not None:
+                                finish_reason = reason
+                            delta = choice.get("delta", {})
+                            content = delta.get("content")
+                            if content:
+                                full_text += content
+                                yield ChatToken(text=content)
 
         # ConnectTimeout is listed with ConnectError, and ahead of the read
         # timeout below: now that the connect phase has its own short budget, a
@@ -243,6 +375,16 @@ class LlamaCppRuntime(ChatRuntime):
                 "model, or offload more layers to the GPU."
             ) from exc
 
+        if retry_without_extras:
+            logger.info(
+                "llama-server at %s rejected the timing/progress request fields; "
+                "re-sending without them (turn timings will be unavailable)",
+                self._base_url,
+            )
+            async for chunk in self._stream(request):
+                yield chunk
+            return
+
         structured = None
         if self._json_schema_enabled and request.json_schema is not None and full_text:
             try:
@@ -256,6 +398,8 @@ class LlamaCppRuntime(ChatRuntime):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             structured=structured,
+            timings=_timings_from_engine(engine_timings, input_tokens, output_tokens),
+            finish_reason=finish_reason,
         )
 
     async def health(self) -> RuntimeHealth:

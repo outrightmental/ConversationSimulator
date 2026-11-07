@@ -63,15 +63,35 @@ class ChatRequest(BaseModel):
     json_schema: dict | None          # if set and json_schema=True, enforce it
 ```
 
-**Streaming contract.** `chat_stream` must yield zero or more `ChatToken`
-objects followed by exactly one `ChatFinal`. `ChatFinal.text` is the
-authoritative complete response; callers may build a preview from tokens
-but must not append to `ChatFinal.text`.
+**Streaming contract.** `chat_stream` must yield zero or more `ChatProgress`
+and `ChatToken` objects, in the order the engine produced them, followed by
+exactly one `ChatFinal`. `ChatFinal.text` is the authoritative complete
+response; callers may build a preview from tokens but must not append to
+`ChatFinal.text`. Progress chunks are optional: an adapter emits one only when
+the engine sent a real signal, and callers that only want text ignore them.
 
 ```python
 class ChatToken(BaseModel):
     type: Literal["token"] = "token"
     text: str
+
+class ChatProgress(BaseModel):
+    type: Literal["progress"] = "progress"
+    stage: Literal["waiting", "reading", "writing"]
+    processed: int | None      # prompt tokens read so far
+    total: int | None          # prompt tokens in all
+    cached: int | None         # of which reused from the engine's cache
+
+class ChatTimings(BaseModel):          # what the engine itself reported
+    prompt_tokens: int | None          # evaluated + cached
+    cached_tokens: int | None
+    evaluated_tokens: int | None
+    output_tokens: int | None
+    prompt_ms: float | None            # engine wall time reading
+    generation_ms: float | None        # engine wall time writing
+    load_ms: float | None              # model load attributed to the request (Ollama)
+    reading_tps: float | None
+    writing_tps: float | None
 
 class ChatFinal(BaseModel):
     type: Literal["final"] = "final"
@@ -80,7 +100,20 @@ class ChatFinal(BaseModel):
     input_tokens: int
     output_tokens: int
     structured: dict | None    # parsed JSON when json_schema was set
+    timings: ChatTimings | None             # None when the engine said nothing
+    finish_reason: Literal["stop", "length", "cancelled"] | None
 ```
+
+**What a turn cost.** The turn pipeline times each stage of a turn with a
+monotonic clock — `waiting`, `reading`, `writing`, `finishing`, `checking`,
+`voice`, defined once in `convsim_core/services/turn_timing.py` — and
+combines it with the engine's `ChatTimings` into one `TurnTiming` record per
+NPC turn (mirrored as `TurnTiming` in `packages/shared`). The record is
+persisted as a `turn_timing` event, returned on the turn's `npc_turn` event
+and by the debug and transcript endpoints, and summarised by
+`GET /api/performance/rolling`. A field an engine cannot supply is `null`;
+nothing is estimated silently. Adapters must therefore never invent a count or
+a duration — report what the engine said, or `None`.
 
 **`RuntimeHealth`** — returned by `health()`:
 
@@ -171,6 +204,21 @@ The adapter attempts `json.loads(full_text)` and sets `ChatFinal.structured`
 on success; parse failure leaves `structured=None` (the pipeline uses its
 own fallback logic).
 
+**Timings and progress.** Every request also carries
+`stream_options: {"include_usage": true}`, `return_progress: true` and
+`timings_per_token: true`. llama-server then streams `prompt_progress`
+chunks while it reads the prompt (surfaced as `ChatProgress`, stage
+`reading`), attaches its `timings` block (tokens read, tokens reused from
+cache, both speeds) and ends with a `usage` chunk whose `choices` is empty —
+the adapter reads `usage` and `timings` before skipping chunks without
+choices. None of these fields change what the model generates. A server that
+does not know them (llama-cpp-python's OpenAI server answers 422) gets the
+same request once more without them, the turn completes, and the timing
+fields stay `null` for the life of that adapter instance. Raw streams the
+adapter is tested against live under `services/convsim-core/tests/fixtures/`;
+a file named `synthetic_*` was written from the documented wire format rather
+than captured, and its README says how to replace it with a capture.
+
 ---
 
 ### Ollama
@@ -201,6 +249,16 @@ and `/api/tags`). Does **not** depend on the `ollama` PyPI package, keeping
 
 The Ollama port (11434) is Ollama's default and is separate from the
 Conversation Simulator port range.
+
+**Timings.** The final `done` chunk is the only place Ollama reports what a
+request cost. The adapter keeps `prompt_eval_count`, `prompt_eval_cached_count`
+(present from Ollama v0.34.0), `prompt_eval_duration`, `eval_count`,
+`eval_duration` and `load_duration` — durations are nanoseconds and are
+converted to milliseconds — and `done_reason` becomes `finish_reason`. Without
+the cached count, the cached and evaluated token counts and the reading speed
+stay `None`: a prompt mostly served from cache would otherwise read as
+impossibly fast. Ollama sends no progress while reading, so the adapter emits
+no `ChatProgress`.
 
 **Model selection.** If `ChatRequest.model_id` is `None`, the adapter
 calls `list_models()` and picks the first available model. If Ollama is
@@ -252,6 +310,11 @@ for running the UI without any LLM installed.
   `safety`, and `session_control`.
 - Streams tokens word-by-word with `asyncio.sleep(0)` between each
   (yields control, no actual delay).
+- Reports deterministic timings: two `reading` progress chunks before the
+  first token, and a `ChatTimings` block of one millisecond per prompt token
+  read and two per token written (1 000 and 500 tokens/s), nothing cached,
+  `finish_reason: "stop"`. The scripted tutorial runtime does the same, so
+  tests of the turn-timing record have fixed figures to assert against.
 - Health always returns READY with `latency_ms=0.0`.
 
 **Models exposed:** `fake-small` (4 096 context) and `fake-large` (32 768 context).
