@@ -131,6 +131,11 @@ class ScenarioCard(BaseModel):
     summary: str = ""
     tags: list[str] = []
     content_rating: Optional[str] = None
+    #: The NPC's name, resolved through the scenario's `npc.ref`. None when the
+    #: pack does not provide one, in which case the UI falls back to a generic
+    #: label (issue #501 §2 — "NPC" is the most technical word on the
+    #: conversation screen).
+    npc_name: Optional[str] = None
 
     # ── Canonical ScenarioInfo contract fields ────────────────────────────────
     player_role: PlayerRoleInfo = PlayerRoleInfo(label="")

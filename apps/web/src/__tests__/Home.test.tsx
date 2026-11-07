@@ -58,7 +58,13 @@ function liText(expected: string) {
 
 // Stub fetch: routes by URL pattern to the appropriate response.
 // Includes text() because handleResponse now reads the body as text first.
-function stubFetches(healthResp: object, packsResp: object, logbookResp: object = makeLogbook(), scenariosResp: object[] = []) {
+function stubFetches(
+  healthResp: object,
+  packsResp: object,
+  logbookResp: object = makeLogbook(),
+  scenariosResp: object[] = [],
+  sessionsResp: object = { sessions: [] },
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
@@ -66,10 +72,20 @@ function stubFetches(healthResp: object, packsResp: object, logbookResp: object 
       if (url.includes('/packs')) body = packsResp
       else if (url.includes('/logbook')) body = logbookResp
       else if (url.includes('/scenarios')) body = scenariosResp
+      else if (url.includes('/sessions')) body = sessionsResp
       const text = JSON.stringify(body)
       return Promise.resolve({ ok: true, json: () => Promise.resolve(body), text: () => Promise.resolve(text) })
     }),
   )
+}
+
+const IN_PROGRESS_SESSION = {
+  session_id: 'sess-resume01',
+  scenario_id: 'behavioral_interview',
+  state: 'PlayerTurnListening',
+  created_at: '2026-10-01T10:00:00.000Z',
+  turn_count: 2,
+  setup: {},
 }
 
 function renderHome() {
@@ -90,10 +106,10 @@ describe('Home — ready state', () => {
     expect(screen.getByRole('heading', { name: /conversation simulator/i })).toBeInTheDocument()
   })
 
-  it('shows Local runtime: Ready list item when health is ok', async () => {
+  it('shows AI engine: Ready list item when health is ok', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    expect(await screen.findByText(liText('Local runtime: Ready'))).toBeInTheDocument()
+    expect(await screen.findByText(liText('AI engine: Ready'))).toBeInTheDocument()
   })
 
   it('shows the active model name when LLM is ready', async () => {
@@ -107,6 +123,29 @@ describe('Home — ready state', () => {
     stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'x' }), makePacks(3))
     renderHome()
     expect(await screen.findByText('3 installed')).toBeInTheDocument()
+  })
+
+  // Issue #501 §1: "there is no 'resume in-progress session' entry point
+  // anywhere on Home or in the nav."
+  it('leads the primary actions with Resume when a conversation is in progress', async () => {
+    stubFetches(makeHealth(), makePacks(1), makeLogbook(), [], {
+      sessions: [IN_PROGRESS_SESSION],
+    })
+    renderHome()
+    const resume = await screen.findByTestId('home-resume-link')
+    expect(resume).toHaveAttribute('href', '/conversation/sess-resume01')
+    // Ahead of "Start a scenario": resuming beats starting over, which is what
+    // the playtester did instead.
+    const start = screen.getByRole('link', { name: /start a scenario/i })
+    // Node.DOCUMENT_POSITION_FOLLOWING === 4
+    expect(resume.compareDocumentPosition(start) & 4).toBeTruthy()
+  })
+
+  it('offers no Resume link when nothing is in progress', async () => {
+    stubFetches(makeHealth(), makePacks(1), makeLogbook(), [], { sessions: [] })
+    renderHome()
+    await screen.findByText(liText('AI engine: Ready'))
+    expect(screen.queryByTestId('home-resume-link')).not.toBeInTheDocument()
   })
 
   it('links to the library for Start a scenario', () => {
@@ -146,7 +185,7 @@ describe('Home — no-model state', () => {
   it('shows LLM list item as Not installed', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    expect(await screen.findByText(liText('LLM: Not installed'))).toBeInTheDocument()
+    expect(await screen.findByText(liText('AI model: Not installed'))).toBeInTheDocument()
   })
 
   it('offers Install a GGUF model option', async () => {
@@ -232,7 +271,7 @@ describe('Home — status card links', () => {
   it('has at least five links to /settings covering LLM, STT, TTS, install, and import', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    await screen.findByText(liText('Local runtime: Ready'))
+    await screen.findByText(liText('AI engine: Ready'))
     const settingsLinks = screen
       .getAllByRole('link')
       .filter((el) => el.getAttribute('href') === '/settings')
@@ -240,7 +279,7 @@ describe('Home — status card links', () => {
     expect(settingsLinks.length).toBeGreaterThanOrEqual(5)
   })
 
-  it('Local runtime badge links to the recovery section when offline', async () => {
+  it('AI engine badge links to the recovery section when offline', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderHome()
     await screen.findByRole('alert')
@@ -252,10 +291,10 @@ describe('Home — status card links', () => {
 })
 
 describe('Home — runtime-error state', () => {
-  it('shows Local runtime: Unavailable list item when API is unreachable', async () => {
+  it('shows AI engine: Unavailable list item when API is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderHome()
-    expect(await screen.findByText(liText('Local runtime: Unavailable'))).toBeInTheDocument()
+    expect(await screen.findByText(liText('AI engine: Unavailable'))).toBeInTheDocument()
   })
 
   it('shows a recovery alert when runtime is down', async () => {
@@ -277,7 +316,7 @@ describe('Home — runtime-error state', () => {
     renderHome()
     const alert = await screen.findByRole('alert')
     expect(alert).not.toHaveTextContent(/api server/i)
-    expect(alert).not.toHaveTextContent(/local runtime/i)
+    expect(alert).not.toHaveTextContent(/AI engine/i)
   })
 
   it('does not show the no-model section when runtime is unreachable', async () => {
@@ -298,7 +337,7 @@ describe('Home — runtime-error state', () => {
   it('does not show a last_error alert when last_error is null', async () => {
     stubFetches(makeHealth({ last_error: null }), makePacks(0))
     renderHome()
-    await screen.findByText(liText('Local runtime: Ready'))
+    await screen.findByText(liText('AI engine: Ready'))
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -435,7 +474,7 @@ describe('Home — missing-pack section', () => {
   it('hides missing-pack notice when no model is configured', async () => {
     stubFetches(makeHealth({ llm_ready: false }), makePacks(0))
     renderHome()
-    await screen.findByText(liText('LLM: Not installed'))
+    await screen.findByText(liText('AI model: Not installed'))
     expect(
       screen.queryByRole('status', { name: /no scenario packs installed/i }),
     ).toBeNull()

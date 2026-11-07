@@ -143,9 +143,10 @@ The model is loaded but producing unexpected output. Try:
 
 **Inference is very slow (30+ seconds per turn)**
 
-The model is likely running entirely on CPU. This is expected on machines without a discrete GPU or with insufficient VRAM. Options:
+The model is likely running entirely on CPU. This is expected on machines without a discrete GPU or with insufficient VRAM. Options, easiest first:
 
-- **Switch to the starter model:** Qwen3 4B (~2.6 GB, 4 GB VRAM minimum) is the most practical choice for CPU-only or low-VRAM machines.
+- **Set reply speed to Quick replies:** open **Settings → Reply speed** and choose **Quick replies**. A local model emits one token at a time, so most of the wait is the length of the reply — asking for shorter replies is the one lever that needs no hardware knowledge and no restart. It applies to your very next message, so you can change it mid-conversation and go straight back to it. ("Balanced" is the default and matches how the app behaved before this setting existed; "Fuller replies" trades speed for length.)
+- **Switch to the starter model:** Qwen3 4B (~2.6 GB, 4 GB VRAM minimum) is the most practical choice for CPU-only or low-VRAM machines. On slow hardware a smaller model is a bigger win than any reply-speed setting.
 - **Reduce GPU layers:** if you have some VRAM but not enough for the full model, lower `n_gpu_layers` in **Settings → Advanced**. Partial GPU offload is faster than full CPU.
 - **Reduce context length:** a shorter context (`n_ctx=4096`) uses less memory and allows more model layers to fit on the GPU.
 
