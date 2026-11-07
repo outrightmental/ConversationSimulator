@@ -479,7 +479,9 @@ export default function Conversation() {
             setStreamingText(streamingRef.current)
             break
           case 'npc.final':
-            setNpcEmotion(event.payload.emotion)
+            // The line closes before the turn's bookkeeping exists (#538); the
+            // emotion arrives on scenario.state_delta, older servers sent it here.
+            setNpcEmotion(event.payload.emotion ?? null)
             streamingRef.current = ''
             setStreamingText('')
             // During an active turn submission, commit the NPC response immediately
@@ -503,7 +505,7 @@ export default function Conversation() {
               if (Object.keys(state_delta ?? {}).length > 0) {
                 setStateVars((prev) => {
                   const next = { ...prev }
-                  for (const [k, d] of Object.entries(state_delta)) {
+                  for (const [k, d] of Object.entries(state_delta ?? {})) {
                     if (k in next) next[k] = Math.max(0, Math.min(100, next[k] + d))
                   }
                   return next

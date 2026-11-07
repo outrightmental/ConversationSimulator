@@ -23,7 +23,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Set
 
 from convsim_prompt import (
     NPC_TURN_OUTPUT_SCHEMA,
@@ -36,7 +36,8 @@ from convsim_prompt import (
     compose_turn_prompt,
     parse_turn_output,
 )
-from convsim_prompt.turn_output import _REPAIR_PROMPT
+from convsim_prompt.output_validator import validate_npc_output
+from convsim_prompt.turn_output import _REPAIR_PROMPT, _extract_json
 from convsim_prompt.types import ScenarioData
 
 from convsim_core.input_router import (
@@ -57,12 +58,14 @@ from convsim_core.scenario_state import (
     initialize_state,
     partition_state_by_visibility,
 )
+from convsim_core.services.turn_salvage import salvage_turn_output
 from convsim_core.services.turn_timing import (
     StreamObservation,
     TurnClock,
     TurnTiming,
     TurnTimingBuilder,
 )
+from convsim_core.services.utterance_stream import SentenceGate, UtteranceStreamExtractor
 from convsim_core.storage.repositories.relationship_repo import get_relationship_recap
 
 logger = logging.getLogger(__name__)
@@ -183,6 +186,24 @@ class _SyncRuntimeBridge:
             pool.shutdown(wait=False)
 
 
+class TurnStreamer(Protocol):
+    """Where the pipeline sends what the player may see while a turn runs (#538).
+
+    The sessions router passes a WebSocket-backed implementation when a client
+    is listening; with none, the pipeline streams nothing and behaves as it
+    always has. ``output_tokens`` is read by ``progress`` so the panel can show
+    how much has been written.
+    """
+
+    output_tokens: int
+
+    async def progress(self, stage: str, prompt: Optional[Dict[str, Optional[int]]] = None) -> None: ...
+
+    async def token(self, text: str) -> None: ...
+
+    async def final(self, content: str) -> None: ...
+
+
 class TurnInputError(ValueError):
     """Raised when player input fails validation before the pipeline runs."""
 
@@ -210,6 +231,12 @@ class TurnPipelineResult:
     # What the turn cost (issue #519). None only for turns that never reached
     # the model: an input safety stop answers from a canned line.
     timing: Optional[TurnTiming] = None
+    # True when the turn was built from released words plus whatever
+    # bookkeeping completed, with the rest defaulted (issue #538).
+    salvaged: bool = False
+    # The spoken line as it was streamed to the player, when it was. The REST
+    # response always equals what was streamed.
+    streamed_line: Optional[str] = None
 
 
 def _normalize_text(text: str) -> str:
@@ -358,10 +385,14 @@ def _load_recent_turns(session_id: str, conn: sqlite3.Connection, limit: int = 1
     return entries
 
 
+OnChunk = Callable[[Any], Awaitable[bool]]
+
+
 async def _collect_runtime_output_timed(
     runtime: ChatRuntime,
     request: ChatRequest,
     observation: Optional[StreamObservation] = None,
+    on_chunk: Optional[OnChunk] = None,
 ) -> tuple[str, Optional[Dict[str, Any]], Optional[ChatFinal]]:
     """Stream from the runtime and return (raw_text, structured, final).
 
@@ -373,25 +404,47 @@ async def _collect_runtime_output_timed(
     When an ``observation`` is given, the moments the engine's signals arrived
     — first progress chunk, first token, final — are stamped on it with a
     monotonic clock, which is how the turn's stages are timed (issue #519).
+
+    ``on_chunk`` sees every chunk as it arrives and may return True to stop
+    consuming the stream (issue #538: a released sentence's successor failed
+    the output check). Stopping closes the runtime's generator, which closes
+    the engine connection; ``final`` is then None and ``raw_text`` is what had
+    arrived.
     """
     raw_text = ""
     structured: Optional[Dict[str, Any]] = None
     final: Optional[ChatFinal] = None
-    async for chunk in runtime.chat_stream(request):
-        if isinstance(chunk, ChatFinal):
-            raw_text = chunk.text
-            structured = chunk.structured
-            final = chunk
-            if observation is not None:
-                observation.saw_final(chunk, time.perf_counter())
-            break  # ChatFinal is authoritative; trailing tokens must not append to it.
-        elif isinstance(chunk, ChatToken):
-            if observation is not None:
-                observation.saw_token(time.perf_counter())
-            raw_text += chunk.text
-        elif isinstance(chunk, ChatProgress):
-            if observation is not None:
-                observation.saw_progress(chunk, time.perf_counter())
+    stream = runtime.chat_stream(request)
+    stopped = False
+    try:
+        async for chunk in stream:
+            if isinstance(chunk, ChatFinal):
+                raw_text = chunk.text
+                structured = chunk.structured
+                final = chunk
+                if observation is not None:
+                    observation.saw_final(chunk, time.perf_counter())
+                if on_chunk is not None:
+                    await on_chunk(chunk)
+                break  # ChatFinal is authoritative; trailing tokens must not append to it.
+            elif isinstance(chunk, ChatToken):
+                if observation is not None:
+                    observation.saw_token(time.perf_counter())
+                raw_text += chunk.text
+            elif isinstance(chunk, ChatProgress):
+                if observation is not None:
+                    observation.saw_progress(chunk, time.perf_counter())
+            if on_chunk is not None and await on_chunk(chunk):
+                stopped = True
+                break
+    finally:
+        if stopped:
+            aclose = getattr(stream, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:  # noqa: BLE001 — closing a stopped stream is best effort
+                    pass
     return raw_text, structured, final
 
 
@@ -405,6 +458,24 @@ async def _collect_runtime_output(
     """
     raw_text, structured, _ = await _collect_runtime_output_timed(runtime, request)
     return raw_text, structured
+
+
+def _repair_is_coming(parse_input: str, hidden_agenda: Optional[List[str]]) -> bool:
+    """Whether parse_turn_output will have to call the model again.
+
+    The parser's structural repair and content-safety retry run synchronously
+    on the event loop (see #527), so the ``checking`` stage can only be shown
+    by predicting them: the output is not a JSON object, or its line fails the
+    output check in a recoverable way.
+    """
+    data = _extract_json(parse_input)
+    if data is None:
+        return True
+    utterance = data.get("npc_utterance")
+    if not isinstance(utterance, str) or not utterance:
+        return True
+    result = validate_npc_output(utterance=utterance, hidden_agenda=hidden_agenda)
+    return (not result.is_safe) and not result.has_hard_violation
 
 
 async def process_turn(
@@ -423,6 +494,7 @@ async def process_turn(
     scenario_events: Optional[List[ScenarioEvent]] = None,
     ending_conditions: Optional[Dict[str, Any]] = None,
     timing: Optional[TurnTimingBuilder] = None,
+    streamer: Optional[TurnStreamer] = None,
 ) -> TurnPipelineResult:
     """Execute the full player-turn pipeline and persist results.
 
@@ -435,6 +507,13 @@ async def process_turn(
     starts its clock when the request arrives and passes the builder in; a
     caller that passes none gets a builder started here, so the record is never
     missing for a turn that reached the model.
+
+    ``streamer`` receives the turn as it happens (issue #538): stage changes,
+    each sentence of the NPC's line once it has passed the output check, and
+    the complete line. Released text is committed text: once a sentence has
+    been sent, the turn is never regenerated, and a later sentence that fails
+    the check stops generation and the turn is built from what was released.
+    With no streamer the turn behaves exactly as before.
 
     Raises TurnInputError if the player text fails validation.
     Never raises for model errors — uses safe fallback instead.
@@ -544,34 +623,121 @@ async def process_turn(
         runtime.id, session_id, turn_number, prompt.estimated_token_count, prompt.was_truncated,
     )
     timing.compose_ms = (time.perf_counter() - compose_started) * 1000.0
+    hidden_agenda = scenario_data.npc.private_persona.hidden_agenda
+
+    # Streaming (issue #538): decode the spoken line out of the model's JSON as
+    # it arrives, release it sentence by sentence once each sentence has passed
+    # the output check, and tell the client which stage the turn is in.
+    extractor = UtteranceStreamExtractor() if streamer is not None else None
+    gate = SentenceGate(hidden_agenda=hidden_agenda)
+    stream_state = {"writing_announced": False, "finishing_announced": False}
+
+    async def _on_chunk(chunk: Any) -> bool:
+        assert streamer is not None and extractor is not None
+        if isinstance(chunk, ChatProgress):
+            prompt = None
+            if chunk.total is not None or chunk.processed is not None:
+                prompt = {"processed": chunk.processed, "total": chunk.total, "cached": chunk.cached}
+            await streamer.progress(chunk.stage, prompt)
+            return False
+        if isinstance(chunk, ChatToken):
+            streamer.output_tokens += 1
+            if not stream_state["writing_announced"]:
+                stream_state["writing_announced"] = True
+                await streamer.progress("writing")
+            if not extractor.active:
+                return False
+            grew = extractor.feed(chunk.text)
+            if not grew and not extractor.done:
+                return False
+            for piece in gate.feed(extractor.text, extractor.done):
+                if timing.first_words_ms is None:
+                    timing.first_words_ms = timing.clock.elapsed_ms()
+                await streamer.token(piece)
+            if gate.blocked is not None:
+                # A sentence failed the check. Nothing released is withdrawn;
+                # if anything was released, the line is committed as it stands
+                # and generation stops here. If nothing was released yet, the
+                # whole output is still collected so the normal validate /
+                # retry path can run on it.
+                return bool(gate.released)
+            if extractor.done:
+                timing.reply_done_ms = timing.clock.elapsed_ms()
+                await streamer.final(gate.released_text)
+                if not stream_state["finishing_announced"]:
+                    stream_state["finishing_announced"] = True
+                    await streamer.progress("finishing")
+            return False
+        return False
+
+    if streamer is not None:
+        await streamer.progress("waiting")
     observation = StreamObservation(sent_at=time.perf_counter())
     timing.observation = observation
     raw_text, native_structured, _final = await _collect_runtime_output_timed(
-        runtime, request, observation
+        runtime, request, observation, on_chunk=_on_chunk if streamer is not None else None
     )
     parse_started = time.perf_counter()
 
-    # 8. Validate / repair / fallback.
-    # When the runtime returned a pre-parsed structured dict (via native JSON-schema
-    # or grammar constraints), serialise it back to a clean JSON string for the
-    # parser so the JSON-extraction step always succeeds on the first try.
-    # The original raw_text is preserved in the DB for the debug drawer.
-    parse_input = json.dumps(native_structured) if native_structured is not None else raw_text
-
-    # Wrap the runtime so parse_turn_output can make synchronous repair calls.
-    # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
-    runtime_bridge = _SyncRuntimeBridge(runtime, timing)
+    released_line = gate.released_text if extractor is not None else ""
     turn_parse_events: List[TurnEvent] = []
-    turn_output = parse_turn_output(
-        parse_input,
-        runtime=runtime_bridge,
-        hidden_agenda=scenario_data.npc.private_persona.hidden_agenda,
-        turn_events=turn_parse_events,
-    )
-    used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
-    if used_fallback:
-        logger.warning("Turn output fell back to safe utterance for session %s turn %d", session_id, turn_number)
+    salvaged = False
+
+    if released_line:
+        # 8a. Released text is committed text (issue #538): build the turn from
+        # the words the player has seen plus whatever bookkeeping the model
+        # completed. No repair, no retry, no second model call.
+        blocked = gate.blocked is not None
+        salvage = salvage_turn_output(
+            raw_text, native_structured, released_line, force_defaults=blocked
+        )
+        turn_output = salvage.output
+        salvaged = salvage.salvaged
+        if blocked:
+            violation = gate.blocked.first_violation
+            turn_parse_events.append(TurnEvent(
+                event_type="output_violation_detected",
+                category=violation.category if violation else None,
+                reason=violation.reason if violation else None,
+                is_recoverable=violation.is_recoverable if violation else None,
+            ))
+            turn_parse_events.append(TurnEvent(
+                event_type="stream_salvaged",
+                reason="a later sentence failed the output check; the released sentences stand",
+            ))
+        elif salvaged:
+            turn_parse_events.append(TurnEvent(
+                event_type="stream_salvaged",
+                reason="; ".join(f"{k}: {v}" for k, v in salvage.defaulted.items()) or "fields defaulted",
+            ))
+        used_fallback = False
+    else:
+        # 8b. Validate / repair / fallback, exactly as before streaming existed.
+        # When the runtime returned a pre-parsed structured dict (via native JSON-schema
+        # or grammar constraints), serialise it back to a clean JSON string for the
+        # parser so the JSON-extraction step always succeeds on the first try.
+        # The original raw_text is preserved in the DB for the debug drawer.
+        parse_input = json.dumps(native_structured) if native_structured is not None else raw_text
+
+        if streamer is not None and _repair_is_coming(parse_input, hidden_agenda):
+            # The parser's repair runs synchronously, so the stage has to be
+            # announced before it starts (#527 moves it onto the event loop).
+            await streamer.progress("checking")
+
+        # Wrap the runtime so parse_turn_output can make synchronous repair calls.
+        # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
+        runtime_bridge = _SyncRuntimeBridge(runtime, timing)
+        turn_output = parse_turn_output(
+            parse_input,
+            runtime=runtime_bridge,
+            hidden_agenda=hidden_agenda,
+            turn_events=turn_parse_events,
+        )
+        used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
+        if used_fallback:
+            logger.warning("Turn output fell back to safe utterance for session %s turn %d", session_id, turn_number)
     timing.fallback = used_fallback
+    timing.salvaged = salvaged
     # The repair calls run inside parse_turn_output, so their wall time is
     # subtracted here: they are reported as extra_calls, not as "other".
     timing.parse_ms = max(
@@ -727,6 +893,8 @@ async def process_turn(
             session_id, turn_number, "debug",
             json.dumps({
                 "used_fallback": used_fallback,
+                "salvaged": salvaged,
+                "streamed": bool(released_line),
                 "used_native_structured_output": native_structured is not None,
                 "parse_events": [
                     {
@@ -815,4 +983,6 @@ async def process_turn(
         turn_number=turn_number,
         used_fallback=used_fallback,
         timing=timing.build(),
+        salvaged=salvaged,
+        streamed_line=released_line or None,
     )
