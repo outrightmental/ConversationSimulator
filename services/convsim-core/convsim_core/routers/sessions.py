@@ -775,6 +775,25 @@ def _session_bus(request: Request) -> Optional[SessionEventBus]:
     return getattr(request.app.state, "session_bus", None)
 
 
+def turn_timeout_message(*, demo: bool) -> str:
+    """The TURN_TIMEOUT message, in words a player can act on.
+
+    The adapter's own message names env vars, and the copy before issue #539
+    told the player to add "GPU layers": an engine term that means nothing to
+    someone who did not set the engine up. Both editions can shorten replies
+    under Reply speed in Settings, which needs no restart. Only the full app
+    can swap the model for a smaller one, so the demo is not sent looking for
+    a model manager it does not have.
+    """
+    advice = "choose Quick replies under Reply speed in Settings"
+    if not demo:
+        advice += ", or try a smaller model"
+    return (
+        "The AI engine stopped responding partway through its reply. "
+        f"Your turn was not recorded, so try again. If this keeps happening, {advice}."
+    )
+
+
 @router.post("/{session_id}/turn", response_model=TurnResponse)
 async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request) -> TurnResponse:
     # The turn's clock starts the moment the request arrives: every figure in
@@ -882,11 +901,7 @@ async def _run_turn(
         logger.warning("Turn timed out for session %s: %s", session_id, exc)
         raise ConvsimError(
             code="TURN_TIMEOUT",
-            message=(
-                "The AI engine stopped responding partway through its reply. "
-                "Your turn was not recorded — try again, and consider a smaller "
-                "model or more GPU layers if this keeps happening."
-            ),
+            message=turn_timeout_message(demo=is_demo(request.app.state.service_config)),
             status_code=504,
         ) from exc
     except ConnectionError as exc:

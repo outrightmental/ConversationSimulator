@@ -605,6 +605,27 @@ class TestEngineTimeout:
         message = res.json()["error"]["message"]
         assert "CONVSIM_" not in message
         assert "try again" in message.lower()
+        # Nor engine vocabulary: "GPU layers" meant nothing to a player (#539).
+        assert "gpu" not in message.lower()
+        assert "layers" not in message.lower()
+        assert "not recorded" in message
+        # The full app gets both levers: the setting and a smaller model.
+        assert "Quick replies" in message and "Reply speed" in message
+        assert "smaller model" in message
+
+    def test_timeout_message_sends_the_demo_only_where_it_can_go(self):
+        """The demo cannot change models, so it hears about Reply speed alone."""
+        from convsim_core.routers.sessions import turn_timeout_message
+
+        for demo in (False, True):
+            message = turn_timeout_message(demo=demo)
+            assert "gpu" not in message.lower()
+            assert "layers" not in message.lower()
+            assert "not recorded" in message
+            assert "try again" in message.lower()
+            assert "Quick replies" in message and "Reply speed" in message
+        assert "smaller model" in turn_timeout_message(demo=False)
+        assert "smaller model" not in turn_timeout_message(demo=True)
 
     def test_session_stays_retryable_and_records_nothing(self, tmp_config):
         """The pipeline persists only after the model answers, so the turn is free to retry."""
