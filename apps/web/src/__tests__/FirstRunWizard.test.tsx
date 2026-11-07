@@ -22,6 +22,7 @@ vi.mock('../api/client', () => ({
     startSetupInstall: vi.fn(),
     getSetupInstallStatus: vi.fn(),
     cancelSetupInstall: vi.fn(),
+    getFolders: vi.fn().mockResolvedValue({ ok: true, data: { data: '/srv/convsim', logs: '/srv/convsim/logs', models: '/srv/convsim/models/llm', packs: '/srv/convsim/packs', exports: '/srv/convsim/exports', cache: '/srv/convsim/cache', crash_bundles: '/srv/convsim/crashes' } }),
     listScenarios: vi.fn(),
     createSession: vi.fn().mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted', created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard', player_role_name: 'New Player', language: 'en', input_mode: 'text-only', tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } }),
   },
@@ -140,6 +141,7 @@ beforeEach(() => {
   mockApi.startSetupInstall.mockResolvedValue({ ok: true, data: RUNNING_JOB })
   mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: RUNNING_JOB })
   mockApi.cancelSetupInstall.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.getFolders.mockResolvedValue({ ok: true, data: { data: '/srv/convsim', logs: '/srv/convsim/logs', models: '/srv/convsim/models/llm', packs: '/srv/convsim/packs', exports: '/srv/convsim/exports', cache: '/srv/convsim/cache', crash_bundles: '/srv/convsim/crashes' } })
   mockApi.registerGguf.mockResolvedValue({ ok: true, data: {
     profile_id: 1,
     file_path: '/home/user/models/my-model.gguf',

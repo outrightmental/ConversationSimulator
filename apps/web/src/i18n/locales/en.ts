@@ -498,6 +498,11 @@ export const en = {
       oneIssue: 'One thing needs your attention before setup can continue.',
       manyIssues: '{{count}} things need your attention before setup can continue.',
     },
+    confirmInstall: {
+      savesTo: 'Saves to',
+      storagePath: 'Storage path',
+      fileName: 'File name',
+    },
     installing: {
       whileHeading: 'While that downloads…',
       promiseHeading: "You're about to meet someone with their own agenda.",

@@ -492,6 +492,11 @@ export const de: LocaleMessages = {
       oneIssue: 'Ein Problem muss gelöst werden, bevor die Einrichtung fortgesetzt werden kann.',
       manyIssues: '{{count}} Probleme müssen gelöst werden, bevor die Einrichtung fortgesetzt werden kann.',
     },
+    confirmInstall: {
+      savesTo: 'Speicherort',
+      storagePath: 'Speicherpfad',
+      fileName: 'Dateiname',
+    },
     installing: {
       whileHeading: 'Während des Downloads…',
       promiseHeading: 'Gleich treffen Sie jemanden mit eigener Agenda.',
