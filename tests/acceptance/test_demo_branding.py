@@ -30,12 +30,16 @@ full game read as the same product.
 
 Nothing here needs a build or a network, and only the JPEG's pixels need
 ImageMagick — the PNGs, the ICO and the ICNS are parsed directly, and the
-JPEG's dimensions come straight out of its SOF marker. Owner: platform team.
+JPEG's dimensions come straight out of its SOF marker. The CI acceptance job
+installs ImageMagick for those three pixel checks; without it they skip on a
+developer machine and fail under CI, so a runner image that stops shipping it
+cannot quietly drop the App Icon from the gate. Owner: platform team.
 """
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import struct
 import subprocess
@@ -159,26 +163,74 @@ def _png_dimensions(raw: bytes) -> tuple[int, int]:
     return struct.unpack(">II", raw[16:24])
 
 
-_MAGICK = shutil.which("magick") or shutil.which("convert")
+def _find_magick() -> str | None:
+    """ImageMagick's command-line entry point, or None when it is not installed.
 
-_needs_magick = pytest.mark.skipif(
-    _MAGICK is None,
-    reason="reading the App Icon's pixels needs ImageMagick; its JPEG payload "
-           "is the one asset in this suite with no pure-Python reader",
-)
+    ``magick`` is ImageMagick 7's binary and nothing else installs one under
+    that name, so it is taken at its word. ``convert`` is ImageMagick 6's, but
+    Windows ships a ``convert.exe`` of its own in System32 (the NTFS volume
+    converter), so that name is believed only when ``convert -version`` says
+    ImageMagick. Otherwise the tests that need it skip as documented instead
+    of erroring on the wrong program.
+    """
+    magick = shutil.which("magick")
+    if magick is not None:
+        return magick
+    convert = shutil.which("convert")
+    if convert is None:
+        return None
+    try:
+        probe = subprocess.run([convert, "-version"], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return convert if b"ImageMagick" in probe.stdout else None
+
+
+_MAGICK = _find_magick()
+
+
+def _running_in_ci() -> bool:
+    """GitHub Actions sets ``CI=true``; other runners set it to something truthy too."""
+    return os.environ.get("CI", "").strip().lower() not in ("", "0", "false")
+
+
+def _require_magick() -> str:
+    """The ImageMagick binary, or the test's verdict on not having one.
+
+    On a developer machine without ImageMagick the App Icon's pixel checks
+    skip: the JPEG is the one asset here with no pure-Python reader, and a
+    baseline-JPEG decoder for one 184 px icon would be a worse trade. Under CI
+    they fail instead. The acceptance job installs the ``imagemagick`` package
+    for exactly these tests, so ImageMagick missing there means the install
+    step was dropped or the runner image changed underneath it, and a skip
+    would let a wrong App Icon through the gate while the job stayed green.
+    """
+    if _MAGICK is not None:
+        return _MAGICK
+    message = (
+        "reading the App Icon's pixels needs ImageMagick; its JPEG payload is "
+        "the one asset in this suite with no pure-Python reader"
+    )
+    if _running_in_ci():
+        pytest.fail(
+            f"{message}. CI is set and ImageMagick is not on PATH: the acceptance "
+            "job must install the imagemagick package (apt) before running this "
+            "suite, or the App Icon ships unchecked",
+            pytrace=False,
+        )
+    pytest.skip(message)
 
 
 def _magick_rgb(path: Path, size: int) -> list[tuple[int, int, int]]:
     """``size * size`` RGB pixels, read through ImageMagick.
 
     Only the App Icon needs this: everything else here is PNG, ICO or ICNS and
-    is parsed in-process. Writing a baseline-JPEG decoder for one 184 px icon
-    would be a worse trade than skipping on the rare machine with no
-    ImageMagick.
+    is parsed in-process. Without ImageMagick the calling test skips locally
+    and fails under CI; see ``_require_magick``.
     """
-    assert _MAGICK is not None
+    magick = _require_magick()
     raw = subprocess.run(
-        [_MAGICK, str(path), "-depth", "8", "RGB:-"],
+        [magick, str(path), "-depth", "8", "RGB:-"],
         check=True, capture_output=True,
     ).stdout
     assert len(raw) == size * size * 3, (
@@ -682,7 +734,6 @@ class TestSteamworksIcons:
             f"the App Icon should be 3-component YCbCr, not {components}"
         )
 
-    @_needs_magick
     def test_app_icon_is_flattened_onto_the_capsule_base(self):
         """JPEG has no alpha, so the plate's rounded corners must be composited.
 
@@ -697,7 +748,6 @@ class TestSteamworksIcons:
             f"the App Icon's corner is {corner}, not the capsule base colour"
         )
 
-    @_needs_magick
     def test_app_icon_plate_is_the_demo_purple(self):
         """Hue is what separates the two library rows at the size this is drawn."""
         pixels = _magick_rgb(_APP_ICON, _APP_ICON_PX)
@@ -707,7 +757,6 @@ class TestSteamworksIcons:
         )
         assert _distance(plate, _BASE_PLATE) >= _MIN_PLATE_DISTANCE
 
-    @_needs_magick
     def test_app_icon_carries_the_demo_ribbon(self):
         """184 clears ``RIBBON_MIN_PX``, so the word is on the asset that matters.
 
@@ -797,11 +846,12 @@ class TestGeneratedArtworkIsCurrent:
     Everything above pins what the rasterised set *looks like*; none of it can
     tell a tree where the mark was edited in ``gen_icons.py`` and the script
     never re-run — rasterising to find out would need ImageMagick, which this
-    suite deliberately does not have. The committed ``demo_icon.svg`` is drawn
-    from the same geometry constants as the PNG, ICO and ICNS frames, and
-    unlike them it is plain text, so comparing it to ``icon_svg()`` catches a
-    half-applied regeneration for free — and keeps the vector the docs hand to
-    anyone re-rendering the mark from drifting out of hand-edits.
+    suite borrows for the App Icon's pixels and nothing else. The committed
+    ``demo_icon.svg`` is drawn from the same geometry constants as the PNG, ICO
+    and ICNS frames, and unlike them it is plain text, so comparing it to
+    ``icon_svg()`` catches a half-applied regeneration for free — and keeps the
+    vector the docs hand to anyone re-rendering the mark from drifting out of
+    hand-edits.
     """
 
     def test_committed_svg_is_what_the_generator_draws(self):
