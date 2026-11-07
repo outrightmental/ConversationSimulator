@@ -6,7 +6,9 @@ import { REPLY_SPEEDS } from '@convsim/shared'
 import type { ReplySpeed } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
+import { RUNTIME_SETTINGS_CHANGED_EVENT } from './RuntimeSettingsPanel'
 import { useTranslation } from '../i18n'
+import { useIsDemo } from '../edition'
 
 /**
  * "Make the model respond faster", as a thing the app actually offers
@@ -25,6 +27,10 @@ import { useTranslation } from '../i18n'
  */
 export default function ReplySpeedPanel() {
   const { t } = useTranslation()
+  // The demo edition (issue #495) keeps this control: its curated model is
+  // fixed, so reply length is the only speed lever a demo player has. What it
+  // drops is the pointer to the model manager, which is a full-app surface.
+  const isDemo = useIsDemo()
   const [speed, setSpeed] = useState<ReplySpeed>('balanced')
   const [loadError, setLoadError] = useState<ApiError | null>(null)
   const [unavailable, setUnavailable] = useState(false)
@@ -53,7 +59,22 @@ export default function ReplySpeedPanel() {
     void load()
   }, [load])
 
+  // The engine panel's "Reset to recommended" clears reply_speed on the server
+  // along with everything else; re-read so this control cannot keep showing a
+  // choice the engine no longer applies.
+  useEffect(() => {
+    function onChanged() {
+      void load()
+    }
+    window.addEventListener(RUNTIME_SETTINGS_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(RUNTIME_SETTINGS_CHANGED_EVENT, onChanged)
+  }, [load])
+
   async function choose(next: ReplySpeed) {
+    // Re-entry guard instead of `disabled` on the buttons: disabling the option
+    // that was just pressed drops keyboard and gamepad focus to <body>, and the
+    // next D-pad press then lands on the first focusable thing on the page.
+    if (saving) return
     if (next === speed) return
     const previous = speed
     // Optimistic: the point of this control is that it feels immediate.
@@ -82,6 +103,7 @@ export default function ReplySpeedPanel() {
       <div
         role="radiogroup"
         aria-label={t('settings.replySpeed.label')}
+        aria-busy={saving}
         data-testid="reply-speed-options"
         style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}
       >
@@ -94,7 +116,6 @@ export default function ReplySpeedPanel() {
               aria-checked={selected}
               data-testid={`reply-speed-${option}`}
               onClick={() => void choose(option)}
-              disabled={saving}
               style={{
                 flex: '1 1 10rem',
                 textAlign: 'left',
@@ -142,13 +163,17 @@ export default function ReplySpeedPanel() {
       )}
 
       {/* Honest about the ceiling: reply length is the lever this control has,
-          and on slow hardware a smaller model is a bigger one. */}
-      <p style={{ margin: '0.6rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>
-        {t('settings.replySpeed.biggerWin')}{' '}
-        <Link to="/model-manager" style={{ color: '#818cf8' }}>
-          {t('settings.replySpeed.biggerWinLink')}
-        </Link>
-      </p>
+          and on slow hardware a smaller model is a bigger one. Not in the demo,
+          whose model cannot be changed: naming a lever the player cannot reach
+          is the dead end issue #501 is about. */}
+      {!isDemo && (
+        <p style={{ margin: '0.6rem 0 0', fontSize: '0.8rem', color: '#71717a' }}>
+          {t('settings.replySpeed.biggerWin')}{' '}
+          <Link to="/model-manager" style={{ color: '#818cf8' }}>
+            {t('settings.replySpeed.biggerWinLink')}
+          </Link>
+        </p>
+      )}
     </div>
   )
 }

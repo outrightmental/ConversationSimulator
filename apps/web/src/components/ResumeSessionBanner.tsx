@@ -2,7 +2,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import { useTranslation } from '../i18n'
-import { useResumableSession } from '../hooks/useResumableSession'
+import { announceSessionsChanged, useResumableSession } from '../hooks/useResumableSession'
 import { useScenarios } from '../api/useScenarios'
 
 /**
@@ -27,7 +27,7 @@ export default function ResumeSessionBanner() {
   const onConversationRoute =
     location.pathname.startsWith('/conversation/') ||
     location.pathname.startsWith('/debrief/')
-  const { result, refetch } = useResumableSession(!onConversationRoute)
+  const { result } = useResumableSession(!onConversationRoute)
 
   if (result.state !== 'ready') return null
 
@@ -45,7 +45,9 @@ export default function ResumeSessionBanner() {
     const r = await api.endSession(session.session_id)
     // Either way the banner has to re-ask: on success the session is no longer
     // resumable, and on failure the row may have been ended by another window.
-    refetch()
+    // Announced rather than refetched directly so Home's resume link, when
+    // mounted, re-asks too.
+    announceSessionsChanged()
     // Ending a conversation produces a debrief, here exactly as it does from
     // the conversation screen's End session button. Without this the player
     // who ends from the strip is left where they were and the debrief they

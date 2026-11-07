@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { I18nProvider } from '../i18n'
 import ResumeSessionBanner from '../components/ResumeSessionBanner'
@@ -241,5 +241,64 @@ describe('ResumeSessionBanner', () => {
     expect(screen.getByTestId('resume-session-banner')).toHaveTextContent(
       'behavioral_interview',
     )
+  })
+
+  it('ignores a listing that lands after "End it" has moved on to the debrief', async () => {
+    // "End it" re-asks and then navigates to the debrief, where the banner is
+    // off. The re-ask's answer can arrive after that — and applied, it put a
+    // strip offering the *next*-newest conversation on the one screen the
+    // banner is documented to stay off.
+    let resolveListing: (r: { ok: true; data: { sessions: (typeof SESSION)[] } }) => void = () => {}
+    mockApi.listSessions
+      .mockResolvedValueOnce({ ok: true, data: { sessions: [SESSION] } })
+      .mockReturnValueOnce(new Promise((resolve) => { resolveListing = resolve }) as never)
+      .mockResolvedValue({ ok: true, data: { sessions: [] } })
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={['/settings']}>
+          {/* Outside <Routes>, as AppLayout mounts it: one instance that sees
+              the route change rather than a fresh one per screen. */}
+          <ResumeSessionBanner />
+          <Routes>
+            <Route path="/settings" element={<div data-testid="page" />} />
+            <Route path="/debrief/:id" element={<div data-testid="debrief" />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('resume-session-end-button')).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByTestId('resume-session-end-button'))
+    await waitFor(() => expect(screen.getByTestId('debrief')).toBeInTheDocument())
+    expect(screen.queryByTestId('resume-session-banner')).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveListing({
+        ok: true,
+        data: { sessions: [{ ...SESSION, session_id: 'sess-older', scenario_id: 'sales_call' }] },
+      })
+    })
+    expect(screen.queryByTestId('resume-session-banner')).not.toBeInTheDocument()
+  })
+
+  it('re-asks when a screen announces that the sessions changed', async () => {
+    // Settings' own list deletes and clears sessions right under this strip;
+    // without a nudge it kept offering a row that no longer existed, and Resume
+    // landed on a 404. The event name is the contract Settings dispatches.
+    mockApi.listSessions
+      .mockResolvedValueOnce({ ok: true, data: { sessions: [SESSION] } })
+      .mockResolvedValue({ ok: true, data: { sessions: [] } })
+    renderAt('/settings')
+    await waitFor(() =>
+      expect(screen.getByTestId('resume-session-banner')).toBeInTheDocument(),
+    )
+    act(() => {
+      window.dispatchEvent(new CustomEvent('convsim:sessions-changed'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByTestId('resume-session-banner')).not.toBeInTheDocument(),
+    )
+    expect(mockApi.listSessions).toHaveBeenCalledTimes(2)
   })
 })
