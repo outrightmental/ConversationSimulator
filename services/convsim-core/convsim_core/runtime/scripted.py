@@ -180,13 +180,17 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
 #
 # Checked in order, so the most specific cluster comes first.
 
-#: (keywords, answer). A turn matches a cluster when the player's message reads
-#: as a question — or asks to be told — AND mentions one of the keywords, so
-#: "the meters moved, nice" is not treated as a question about them.
+#: (keywords, answer). A turn matches a cluster when one clause of the player's
+#: message asks a question — or asks to be told — about one of the keywords
+#: (see _pick_interjection), so "the meters moved, nice" is not treated as a
+#: question about them. The keywords are the things a player might ask about,
+#: not every word that could appear near them: "real", "long" and "number(s)"
+#: used to be here, and "What brought me here is a real need to practise" got
+#: the is-this-AI answer (issue #501 §3, from the other side).
 _INTERJECTIONS: list[tuple[frozenset[str], str]] = [
     (
         frozenset(["meter", "meters", "engagement", "confidence", "bar", "bars",
-                   "number", "numbers", "gauge", "gauges"]),
+                   "gauge", "gauges"]),
         "Good question — those two meters are the heart of it. Engagement "
         "is how interested I am in this conversation. Confidence is how "
         "sure of yourself you are coming across. They are mine: you do not "
@@ -202,8 +206,8 @@ _INTERJECTIONS: list[tuple[frozenset[str], str]] = [
         "are the two labelled bars above the conversation.",
     ),
     (
-        frozenset(["ai", "real", "bot", "robot", "model", "scripted", "script",
-                   "pretend", "pretending"]),
+        frozenset(["ai", "real ai", "are you real", "bot", "robot", "model",
+                   "scripted", "script", "pretend", "pretending"]),
         "Straight answer: I am scripted. Every line I say in this tutorial "
         "was written ahead of time, which is why it works before you have "
         "downloaded anything. Every other conversation here runs on an AI "
@@ -212,7 +216,7 @@ _INTERJECTIONS: list[tuple[frozenset[str], str]] = [
     ),
     (
         frozenset(["end", "ends", "ending", "endings", "finish", "finishes",
-                   "over", "long", "quit", "stop", "turns"]),
+                   "over", "quit", "stop", "turns"]),
         "A conversation finishes in one of three ways: it goes well, it "
         "goes badly, or it runs out of turns. You can also stop whenever "
         "you like with End session — you still get the debrief.",
@@ -229,19 +233,42 @@ _INTERJECTIONS: list[tuple[frozenset[str], str]] = [
 
 #: Markers that a message is asking rather than answering. A question mark
 #: alone misses "tell me what the meters are", and these words alone would
-#: catch "what a good idea" — so a match needs one of these AND a topic word.
+#: catch "what a good idea" — so a match needs one of these AND a topic word,
+#: placed as a question would place them (see _pick_interjection). Bare
+#: "when" and "mean(s)/meant" are left out on purpose: "I want more confidence
+#: when I talk to people" and "I meant the confidence one" are answers to the
+#: tour's own prompts, and a gate that counted them as questions opened with
+#: "Good question —" on a player who had not asked one.
 _QUESTION_WORDS = (
-    "what", "whats", "which", "why", "how", "who", "when", "explain",
-    "mean", "means", "meant", "meaning", "confused", "clarify",
+    "what", "whats", "which", "why", "how", "who", "explain",
+    "meaning", "confused", "clarify",
     "tell me", "i don't understand", "i dont understand",
     "not sure what", "no idea",
 )
 
-#: Matched on word boundaries, never as bare substrings: "explain" contains
-#: "ai" and "show" contains "how", and matching those inside other words is how
-#: a keyword table starts answering questions nobody asked.
-_QUESTION_RE = re.compile(
-    r"\?|\b(?:" + "|".join(re.escape(w) for w in _QUESTION_WORDS) + r")\b"
+_QUESTION_WORDS_ALT = "|".join(re.escape(w) for w in _QUESTION_WORDS)
+
+#: One clause of the player's message — its words, then the punctuation that
+#: closes it. A question and the thing it asks about live in the same clause,
+#: so "I am feeling good, how about you?" splits into a half that names a topic
+#: without asking and a half that asks without a topic, and neither qualifies.
+_CLAUSE_RE = re.compile(r"([^,;:.!?]+)([,;:.!?]*)")
+
+#: The clause opens with a question word, allowing one word in front of it:
+#: "but what are the meters", "I'm confused about the bars", "so tell me …".
+_OPENS_WITH_QUESTION_RE = re.compile(
+    r"^\s*(?:\S+\s+)?(?:" + _QUESTION_WORDS_ALT + r")\b"
+)
+
+#: The words right before the topic word are a question word and at most two
+#: small function words: "which meter", "explain the meters", "I'm curious how
+#: the meters work". Matched on word boundaries, never as bare substrings:
+#: "explain" contains "ai" and "show" contains "how", and matching those inside
+#: other words is how a keyword table starts answering questions nobody asked.
+_QUESTION_BEFORE_TOPIC_RE = re.compile(
+    r"\b(?:" + _QUESTION_WORDS_ALT + r")\s+"
+    r"(?:(?:the|a|an|this|that|these|those|my|your|our|its|about|of"
+    r"|do|does|did|is|are|was|were)\s+){0,2}$"
 )
 
 _INTERJECTION_RES: list[tuple[re.Pattern[str], str]] = [
@@ -253,17 +280,32 @@ _INTERJECTION_RES: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
-def _looks_like_a_question(lower_text: str) -> bool:
-    return _QUESTION_RE.search(lower_text) is not None
+def _asks_about(topic: re.Pattern[str], body: str, terminator: str) -> bool:
+    """True when this clause names one of the topic words AND asks about it.
+
+    Asking means the clause ends in a question mark, opens with a question
+    word, or puts a question word right before the topic word. Anything looser
+    — a question word anywhere plus a topic word anywhere, which is what this
+    used to be — reads "I want more confidence when I talk to people" as a
+    question about the meters. That sentence is an answer to turn 1's "tell me
+    what brought you here", and answering it with "Good question — those two
+    meters…" is the issue #501 §3 complaint from the other direction: Alex
+    responding to something the player did not say.
+    """
+    mentions = list(topic.finditer(body))
+    if not mentions:
+        return False
+    if "?" in terminator or _OPENS_WITH_QUESTION_RE.match(body):
+        return True
+    return any(_QUESTION_BEFORE_TOPIC_RE.search(body[: m.start()]) for m in mentions)
 
 
 def _pick_interjection(player_text: str) -> str | None:
     """Return an answer to the player's question, or None if we have none."""
-    lower = player_text.lower()
-    if not _looks_like_a_question(lower):
-        return None
+    clauses = _CLAUSE_RE.findall(player_text.lower())
+    # Clusters outrank clauses: the most specific answer wins, as before.
     for pattern, answer in _INTERJECTION_RES:
-        if pattern.search(lower):
+        if any(_asks_about(pattern, body, terminator) for body, terminator in clauses):
             return answer
     return None
 
@@ -494,13 +536,18 @@ class ScriptedChatRuntime(ChatRuntime):
         script = _FIRST_WORDS_SCRIPT
         player_text = _extract_player_text(request)
 
-        # Last script entry: keyword-branch the ending. Checked before the
-        # interjections because the session has to close here — a player who
-        # asks a question on the final turn gets the curious ending branch,
-        # which answers it and closes, rather than an answer that never does.
+        # Last script entry: keyword-branch the ending, and answer a question
+        # in front of it exactly as on every other turn. The ending branches
+        # say nothing about the meters or the script — "but what are the
+        # meters?" used to get the curious send-off and "are you an AI?" the
+        # default one — so a question here was talked past on the last line
+        # the player reads (issue #501 §3). The branch's session_control is
+        # untouched, so the session still closes.
         last_idx = len(script) - 1
         if turn_idx >= last_idx:
-            return _pick_ending_turn(player_text)
+            ending = _pick_ending_turn(player_text)
+            answer = _pick_interjection(player_text)
+            return _with_answer(ending, answer) if answer is not None else ending
 
         # A turn index at or past last_idx already returned above, so here
         # turn_idx < last_idx; only guard against a non-positive index.
