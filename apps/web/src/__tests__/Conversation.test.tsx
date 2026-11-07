@@ -1247,6 +1247,173 @@ describe('Conversation screen', () => {
     })
   })
 
+  describe('streaming sentence by sentence (issue #538)', () => {
+    function connectWith(): { fire: (event: WsEvent) => void } {
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      return { fire: (event) => act(() => wsCallback?.(event)) }
+    }
+
+    function ev<T extends WsEvent['type']>(type: T, payload: Extract<WsEvent, { type: T }>['payload'], seq = 1): WsEvent {
+      return { type, seq, session_id: SESSION_ID, ts: '2026-07-01T00:01:00Z', payload } as WsEvent
+    }
+
+    async function submitFirst(text = 'Tell me more.') {
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), { target: { value: text } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    }
+
+    it('commits the line from npc.final with content only and re-enables the reply box before the turn commits', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await submitFirst()
+
+      fire(ev('npc.token', { text: 'First sentence.' }, 1))
+      fire(ev('npc.token', { text: ' Second one.' }, 2))
+      await waitFor(() => expect(screen.getByTestId('streaming-turn')).toHaveTextContent('First sentence. Second one.'))
+      // Still writing: the box is disabled.
+      expect(screen.getByRole('textbox', { name: /your response/i })).toBeDisabled()
+
+      fire(ev('npc.final', { content: 'First sentence. Second one.' }, 3))
+      await waitFor(() => expect(screen.queryByTestId('streaming-turn')).not.toBeInTheDocument())
+      expect(screen.getByText('First sentence. Second one.')).toBeInTheDocument()
+      // The line is complete: the player can type again while the core finishes.
+      expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      // No emotion was claimed before the commit reported one.
+      expect(screen.queryByTestId('npc-emotion')).not.toBeInTheDocument()
+      expect(screen.getByTestId('turn-finishing-indicator')).toHaveTextContent(/finishing the turn/i)
+    })
+
+    it('applies the emotion, flags and meters from scenario.state_delta onto the committed row', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ show_state_meters: true })
+      await submitFirst()
+
+      fire(ev('npc.token', { text: 'Interesting.' }, 1))
+      fire(ev('npc.final', { content: 'Interesting.' }, 2))
+      fire(ev('scenario.state_delta', {
+        delta: { trust: 5 },
+        state_vars: { trust: 55, patience: 75, rapport: 50, openness: 50, objective_progress: 0 },
+        turn_number: 1,
+        emotion: 'impressed',
+        event_flags: ['honesty_demonstrated'],
+        triggered_scenario_events: [],
+        ending_type: null,
+      }, 3))
+
+      await waitFor(() => expect(screen.getByTestId('npc-emotion')).toHaveTextContent(/impressed/i))
+      expect(screen.getByTestId('turn-mood')).toHaveTextContent(/impressed/i)
+      const trust = screen.getByRole('meter', { name: /trust/i })
+      expect(trust).toHaveAttribute('aria-valuenow', '55')
+    })
+
+    it('queues a message sent before the commit and delivers it exactly once when the turn lands', async () => {
+      const { fire } = connectWith()
+      let resolveFirst: ((r: { ok: true; data: TurnResponse }) => void) | null = null
+      mockApi.submitTurn
+        .mockReturnValueOnce(new Promise((r) => { resolveFirst = r }))
+        .mockResolvedValue({ ok: true, data: turnResponse })
+      renderConversation()
+      await submitFirst('Opening question.')
+
+      fire(ev('npc.token', { text: 'Here is the reply.' }, 1))
+      fire(ev('npc.final', { content: 'Here is the reply.' }, 2))
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled(),
+      )
+
+      // The player answers before the core has saved the turn.
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), { target: { value: 'My follow-up.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByTestId('queued-message')).toHaveTextContent('My follow-up.'))
+      expect(mockApi.submitTurn).toHaveBeenCalledTimes(1)
+
+      // The first turn commits; the queued message goes out once.
+      await act(async () => {
+        resolveFirst!({ ok: true, data: turnResponse })
+      })
+      await waitFor(() => expect(mockApi.submitTurn).toHaveBeenCalledTimes(2))
+      expect(mockApi.submitTurn).toHaveBeenLastCalledWith(SESSION_ID, 'My follow-up.', false)
+      await waitFor(() => expect(screen.queryByTestId('queued-message')).not.toBeInTheDocument())
+      // Both messages are in the transcript, numbered as two whole turns.
+      await waitFor(() => expect(screen.getByText('My follow-up.')).toBeInTheDocument())
+      // The label is two spans ("Turn 2" · "You"); the follow-up opened whole turn 2.
+      expect(screen.getAllByText('Turn 2').length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('lets the player remove a queued message instead of sending it', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await submitFirst()
+      fire(ev('npc.final', { content: 'Reply.' }, 1))
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), { target: { value: 'Never mind.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByTestId('queued-message')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: /remove queued message/i }))
+      expect(screen.queryByTestId('queued-message')).not.toBeInTheDocument()
+      expect(mockApi.submitTurn).toHaveBeenCalledTimes(1)
+    })
+
+    it('applies the REST snapshot when the row was committed over the socket', async () => {
+      const { fire } = connectWith()
+      let resolveTurn: ((r: { ok: true; data: TurnResponse }) => void) | null = null
+      mockApi.submitTurn.mockReturnValueOnce(new Promise((r) => { resolveTurn = r }))
+      renderConversation({ show_state_meters: true })
+      await submitFirst()
+      fire(ev('npc.final', { content: 'Hello there. I am a simulated NPC.' }, 1))
+      await act(async () => {
+        resolveTurn!({
+          ok: true,
+          data: {
+            ...turnResponse,
+            events: [
+              turnResponse.events[0],
+              {
+                ...turnResponse.events[1],
+                payload: {
+                  ...turnResponse.events[1].payload,
+                  emotion: 'curious',
+                  event_flags: ['asked_a_question'],
+                  visible_state: { trust: 61, patience: 75, rapport: 50, openness: 50, objective_progress: 0 },
+                },
+              },
+            ],
+          },
+        })
+      })
+      // One row, not two; and the REST state landed on it.
+      await waitFor(() => expect(screen.getByTestId('npc-emotion')).toHaveTextContent(/curious/i))
+      expect(screen.getAllByText('Hello there. I am a simulated NPC.')).toHaveLength(1)
+      expect(screen.getByRole('meter', { name: /trust/i })).toHaveAttribute('aria-valuenow', '61')
+    })
+
+    it('records the stage the core reports while the turn runs', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await submitFirst()
+      fire(ev('turn.progress', { stage: 'reading', prompt: { processed: 256, total: 2034, cached: 0 }, output_tokens: 0, elapsed_ms: 3000 }, 1))
+      await waitFor(() => expect(screen.getByTestId('conversation-page')).toHaveAttribute('data-turn-stage', 'reading'))
+      fire(ev('turn.progress', { stage: 'writing', prompt: null, output_tokens: 3, elapsed_ms: 9000 }, 2))
+      await waitFor(() => expect(screen.getByTestId('conversation-page')).toHaveAttribute('data-turn-stage', 'writing'))
+      // Writing counts as streaming for the panel even before a sentence lands.
+      expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent(/replying/i)
+    })
+  })
+
   describe('debug drawer', () => {
     afterEach(() => {
       localStorage.removeItem('convsim.devMode')

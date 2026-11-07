@@ -373,6 +373,54 @@ describe('api.connectSession', () => {
     expect(instances[0]!.url).toContain('after_seq=0');
   });
 
+  it('drops a frame that is not the JSON envelope instead of throwing', () => {
+    const { instances } = setupMockWebSocket();
+    const received: unknown[] = [];
+    api.connectSession('sess-test', (e) => received.push(e));
+    const ws = instances[0]!;
+    expect(() => ws.onmessage?.({ data: 'not json' })).not.toThrow();
+    expect(() => ws.onmessage?.({ data: '42' })).not.toThrow();
+    expect(() => ws.onmessage?.({ data: '{"no":"type"}' })).not.toThrow();
+    expect(received).toHaveLength(0);
+    ws.dispatch({ type: 'npc.token', seq: 1, session_id: 'sess-test', ts: 't', payload: { text: 'ok' } });
+    expect(received).toHaveLength(1);
+  });
+
+  it('reconnects once after an unexpected close, then gives up', () => {
+    vi.useFakeTimers();
+    try {
+      const { instances } = setupMockWebSocket();
+      const statuses: string[] = [];
+      api.connectSession('sess-test', () => {}, { onStatus: (s) => statuses.push(s) });
+      expect(instances).toHaveLength(1);
+      (instances[0] as unknown as { onclose: () => void }).onclose();
+      expect(statuses).toEqual(['reconnecting']);
+      vi.advanceTimersByTime(1_000);
+      expect(instances).toHaveLength(2);
+      (instances[1] as unknown as { onclose: () => void }).onclose();
+      vi.advanceTimersByTime(5_000);
+      expect(instances).toHaveLength(2);
+      expect(statuses).toEqual(['reconnecting', 'closed']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not reconnect when the caller closed the connection', () => {
+    vi.useFakeTimers();
+    try {
+      const { instances } = setupMockWebSocket();
+      const conn = api.connectSession('sess-test', () => {});
+      conn.close();
+      expect(instances[0]!.close).toHaveBeenCalled();
+      (instances[0] as unknown as { onclose: () => void }).onclose();
+      vi.advanceTimersByTime(5_000);
+      expect(instances).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('calls onEvent with a parsed session.state event', () => {
     const { instances } = setupMockWebSocket();
     const received: unknown[] = [];

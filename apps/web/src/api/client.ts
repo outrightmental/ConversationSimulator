@@ -441,6 +441,14 @@ export interface WsConnection {
   close(): void;
 }
 
+/** What the session socket is doing, for a status line (issue #538). */
+export type WsStatus = 'open' | 'reconnecting' | 'closed'
+
+// One retry, after a short pause: a socket that drops mid-turn usually comes
+// back (the core restarted, the dev server reloaded). A second drop means the
+// socket is not available, and REST alone carries the turn exactly as before.
+const WS_RECONNECT_DELAY_MS = 1_000
+
 export const api = {
   health(): Promise<ApiResult<HealthResponse>> {
     return get<HealthResponse>('/health')
@@ -659,19 +667,65 @@ export const api = {
   connectSession(
     sessionId: string,
     onEvent: (event: WsEvent) => void,
-    opts?: { afterSeq?: number },
+    opts?: { afterSeq?: number; onStatus?: (status: WsStatus) => void },
   ): WsConnection {
     const baseWs = _isTauriProduction
       ? `ws://127.0.0.1:7355/ws/session/${sessionId}`
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/session/${sessionId}`
     let url = baseWs
     if (opts?.afterSeq != null) url += `?after_seq=${opts.afterSeq}`
-    const ws = new WebSocket(url)
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data as string) as WsEvent
-      onEvent(data)
+
+    let socket: WebSocket | null = null
+    let closedByCaller = false
+    let reconnected = false
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const open = () => {
+      let ws: WebSocket
+      try {
+        ws = new WebSocket(url)
+      } catch {
+        // No WebSocket support, or a URL the browser refuses: REST carries the turn.
+        opts?.onStatus?.('closed')
+        return
+      }
+      socket = ws
+      ws.onopen = () => opts?.onStatus?.('open')
+      ws.onmessage = (event) => {
+        // A frame that is not the JSON envelope is dropped, not thrown: one bad
+        // message must not take the handler down for the rest of the session.
+        let data: unknown
+        try {
+          data = JSON.parse(String(event.data))
+        } catch {
+          return
+        }
+        if (!data || typeof data !== 'object' || typeof (data as { type?: unknown }).type !== 'string') return
+        onEvent(data as WsEvent)
+      }
+      ws.onerror = () => {
+        // The close event that follows decides what happens; nothing to do here.
+      }
+      ws.onclose = () => {
+        if (closedByCaller) return
+        if (!reconnected) {
+          reconnected = true
+          opts?.onStatus?.('reconnecting')
+          reconnectTimer = setTimeout(open, WS_RECONNECT_DELAY_MS)
+          return
+        }
+        opts?.onStatus?.('closed')
+      }
     }
-    return { close: () => ws.close() }
+    open()
+
+    return {
+      close: () => {
+        closedByCaller = true
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        socket?.close()
+      },
+    }
   },
 
   workbench: {

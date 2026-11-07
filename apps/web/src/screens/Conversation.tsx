@@ -7,6 +7,7 @@ import type {
   ScenarioInfo,
   SessionCreateRequest,
   TurnResponse,
+  TurnStage,
   WsEvent,
 } from '@convsim/shared'
 import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
@@ -101,6 +102,14 @@ function wholeTurnFromRow(rowTurnNumber: number): number {
 }
 
 type Phase = 'starting' | 'active' | 'submitting' | 'ending' | 'ended' | 'error'
+
+/** What the core says a running turn is doing (issue #538: `turn.progress`). */
+type TurnProgress = {
+  stage: TurnStage
+  prompt: { processed: number | null; total: number | null; cached: number | null } | null
+  outputTokens: number
+  elapsedMs: number
+}
 
 type Banner = {
   id: number
@@ -206,6 +215,31 @@ export default function Conversation() {
   const [scenario, setScenario] = useState<ScenarioInfo | null>(null)
   const [npcEmotion, setNpcEmotion] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
+  // The stage the running turn is in, from the core's turn.progress events
+  // (issue #538). Null between turns and with no socket. Kept here for the
+  // progress panel (#539 reads it); this screen uses it to keep the request's
+  // deadline alive while the core is visibly working.
+  const [turnProgress, setTurnProgress] = useState<TurnProgress | null>(null)
+  // True once the NPC's whole line has arrived over the socket but the turn
+  // has not committed yet (issue #538). The reply box works again from here:
+  // the player can read and answer while the core finishes its bookkeeping.
+  const [lineComplete, setLineComplete] = useState(false)
+  const lineCompleteRef = useRef(false)
+  // A message the player sent while the turn was still committing. Sent once,
+  // the moment the turn lands (issue #538, design question 4 on #518).
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const queuedMessageRef = useRef<string | null>(null)
+  // The turn's state change (meters, emotion, flags, ending) has been applied
+  // once, from whichever arrived first: the socket's scenario.state_delta or
+  // the REST response. Appending the flags twice would duplicate them.
+  const commitAppliedRef = useRef(false)
+  // The transcript row the socket committed from npc.final, so the emotion
+  // and flags that arrive at commit can be written onto it.
+  const streamedRowIdRef = useRef<number | null>(null)
+  // Re-arms the in-flight request's deadline: while turn.progress events
+  // arrive the core is demonstrably working, so the reconcile polling
+  // (issue #489) must not start.
+  const deadlineArmRef = useRef<(() => void) | null>(null)
   const [banners, setBanners] = useState<Banner[]>([])
   // Scenario events already announced, so one cannot be banner'd twice if it
   // arrives over both the socket and the REST reply.
@@ -612,7 +646,23 @@ export default function Conversation() {
               setStateVars((prev) => ({ ...prev, ...event.payload.state_vars! }))
             }
             break
+          case 'turn.progress':
+            if (phaseRef.current === 'submitting') {
+              setTurnProgress({
+                stage: event.payload.stage,
+                prompt: event.payload.prompt,
+                outputTokens: event.payload.output_tokens,
+                elapsedMs: event.payload.elapsed_ms,
+              })
+              // The core is working on this turn: give the request its full
+              // deadline again rather than starting to poll for a reply that
+              // is demonstrably still being written.
+              deadlineArmRef.current?.()
+            }
+            break
           case 'npc.token':
+            // One checked sentence of the line (issue #538): nothing shown
+            // here is ever withdrawn.
             if (!firstTokenMarkedRef.current) {
               firstTokenMarkedRef.current = true
               recordInterval('first_token_ms', 'turn_submit')
@@ -621,9 +671,11 @@ export default function Conversation() {
             setStreamingText(streamingRef.current)
             break
           case 'npc.final':
-            // The line closes before the turn's bookkeeping exists (#538); the
-            // emotion arrives on scenario.state_delta, older servers sent it here.
-            setNpcEmotion(event.payload.emotion ?? null)
+            // The spoken line is complete; the turn's bookkeeping (emotion,
+            // state change, flags) is still being written and arrives on
+            // scenario.state_delta at commit (issue #538). Older servers sent
+            // those fields here, so they are applied when present.
+            if (event.payload.emotion !== undefined) setNpcEmotion(event.payload.emotion)
             streamingRef.current = ''
             setStreamingText('')
             // During an active turn submission, commit the NPC response immediately
@@ -634,13 +686,15 @@ export default function Conversation() {
               const { content, emotion: npcEmotion, state_delta, event_flags } = event.payload
               const flags = event_flags ?? []
               rowCountRef.current += 1
+              const rowId = ++turnUidRef.current
+              streamedRowIdRef.current = rowId
               setTurns((prev) => [
                 ...prev,
                 {
-                  id: ++turnUidRef.current,
+                  id: rowId,
                   role: 'npc',
                   content,
-                  emotion: npcEmotion !== 'neutral' ? npcEmotion : undefined,
+                  emotion: npcEmotion && npcEmotion !== 'neutral' ? npcEmotion : undefined,
                   eventFlags: flags.length > 0 ? flags : undefined,
                   // The reply closes the turn the player's message opened, so
                   // it shares that number rather than taking a new one.
@@ -659,6 +713,24 @@ export default function Conversation() {
               if (flags.length > 0) {
                 setAllEventFlags((prev) => [...prev, ...flags])
               }
+              // Let the player get ahead: the whole line is on screen, so the
+              // reply box works again while the core finishes the turn.
+              lineCompleteRef.current = true
+              setLineComplete(true)
+            }
+            break
+          case 'scenario.state_delta':
+            // The commit (issue #538): the authoritative meters, and the
+            // emotion and flags that belong on the row npc.final committed.
+            if (phaseRef.current === 'submitting') {
+              _applyTurnCommit({
+                visibleState: event.payload.state_vars,
+                delta: event.payload.delta,
+                emotion: event.payload.emotion,
+                flags: event.payload.event_flags ?? [],
+                triggered: event.payload.triggered_scenario_events ?? [],
+                endingType: event.payload.ending_type ?? null,
+              })
             }
             break
           case 'scenario.event':
@@ -843,7 +915,17 @@ export default function Conversation() {
   }
 
   async function handleSubmit(text: string) {
-    if (!text || phase !== 'active') return
+    if (!text) return
+    const currentPhase = phaseRef.current
+    if (currentPhase === 'submitting' && lineCompleteRef.current) {
+      // The line is on screen but the turn has not committed: hold the
+      // message and send it the moment it does (issue #538). Only one can be
+      // queued; a second replaces it, so the player's latest words win.
+      queuedMessageRef.current = text
+      setQueuedMessage(text)
+      return
+    }
+    if (currentPhase !== 'active') return
 
     // Capture any pending STT metadata before resetting it (set synchronously by onRawStt).
     const rawSttMeta = pendingRawSttRef.current
@@ -888,11 +970,17 @@ export default function Conversation() {
 
     _stopTtsPlayback()
     setPhase('submitting')
+    phaseRef.current = 'submitting'
     setError(null)
     streamingRef.current = ''
     setStreamingText('')
     npcTurnCommittedRef.current = false
     firstTokenMarkedRef.current = false
+    lineCompleteRef.current = false
+    setLineComplete(false)
+    commitAppliedRef.current = false
+    streamedRowIdRef.current = null
+    setTurnProgress(null)
 
     mark('turn_submit')
 
@@ -913,12 +1001,21 @@ export default function Conversation() {
     let result = await Promise.race([
       request,
       new Promise<ApiResult<TurnResponse>>((resolve) => {
-        turnTimeoutRef.current = setTimeout(() => {
-          deadlineExpired = true
-          resolve({ ok: false, error: { kind: 'timeout', message: 'The AI took too long to respond.' } })
-        }, TURN_TIMEOUT_MS)
+        // Armed once here and again on every turn.progress event: while the
+        // core reports stages the turn is alive, and the deadline measures
+        // silence, not work (issue #538).
+        const arm = () => {
+          if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
+          turnTimeoutRef.current = setTimeout(() => {
+            deadlineExpired = true
+            resolve({ ok: false, error: { kind: 'timeout', message: 'The AI took too long to respond.' } })
+          }, TURN_TIMEOUT_MS)
+        }
+        deadlineArmRef.current = arm
+        arm()
       }),
     ])
+    deadlineArmRef.current = null
     if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
 
     if (!result.ok && deadlineExpired) {
@@ -961,7 +1058,13 @@ export default function Conversation() {
         rowCountRef.current -= 1
         gameTurnRef.current -= 1
       }
+      setTurnProgress(null)
+      lineCompleteRef.current = false
+      setLineComplete(false)
+      // A queued message is not sent into a failed turn; it goes back to the
+      // player as the box's text rather than vanishing.
       setPhase('active')
+      phaseRef.current = 'active'
       return
     }
     const turnData = result.data
@@ -981,75 +1084,81 @@ export default function Conversation() {
     const firedEvents = npcEvent?.payload['triggered_scenario_events']
     if (Array.isArray(firedEvents)) announceScenarioEvents(firedEvents as string[])
 
-    // Only commit the NPC turn from REST if the WebSocket npc.final handler
-    // has not already done so (to avoid duplicate transcript entries).
-    if (npcEvent && !npcTurnCommittedRef.current) {
-      npcTurnCommittedRef.current = true
+    if (npcEvent) {
       const payload = npcEvent.payload
       const delta = (payload['state_delta'] ?? {}) as Record<string, number>
       const flags = (payload['event_flags'] ?? []) as string[]
       const emotion = payload['emotion'] as string | undefined
-      setNpcEmotion(emotion ?? null)
 
-      const uid = ++turnUidRef.current
-      rowCountRef.current += 1
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: uid,
-          role: 'npc',
-          content: payload['content'] as string,
-          emotion: emotion !== 'neutral' ? emotion : undefined,
-          eventFlags: flags.length > 0 ? flags : undefined,
-          // Closes the turn the player's message opened.
-          turnNum: gameTurnRef.current,
-        },
-      ])
-
-      if (devMode) {
-        // Split the model's requested delta into entries that target tracked
-        // state variables (applied) and entries for unknown variables that the
-        // reducer below silently drops (rejected) — surfacing model drift.
-        const appliedDelta: Record<string, number> = {}
-        const rejectedDelta: Record<string, number> = {}
-        for (const [k, d] of Object.entries(delta)) {
-          if (k in BASELINE_STATE_VARS) appliedDelta[k] = d
-          else rejectedDelta[k] = d
-        }
-        setDebugEntries((prev) => [
+      // Only add the transcript row from REST if the WebSocket npc.final handler
+      // has not already done so (to avoid duplicate transcript entries). The
+      // turn's state is applied either way: the socket-first path used to skip
+      // the REST response's snapshot entirely (issue #538).
+      if (!npcTurnCommittedRef.current) {
+        npcTurnCommittedRef.current = true
+        const uid = ++turnUidRef.current
+        rowCountRef.current += 1
+        streamedRowIdRef.current = null
+        setTurns((prev) => [
           ...prev,
-          { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta, rejectedDelta },
+          {
+            id: uid,
+            role: 'npc',
+            content: payload['content'] as string,
+            emotion: emotion !== 'neutral' ? emotion : undefined,
+            eventFlags: flags.length > 0 ? flags : undefined,
+            // Closes the turn the player's message opened.
+            turnNum: gameTurnRef.current,
+          },
         ])
+
+        if (devMode) {
+          // Split the model's requested delta into entries that target tracked
+          // state variables (applied) and entries for unknown variables that the
+          // reducer below silently drops (rejected) — surfacing model drift.
+          const appliedDelta: Record<string, number> = {}
+          const rejectedDelta: Record<string, number> = {}
+          for (const [k, d] of Object.entries(delta)) {
+            if (k in BASELINE_STATE_VARS) appliedDelta[k] = d
+            else rejectedDelta[k] = d
+          }
+          setDebugEntries((prev) => [
+            ...prev,
+            { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta, rejectedDelta },
+          ])
+        }
       }
 
-      const visibleState = payload?.['visible_state']
-      if (visibleState && typeof visibleState === 'object' && Object.keys(visibleState).length > 0) {
-        // Authoritative snapshot of the scenario's visible variables.
-        setStateVars({ ...(visibleState as Record<string, number>) })
-      } else if (Object.keys(delta).length > 0) {
-        setStateVars((prev) => {
-          const next = { ...prev }
-          for (const [k, d] of Object.entries(delta)) {
-            if (k in next) next[k] = Math.max(0, Math.min(100, next[k] + d))
-          }
-          return next
-        })
-      }
-      if (flags.length > 0) {
-        setAllEventFlags((prev) => [...prev, ...flags])
-      }
+      _applyTurnCommit({
+        visibleState: payload['visible_state'] as Record<string, number> | undefined,
+        delta,
+        emotion,
+        flags,
+        // Already announced above, before the commit guard.
+        triggered: [],
+        endingType: (payload['ending_type'] as string | null | undefined) ?? null,
+      })
     }
 
     setSessionState(turnData.state)
     streamingRef.current = ''
     setStreamingText('')
+    setTurnProgress(null)
+    lineCompleteRef.current = false
+    setLineComplete(false)
 
     if (turnData.state === 'Ended') {
       const npcPayload = npcEvent?.payload
       setEndingType((npcPayload?.['ending_type'] as string | null | undefined) ?? null)
       setPhase('ended')
+      phaseRef.current = 'ended'
+      // The conversation is over; a message queued for it has nowhere to go.
+      queuedMessageRef.current = null
+      setQueuedMessage(null)
     } else {
       setPhase('active')
+      phaseRef.current = 'active'
+      _flushQueuedMessage()
     }
   }
 
@@ -1068,6 +1177,69 @@ export default function Conversation() {
       setError(endResult.error)
       setPhase('active')
     }
+  }
+
+  /**
+   * Apply a committed turn's state change exactly once (issue #538).
+   *
+   * One turn can report its commit twice: the socket's scenario.state_delta
+   * and the REST response both carry the meters, the emotion, the flags and
+   * the ending. The meters and emotion are absolute values, so applying them
+   * twice is harmless; the flags are appended, so they are not. Whichever
+   * arrives first wins, and the row the socket committed from npc.final gets
+   * the emotion and flags it did not have when the line closed.
+   */
+  function _applyTurnCommit(commit: {
+    visibleState?: Record<string, number> | null
+    delta?: Record<string, number> | null
+    emotion?: string | null
+    flags: string[]
+    triggered: string[]
+    endingType: string | null
+  }) {
+    if (commit.triggered.length > 0) announceScenarioEvents(commit.triggered)
+    if (commitAppliedRef.current) return
+    commitAppliedRef.current = true
+    const emotion = commit.emotion ?? undefined
+    setNpcEmotion(emotion ?? null)
+    const rowId = streamedRowIdRef.current
+    if (rowId !== null) {
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === rowId
+            ? {
+                ...t,
+                emotion: emotion && emotion !== 'neutral' ? emotion : undefined,
+                eventFlags: commit.flags.length > 0 ? commit.flags : undefined,
+              }
+            : t,
+        ),
+      )
+    }
+    const visible = commit.visibleState
+    if (visible && typeof visible === 'object' && Object.keys(visible).length > 0) {
+      setStateVars({ ...visible })
+    } else if (commit.delta && Object.keys(commit.delta).length > 0) {
+      const delta = commit.delta
+      setStateVars((prev) => {
+        const next = { ...prev }
+        for (const [k, d] of Object.entries(delta)) {
+          if (k in next) next[k] = Math.max(0, Math.min(100, next[k] + d))
+        }
+        return next
+      })
+    }
+    if (commit.flags.length > 0) setAllEventFlags((prev) => [...prev, ...commit.flags])
+    if (commit.endingType) setEndingType(commit.endingType)
+  }
+
+  /** Send the message the player queued while the turn was committing (#538). */
+  function _flushQueuedMessage() {
+    const queued = queuedMessageRef.current
+    if (!queued) return
+    queuedMessageRef.current = null
+    setQueuedMessage(null)
+    void handleSubmit(queued)
   }
 
   /** Raise the "Something changed" note for scenario events that just fired.
@@ -1096,6 +1268,9 @@ export default function Conversation() {
   }
 
   const isIdle = phase === 'active'
+  // The reply box works while the turn commits, once the whole line is on
+  // screen (issue #538): a message sent then is queued, not refused.
+  const canCompose = isIdle || (phase === 'submitting' && lineComplete)
   const isBusy = phase === 'submitting' || phase === 'ending'
   const isEnded = phase === 'ended'
   // The NPC row the stream committed, while the REST request that carries the
@@ -1116,6 +1291,7 @@ export default function Conversation() {
   return (
     <div
       data-testid="conversation-page"
+      data-turn-stage={turnProgress?.stage ?? undefined}
       style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 760 }}
     >
       {/* Header */}
@@ -1446,7 +1622,7 @@ export default function Conversation() {
         active={isAwaitingNpc}
         elapsedMs={waitElapsedMs}
         estimateMs={turnEstimateMs}
-        streaming={streamingText.length > 0}
+        streaming={streamingText.length > 0 || turnProgress?.stage === 'writing'}
       />
 
       {/* isSlowResponse already implies a turn is out. */}
@@ -1576,21 +1752,65 @@ export default function Conversation() {
           </button>
         </div>
       ) : (
-        // Keyed on the input mode: VoiceInput decides text-only versus mic
-        // once, at mount. On the resume path the mode is read back from the
-        // server after the first render (issue #501 §1), so without the key a
-        // resumed push-to-talk session came back as a text-only composer.
-        <VoiceInput
-          key={inputMode}
-          onSubmit={(text) => void handleSubmit(text)}
-          onRawStt={devMode ? (meta) => { pendingRawSttRef.current = meta } : undefined}
-          onSttLatency={(ms) => recordValue('stt_final_ms', ms)}
-          onRecordingStart={handleBargeIn}
-          disabled={!isIdle}
-          language={language}
-          inputMode={inputMode}
-          backchannelEnabled={ttsEnabled && voiceTimingPrefs.backchannelEnabled}
-        />
+        <>
+          {queuedMessage !== null && (
+            <div
+              data-testid="queued-message"
+              role="status"
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderRadius: 6,
+                border: '1px solid #3f3f46',
+                background: '#18181b',
+                color: '#a1a1aa',
+                fontSize: '0.8rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+                alignItems: 'center',
+              }}
+            >
+              <span>
+                Queued — sends as soon as this turn is saved:{' '}
+                <span style={{ color: '#e4e4e7' }}>{queuedMessage}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  queuedMessageRef.current = null
+                  setQueuedMessage(null)
+                }}
+                aria-label="Remove queued message"
+                style={{
+                  background: 'none',
+                  border: '1px solid #52525b',
+                  borderRadius: 4,
+                  color: '#a1a1aa',
+                  cursor: 'pointer',
+                  padding: '0.15rem 0.5rem',
+                  fontSize: '0.75rem',
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          )}
+          {/* Keyed on the input mode: VoiceInput decides text-only versus mic
+              once, at mount. On the resume path the mode is read back from the
+              server after the first render (issue #501 §1), so without the key a
+              resumed push-to-talk session came back as a text-only composer. */}
+          <VoiceInput
+            key={inputMode}
+            onSubmit={(text) => void handleSubmit(text)}
+            onRawStt={devMode ? (meta) => { pendingRawSttRef.current = meta } : undefined}
+            onSttLatency={(ms) => recordValue('stt_final_ms', ms)}
+            onRecordingStart={handleBargeIn}
+            disabled={!canCompose}
+            language={language}
+            inputMode={inputMode}
+            backchannelEnabled={ttsEnabled && voiceTimingPrefs.backchannelEnabled}
+          />
+        </>
       )}
 
     </div>
