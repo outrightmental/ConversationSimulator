@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from convsim_core.edition import (
     DEMO_SCENARIO_IDS,
@@ -50,7 +50,7 @@ from convsim_core.scenario_state import (
 from convsim_core.scenarios import resolve_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
-from convsim_core.services.model_manager_service import get_active_config
+from convsim_core.services.model_manager_service import get_active_config, recorded_model_id
 from convsim_core.services.relationship_memory import update_relationship_memory
 from convsim_core.services.session_events import SessionEventBus, SessionTurnStreamer
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
@@ -133,11 +133,35 @@ class SessionCreateRequest(BaseModel):
     # client can never point a session at a sidecar-backed runtime this way.
     runtime_id: Optional[Literal["scripted", "fake"]] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def null_means_default(cls, data: Any) -> Any:
+        """Treat an explicit ``null`` as "field not provided" wherever a default exists.
+
+        A client that renders an unset option as ``null`` instead of omitting
+        the key gets a 422 no amount of retrying can clear, and the setup
+        screen has no way to recover — exactly the dead end in issue #508.
+        ``tts_voice_id`` is the live example: the web UI documents it as
+        "omitted when no voice is selected, in which case the backend applies
+        its default", so a null plainly means the default.
+
+        Only defaulted fields are forgiven. ``scenario_id`` and
+        ``player_role_name`` are required, so a missing or null value there
+        still fails loudly — and now says which field it was.
+        """
+        if not isinstance(data, dict):
+            return data
+        optional = {name for name, f in cls.model_fields.items() if not f.is_required()}
+        return {k: v for k, v in data.items() if not (v is None and k in optional)}
+
     @field_validator("player_role_name")
     @classmethod
     def player_role_name_not_blank(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("player_role_name cannot be blank")
+            # Just the constraint: the 422 summary already prefixes the field
+            # path, so repeating the name here read "player_role_name:
+            # player_role_name cannot be blank" on the error card (issue #508).
+            raise ValueError("cannot be blank")
         return v
 
     @field_validator("tts_voice_id")
@@ -148,7 +172,16 @@ class SessionCreateRequest(BaseModel):
         try:
             validate_voice_id(v)
         except TtsVoiceValidationError as exc:
-            raise ValueError(str(exc)) from exc
+            # validate_voice_id quotes the id it rejected and lists every
+            # approved one — fine in a log line, wrong here: this sentence
+            # becomes the 422's `message`, which the compact error card shows
+            # and "Copy diagnostics" copies into a public bug report (issue
+            # #508). Name the constraint, not the value — the same rule that
+            # drops Pydantic's "input" key. The approved ids are already
+            # discoverable at GET /api/tts/voices.
+            raise ValueError(
+                "not an approved built-in voice id (see GET /api/tts/voices)"
+            ) from exc
         return v
 
 
@@ -197,10 +230,14 @@ class TurnSubmitRequest(BaseModel):
     @field_validator("content")
     @classmethod
     def content_not_empty(cls, v: str) -> str:
+        # Just the constraint, for the same reason player_role_name's validator
+        # shed its field name: the 422 summary prefixes the field path itself,
+        # so "Turn content cannot be blank" rendered as "content: Turn content
+        # cannot be blank" on the error card and in a copied report (issue #508).
         if not v.strip():
-            raise ValueError("Turn content cannot be blank")
+            raise ValueError("cannot be blank")
         if len(v.strip()) > MAX_TURN_CONTENT_CHARS:
-            raise ValueError(f"Turn content exceeds {MAX_TURN_CONTENT_CHARS} characters")
+            raise ValueError(f"cannot exceed {MAX_TURN_CONTENT_CHARS} characters")
         return v
 
 
@@ -474,6 +511,25 @@ def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
         return requested
     runtime_id = get_active_config(conn).get("runtime_id")
     return runtime_id if runtime_id in _SESSION_PINNED_RUNTIME_IDS else None
+
+
+def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) -> str | None:
+    """The model identity to stamp on this turn's timing record, or None (issue #519).
+
+    Only a selection that served the turn is recorded. A session pinned to a
+    scripted or fake runtime ran on that runtime whatever the player has
+    selected, and so did an unpinned session when the live runtime is not the
+    selected one; in both cases the record's ``context.model_id`` already
+    names what the runtime itself reported, and the registry id stays None
+    rather than attributing the turn to a model that never ran. A file path
+    is never recorded (see ``recorded_model_id``).
+    """
+    if setup.get("runtime_id") in _SESSION_PINNED_RUNTIME_IDS:
+        return None
+    active = get_active_config(conn)
+    if active.get("runtime_id") != runtime.id:
+        return None
+    return recorded_model_id(conn, active.get("model_id"))
 
 
 def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
@@ -862,7 +918,7 @@ async def _run_turn(
     timing = TurnTimingBuilder(
         clock=clock,
         runtime_id=runtime.id,
-        registry_model_id=get_active_config(conn).get("model_id"),
+        registry_model_id=_recorded_model_for(conn, runtime, setup),
     )
     # Stream the turn to whoever is listening on the session socket (#538).
     # With no socket connected the pipeline runs exactly as before.
@@ -979,11 +1035,12 @@ async def _run_turn(
             first_audio_ms=None,
         )
 
-    # Persist the turn's record after the pipeline's transaction committed and
-    # after synthesis, so the total is the whole request (issue #519). An input
-    # safety stop never reached the model and has no record.
+    # Build the turn's record once, here, after the pipeline's transaction
+    # committed and after synthesis, so the total is the whole request (issue
+    # #519); the pipeline hands back the builder it filled rather than a record
+    # of its own. An input safety stop never reached the model and has none.
     if result.timing is not None:
-        record = timing.build()
+        record = result.timing.build()
         persist_turn_timing(conn, session_id, result.turn_number, record, now)
         npc_event.payload["timing"] = record.model_dump()
         npc_event.payload["salvaged"] = result.salvaged

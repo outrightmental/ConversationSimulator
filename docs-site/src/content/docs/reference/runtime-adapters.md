@@ -201,6 +201,71 @@ HTTP 503 → STARTING (model still loading); connection error → UNAVAILABLE.
 llama-server --port 7356 --model /path/to/model.gguf
 ```
 
+**Managed engine launch settings.** When the app launches `llama-server`
+itself — `LlamaCppSidecar.start()` in `convsim_core/runtime/sidecar.py`,
+reached from the autostart in `runtime/active.py`, the install pipeline's
+warmup stage, and `POST /api/sidecar/start` — it does not accept the engine's
+defaults. Those defaults suit a shared inference server, not one player having
+one conversation on an 8 GB machine. The log in issue #489 showed what they
+cost: four slots, the model's full trained context (40,960 tokens where the
+registry says 8,192), 6,759 MiB of projected memory for a 2.5 GB model, an
+8 GiB prompt cache in host memory, and a single progress update for a
+22-second prompt because the default batch is 2,048 tokens.
+
+One helper, `convsim_core/runtime/launch.py`, builds the launch configuration
+— `LaunchConfig`, `resolve_launch_config(model_path, conn)` and
+`launch_env(config)` — and all three start sites use it, so they cannot drift
+apart (issue #523). Issue #529 turns it into a player-configurable launch
+profile.
+
+| Setting | Value | Passed as | Why |
+|---------|-------|-----------|-----|
+| Context size | the loaded model's `context_length` from the model registry; a player-supplied GGUF uses the context stated when it was registered, or 8192 | `--ctx-size` on the command line | The KV cache is sized from it. The model file's trained length is far more than one conversation needs, and loading it is what blew the memory budget in #489. |
+| Slots | 1 | `LLAMA_ARG_N_PARALLEL=1` | One player has one conversation. Every extra slot divides the context between slots and multiplies KV-cache memory. No `id_slot` is sent in any request. |
+| Batch size | 256 tokens | `LLAMA_ARG_BATCH=256` | Prompt processing reports progress and checks for cancellation once per batch. At the CPU rate seen in #489 (87 tokens/s) that is about every 3 s, instead of once for the whole prompt. |
+| Host prompt cache | 1024 MiB | `LLAMA_ARG_CACHE_RAM=1024` | Bounds the prompt cache the server keeps in host memory; the default on the #489 machine was 8 GiB. |
+| Reasoning | off | `LLAMA_ARG_REASONING=off` | NPC turns need in-character JSON, not visible chain-of-thought, which blows the turn token budget and multiplies latency. |
+
+Why two mechanisms: `--ctx-size` goes on the command line because every
+`llama-server` build has the flag, and an engine too old to read `LLAMA_ARG_*`
+would otherwise load the model's full trained context — the memory problem
+itself. The rest travel as `LLAMA_ARG_*` environment variables, which
+`llama-server` reads as if the flag had been given (its `common/arg.cpp` binds
+`--parallel` to `LLAMA_ARG_N_PARALLEL`, `--batch-size` to `LLAMA_ARG_BATCH`,
+`--cache-ram` to `LLAMA_ARG_CACHE_RAM`). An engine build that lacks one of
+them starts anyway: an unknown flag is fatal, an unknown variable is ignored.
+
+Every variable is applied with `setdefault`, so a value already in the app's
+environment is an operator override that wins — start the app with
+`LLAMA_ARG_N_PARALLEL=2` and the engine runs two slots. `LLAMA_ARG_CTX_SIZE`
+is honoured the same way: when it is set and nothing states a context size
+for this start, `--ctx-size` is left off the command line so the flag cannot
+silently beat the variable. An explicit `context_length` in the
+`POST /api/sidecar/start` body is such a statement: it goes on the command
+line as `--ctx-size` and wins over both the registry value and the variable.
+
+None of this changes sampling: the adapter sends the same request body as
+before. It applies only to an engine the app launches; a `llama-server` the
+player runs by hand is configured by the player. Each launch writes the command
+line and the effective `LLAMA_ARG_*` variables under the
+`--- llama-server start` marker in `runtime.log`, so a log excerpt shows how
+the engine was launched.
+
+*What to measure.* These settings exist for memory and responsiveness, so a
+change to them is recorded as a before/after on one machine with the same
+model:
+
+- resident memory of the `llama-server` process once `/health` returns 200
+  (Task Manager, or `ps -o rss -p <pid>`);
+- the projected memory the engine logs while loading (the KV-cache and
+  compute-buffer size lines after the `--- llama-server start` marker in
+  `runtime.log`);
+- `GET /props` on the engine: `total_slots` and
+  `default_generation_settings.n_ctx` should read 1 and the registry's
+  context length;
+- for one long prompt, how many progress updates the UI shows and how long a
+  cancel takes to act (one batch — about 3 s on the #489 machine).
+
 **JSON schema enforcement.** When `json_schema` is set on the request,
 the adapter wraps it in the `response_format.json_schema` OpenAI field.
 `strict` is set to `False` to avoid rejecting slightly out-of-spec responses.
@@ -216,9 +281,12 @@ chunks while it reads the prompt (surfaced as `ChatProgress`, stage
 cache, both speeds) and ends with a `usage` chunk whose `choices` is empty —
 the adapter reads `usage` and `timings` before skipping chunks without
 choices. None of these fields change what the model generates. A server that
-does not know them (llama-cpp-python's OpenAI server answers 422) gets the
-same request once more without them, the turn completes, and the timing
-fields stay `null` for the life of that adapter instance. Raw streams the
+rejects the request because of those fields (HTTP 422, or a 400 whose error
+names one of them) gets the same request once more without them; the turn
+completes and the timing fields stay `null` for the life of that adapter
+instance. Any other 400, such as a prompt over the context size or a chat
+template that cannot format the messages, is reported as the request error it
+is, and the fields stay on. Raw streams the
 adapter is tested against live under `services/convsim-core/tests/fixtures/`;
 a file named `synthetic_*` was written from the documented wire format rather
 than captured, and its README says how to replace it with a capture.

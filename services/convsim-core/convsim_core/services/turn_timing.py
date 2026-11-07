@@ -44,6 +44,11 @@ TURN_TIMING_EVENT_TYPE = "turn_timing"
 #: How many recent records the rolling medians are taken over.
 ROLLING_WINDOW = 20
 
+#: Finish reasons that mean the reply did not run to its end: the token budget
+#: cut it off, or the caller closed the stream. A turn that ended this way is
+#: recorded ``stopped`` and left out of the rolling medians.
+STOPPING_FINISH_REASONS: frozenset[str] = frozenset({"length", "cancelled"})
+
 ExtraCallKind = Literal["repair", "safety_retry"]
 
 
@@ -72,9 +77,15 @@ class TurnRates(BaseModel):
 
 
 class TurnContext(BaseModel):
-    #: The model as the engine named it in its reply.
+    #: The model id the adapter sent with the request: the request's or the
+    #: adapter's configured value, which llama-server echoes as ``default``
+    #: when none was configured. Not a name the engine reported.
     model_id: str
-    #: The registry id of the active model at the time, when the app knew one.
+    #: Which installed model served the turn, when the active selection was the
+    #: runtime that served it: the registry id of a model the app installed, or
+    #: the file name of a user-supplied model file. Never a file path, which
+    #: would name the player's home folder. None for a pinned scripted or fake
+    #: session and whenever the selection did not serve the turn.
     registry_model_id: str | None = None
     runtime_id: str
     engine_variant: str | None = None
@@ -102,8 +113,15 @@ class TurnTiming(BaseModel):
     #: compose + parse + persist
     other_ms: float = 0.0
     extra_calls: list[ExtraCall] = []
+    #: The streamed reply was cut and the fields that had closed were kept
+    #: (#538). The plain turn route never salvages, so it is False there.
     salvaged: bool = False
+    #: The parser gave up on the reply and the canned fallback line was spoken.
     fallback: bool = False
+    #: Generation did not run to its end: the token budget cut it off
+    #: (``finish_reason`` ``length``) or the caller cancelled it
+    #: (``cancelled``). Stopped and fallback turns are left out of the rolling
+    #: medians; they say nothing about the pace.
     stopped: bool = False
     finish_reason: FinishReason | None = None
     voice: VoiceTiming | None = None
@@ -158,8 +176,12 @@ class StreamObservation:
 class TurnTimingBuilder:
     """Accumulates one turn's measurements as the pipeline runs.
 
-    The pipeline fills in the stages it can see; the router adds voice and the
-    total after synthesis, then persists the record (see ``routers/sessions.py``).
+    The pipeline fills in the stages it can see and sets ``fallback`` from its
+    own fallback path and ``stopped`` from the engine's finish reason (see
+    :func:`mark_finish`); the router adds voice and builds the record once,
+    after synthesis, then persists it (see ``routers/sessions.py``). A caller
+    that keeps a cut reply (the streaming route, #538) sets ``salvaged``
+    before building; nothing on the plain turn route does.
     """
 
     clock: TurnClock
@@ -183,6 +205,15 @@ class TurnTimingBuilder:
 
     def record_extra_call(self, kind: ExtraCallKind, ms: float, tokens: int | None) -> None:
         self.extra_calls.append(ExtraCall(kind=kind, ms=round(ms, 1), tokens=tokens))
+
+    def mark_finish(self, finish_reason: FinishReason | None) -> None:
+        """Note why generation ended; a cut-off or cancelled reply is ``stopped``.
+
+        Called by whoever consumed the stream, with the finish reason the
+        engine reported (None when it reported none, which leaves the turn
+        counted as a normal one).
+        """
+        self.stopped = finish_reason in STOPPING_FINISH_REASONS
 
     def build(self) -> TurnTiming:
         obs = self.observation
@@ -338,17 +369,6 @@ def _median(values: list[float]) -> float | None:
     return round(statistics.median(clean), 1)
 
 
-def _matches_config(ctx: dict[str, Any], runtime_id: str | None, model_id: str | None) -> bool:
-    if runtime_id is not None and ctx.get("runtime_id") != runtime_id:
-        return False
-    if model_id is not None:
-        # The registry id when the record has one, else the engine's own name.
-        recorded = ctx.get("registry_model_id") or ctx.get("model_id")
-        if recorded != model_id:
-            return False
-    return True
-
-
 def rolling_speeds(
     conn: sqlite3.Connection,
     *,
@@ -356,30 +376,43 @@ def rolling_speeds(
     model_id: str | None,
     window: int = ROLLING_WINDOW,
 ) -> RollingSpeeds:
-    """Medians over the most recent recorded turns for ``runtime_id``/``model_id``.
+    """Medians over the newest ``window`` recorded turns for ``runtime_id``/``model_id``.
 
     A None filter matches every record. Turns marked ``stopped`` or ``fallback``
-    are left out: a cancelled or canned reply says nothing about the pace.
+    are left out: a cut-off, cancelled or canned reply says nothing about the
+    pace. The filters are applied in the query, so a configuration that has
+    not been played for a while still gets its own newest records rather than
+    being crowded out by whatever was played since. ``model_id`` matches the
+    record's registry id when it has one, else the model id the adapter sent.
     """
+    # Every clause after json_valid() reads the payload with json_extract(),
+    # which raises on malformed JSON; SQLite evaluates the terms in order, so
+    # a corrupt row is skipped instead of failing the whole query. A JSON
+    # boolean reads as 1 or 0 and a missing key as NULL.
+    clauses = [
+        "event_type = ?",
+        "json_valid(payload_json)",
+        "COALESCE(json_extract(payload_json, '$.stopped'), 0) = 0",
+        "COALESCE(json_extract(payload_json, '$.fallback'), 0) = 0",
+    ]
+    params: list[Any] = [TURN_TIMING_EVENT_TYPE]
+    if runtime_id is not None:
+        clauses.append("json_extract(payload_json, '$.context.runtime_id') = ?")
+        params.append(runtime_id)
+    if model_id is not None:
+        clauses.append(
+            "COALESCE(json_extract(payload_json, '$.context.registry_model_id'), "
+            "json_extract(payload_json, '$.context.model_id')) = ?"
+        )
+        params.append(model_id)
+    params.append(max(window, 0))
     rows = conn.execute(
-        "SELECT payload_json FROM turn_session_events "
-        "WHERE event_type = ? ORDER BY id DESC LIMIT ?",
-        (TURN_TIMING_EVENT_TYPE, max(window * 10, window)),
+        "SELECT payload_json FROM turn_session_events WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY id DESC LIMIT ?",
+        tuple(params),
     ).fetchall()
-    records: list[dict[str, Any]] = []
-    for row in rows:
-        try:
-            rec = json.loads(row["payload_json"])
-        except (ValueError, TypeError):
-            continue
-        ctx = rec.get("context") or {}
-        if not _matches_config(ctx, runtime_id, model_id):
-            continue
-        if rec.get("stopped") or rec.get("fallback"):
-            continue
-        records.append(rec)
-        if len(records) >= window:
-            break
+    records: list[dict[str, Any]] = [json.loads(row["payload_json"]) for row in rows]
 
     def pick(path: tuple[str, ...]) -> list[float]:
         out: list[float] = []

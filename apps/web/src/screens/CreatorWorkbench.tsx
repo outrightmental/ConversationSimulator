@@ -7,6 +7,7 @@ import { api, apiClient, type WorkbenchPack, type FileNode, type WorkbenchValida
 import type { ApiError } from '../api/errors'
 import { ERROR_COPY } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
+import { copyTextToClipboard } from '../lib/clipboard'
 import { useSteamStatus } from '../hooks/useSteamStatus'
 import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
 
@@ -571,7 +572,7 @@ interface ValidationPanelProps {
 }
 
 function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRefresh }: ValidationPanelProps) {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   function handleCopy() {
     if (!validation) return
@@ -580,9 +581,13 @@ function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRe
       ...validation.errors.map((e) => `[ERROR] ${e.file || '(pack-wide)'}${e.pointer ? ' ' + e.pointer : ''}: ${e.message} (${e.rule_id})`),
       ...validation.warnings.map((w) => `[WARNING] ${w.file || '(pack-wide)'}${w.pointer ? ' ' + w.pointer : ''}: ${w.message} (${w.rule_id})`),
     ]
-    void navigator.clipboard.writeText(lines.join('\n'))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    // Report failure as well as success, as the app's other copy buttons do:
+    // in a shell where every clipboard path is refused, a label that never
+    // changes reads as a button that did nothing.
+    void copyTextToClipboard(lines.join('\n')).then((ok) => {
+      setCopyState(ok ? 'copied' : 'failed')
+      setTimeout(() => setCopyState('idle'), 2000)
+    })
   }
 
   const panelBase: CSSProperties = {
@@ -720,7 +725,7 @@ function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRe
             style={{ ...BTN, fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
             aria-label="Copy validation output"
           >
-            {copied ? '✓ Copied' : 'Copy'}
+            {copyState === 'copied' ? '✓ Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
           </button>
           {onRefresh && (
             <button

@@ -33,6 +33,9 @@ export function ApiErrorView({ error, onRetry, context, compact = false }: ApiEr
         )}
         {onRetry && (
           <button
+            // Same reason as the copy button below: these cards render inside
+            // forms, where an untyped <button> submits (issue #508).
+            type="button"
             onClick={onRetry}
             style={{
               padding: '0.1rem 0.4rem',
@@ -71,6 +74,7 @@ export function ApiErrorView({ error, onRetry, context, compact = false }: ApiEr
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
         {onRetry && (
           <button
+            type="button"
             onClick={onRetry}
             style={{
               padding: '0.3rem 0.75rem',

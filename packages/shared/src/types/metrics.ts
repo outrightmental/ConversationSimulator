@@ -58,9 +58,13 @@ export interface TurnExtraCall {
 }
 
 export interface TurnTimingContext {
-  /** The model as the engine named it. */
+  /** The model id the adapter sent with the request (its request or configured value; llama-server echoes `default` when none was configured). Not a name the engine reported. */
   model_id: string
-  /** The registry id of the active model when the app knew one. */
+  /**
+   * Which installed model served the turn, when the active selection was the runtime that served it:
+   * the registry id of a model the app installed, or the file name of a user-supplied model file.
+   * Never a file path. Null for a pinned scripted or fake session and whenever the selection did not serve the turn.
+   */
   registry_model_id: string | null
   runtime_id: string
   engine_variant: string | null
@@ -85,8 +89,11 @@ export interface TurnTiming {
   /** Compose + parse + persist. */
   other_ms: number
   extra_calls: TurnExtraCall[]
+  /** The streamed reply was cut and the fields that had closed were kept (#538). Never true on the plain turn route. */
   salvaged: boolean
+  /** The parser gave up on the reply and the canned fallback line was spoken. */
   fallback: boolean
+  /** Generation did not run to its end: the token budget cut it off (`length`) or the caller cancelled it (`cancelled`). Stopped and fallback turns are left out of the rolling medians. */
   stopped: boolean
   finish_reason: TurnFinishReason | null
   voice: { synth_ms: number | null; first_audio_ms: number | null } | null

@@ -28,10 +28,28 @@ from convsim_core.runtime.types import (
 logger = logging.getLogger(__name__)
 
 _HEALTH_TIMEOUT = 5.0
-#: Statuses a server answers with when the request carries a field it does not
-#: know. llama-cpp-python's OpenAI server validates the body with pydantic and
-#: returns 422; a stricter proxy may say 400.
-_EXTRAS_REJECTED_STATUSES = frozenset({400, 422})
+#: The request fields that ask the engine to report what a turn cost (issue
+#: #519). A server that rejects the request because of them gets it once more
+#: without them; see ``_rejected_the_extras``.
+_EXTRA_FIELDS = ("stream_options", "return_progress", "timings_per_token")
+
+
+def _rejected_the_extras(status_code: int, body: bytes) -> bool:
+    """Whether a failed request failed because of the timing/progress fields.
+
+    A 422 is a body-validation failure, which is how a server that forbids
+    unknown fields answers them. llama-server itself answers 400 to every
+    invalid request (a prompt that exceeds the context size, a chat template
+    that cannot format the messages, and so on), so a 400 counts only when
+    its error names one of the fields; any other 400 is the ordinary request
+    error it always was and must not turn the fields off.
+    """
+    if status_code == 422:
+        return True
+    if status_code == 400:
+        text = body.decode(errors="replace")
+        return any(field in text for field in _EXTRA_FIELDS)
+    return False
 
 
 def _as_int(value: Any) -> int | None:
@@ -153,9 +171,9 @@ class LlamaCppRuntime(ChatRuntime):
         self._json_schema_enabled = cfg.json_schema_enabled
         # Whether the server accepts the engine-specific request fields that
         # make it report what a turn cost (issue #519): ``stream_options``,
-        # ``return_progress`` and ``timings_per_token``. llama-server does.
-        # llama-cpp-python's OpenAI server answers 422 to a shape it does not
-        # know, so the first rejection turns them off for the life of this
+        # ``return_progress`` and ``timings_per_token``. llama-server does. A
+        # server that rejects the request because of them (see
+        # ``_rejected_the_extras``) turns them off for the life of this
         # adapter and the request is re-sent without them; the turn completes,
         # with those figures left null.
         self._engine_extras_accepted = True
@@ -297,8 +315,8 @@ class LlamaCppRuntime(ChatRuntime):
                 ) as resp:
                     if resp.status_code != 200:
                         body = await resp.aread()
-                        if with_extras and resp.status_code in _EXTRAS_REJECTED_STATUSES:
-                            # This server does not know the timing/progress
+                        if with_extras and _rejected_the_extras(resp.status_code, body):
+                            # This server does not accept the timing/progress
                             # fields. Remember that and send the request again
                             # without them below, outside the connection.
                             self._engine_extras_accepted = False
