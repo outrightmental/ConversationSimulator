@@ -488,6 +488,29 @@ describe('NpcTurnProgress', () => {
       expect(screen.getByTestId('npc-turn-progress-fill').getAttribute('style')).toContain('transition: width')
     })
 
+    it('opens the reading bar at the share read, not by sweeping back from the full-width hatch', () => {
+      // jsdom runs no transitions, so the mechanism is what gets pinned. A
+      // transition runs from an element's old width to its new one: had the
+      // hatch's element (100% wide) become the fill, every reading stage would
+      // open with a full emerald bar shrinking to 25%. A new element is
+      // painted at its first width.
+      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+      const reading = (processed: number) => (
+        <NpcTurnProgress active elapsedMs={1_000} estimateMs={null} npcName="Dana" stage="reading" prompt={{ processed, total: 2048, cached: 0 }} />
+      )
+      const { rerender } = render(<NpcTurnProgress active elapsedMs={1_000} estimateMs={null} npcName="Dana" stage="waiting" />)
+      const hatch = screen.getByTestId('npc-turn-progress-fill')
+      expect(hatch).toHaveStyle({ width: '100%' })
+      rerender(reading(512))
+      const fill = screen.getByTestId('npc-turn-progress-fill')
+      expect(fill).toHaveStyle({ width: '25%' })
+      expect(fill).not.toBe(hatch)
+      // Within the stage it is the same element, so the bar animates forwards.
+      rerender(reading(1024))
+      expect(screen.getByTestId('npc-turn-progress-fill')).toBe(fill)
+      expect(fill).toHaveStyle({ width: '50%' })
+    })
+
     it('does not animate under prefers-reduced-motion', () => {
       vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
       render(<NpcTurnProgress active elapsedMs={3_000} estimateMs={null} npcName="Dana" stage="reading" prompt={{ processed: 1, total: 4, cached: 0 }} />)

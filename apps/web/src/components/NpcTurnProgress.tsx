@@ -349,6 +349,11 @@ export default function NpcTurnProgress({
               />
             )}
             <div
+              // A new element when the bar changes mode. The hatch is drawn at
+              // full width, and a transition runs from the old width to the
+              // new one: reusing the element made every reading stage open
+              // with a full bar sweeping back to the share read so far.
+              key={indeterminate ? 'hatch' : 'fill'}
               data-testid="npc-turn-progress-fill"
               aria-hidden="true"
               style={{
