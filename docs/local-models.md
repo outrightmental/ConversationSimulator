@@ -146,8 +146,14 @@ CONVSIM_RUNTIME_ID=ollama ./scripts/dev.sh
 ```
 
 This only applies while no runtime has been chosen in the app: a saved choice
-wins at startup. With no Ollama model chosen, the adapter uses the first model
-Ollama lists.
+wins at startup.
+
+Conversations and debriefs use the first model Ollama lists (the top line of
+`ollama list`), whether or not you chose another one. The turn pipeline and the
+debrief engine build their `ChatRequest` without a `model_id`, and the Ollama
+adapter falls back to the first entry of `/api/tags` when none is given. Only
+the **Model benchmark** passes the chosen model, and the Home screen shows it.
+With a single model in Ollama, that is the one every conversation uses.
 
 Override the Ollama server URL with `CONVSIM_OLLAMA_BASE_URL` if Ollama is listening on a different address.
 

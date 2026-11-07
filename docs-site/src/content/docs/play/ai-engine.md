@@ -60,7 +60,9 @@ selected yourself is not listed there, so switch back to one with
 **Open model manager →** and **Use a local GGUF file**. The demo edition has no
 **AI engine** section.
 
-A switch to **Ollama** or **Fake (Demo)** takes effect at once. A switch to
+A switch to **Ollama** or **Fake (Demo)** takes effect at once, although
+Ollama may not answer with the model you picked (see
+[How to select Ollama in the app](#how-to-select-ollama-in-the-app)). A switch to
 another llama.cpp model or GGUF file does not, when the engine is already
 running, which it is after **Set me up** and whenever the app starts with
 llama.cpp selected. The app saves your choice: Settings reports **Provider and
@@ -155,6 +157,12 @@ If none of these apply, the built-in engine is simpler.
    this model** next to the one you want.
 4. A short **Model benchmark** runs. Click **Continue to Home** when it is
    done.
+
+If Ollama has more than one model, conversations may not use the one you
+clicked. At this release the app passes your choice to the benchmark but not
+to conversations and their debriefs, so Ollama answers those with the first
+model it lists, the top line of `ollama list`. With a single model in Ollama,
+that is the one every conversation uses.
 
 If the list is empty (**No Ollama models detected.**), Ollama is either not
 running or has no models. Start Ollama (`ollama serve`), pull a model
