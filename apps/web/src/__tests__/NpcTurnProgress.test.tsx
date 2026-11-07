@@ -365,6 +365,37 @@ describe('NpcTurnProgress', () => {
       expect(announcement).toHaveTextContent('Still waiting on Dana — 1m 00s so far. The reply is not lost. Reply starts in about 10–15 s.')
     })
 
+    it('drops the sampled estimate once the turn moves on to checking within the same half-minute', () => {
+      // Reading past 30 s samples an estimate for the half-minute announcement.
+      // Writing with nothing released yet announces nothing; a failed check then
+      // sends the turn to checking, which can carry no estimate, while the
+      // half-minute slot that sampled one is still open.
+      const { rerender } = render(
+        <NpcTurnProgress active elapsedMs={31_000} estimateMs={null} npcName="Dana" stage="reading" prompt={{ processed: 1_800, total: 2_200, cached: 0 }} replyStart={{ lowMs: 10_000, highMs: 15_000 }} />,
+      )
+      const announcement = screen.getByTestId('npc-turn-progress-announcement')
+      expect(announcement).toHaveTextContent('Still waiting on Dana — 30s so far. The reply is not lost. Reply starts in about 10–15 s.')
+      rerender(<NpcTurnProgress active elapsedMs={40_000} estimateMs={null} npcName="Dana" stage="writing" />)
+      expect(announcement).toHaveTextContent('')
+      rerender(<NpcTurnProgress active elapsedMs={50_000} estimateMs={null} npcName="Dana" stage="checking" />)
+      expect(announcement).toHaveTextContent('Still waiting on Dana — 30s so far. The reply is not lost.')
+      expect(announcement).not.toHaveTextContent(/Reply starts/)
+      expect(screen.getByTestId('npc-turn-progress-status')).not.toHaveTextContent(/Reply starts/)
+      expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument()
+    })
+
+    it('quotes no estimate in a stage it cannot apply to, even when handed one', () => {
+      // The screen passes none outside getting ready and reading; the panel
+      // keeps to the same rule rather than relying on it.
+      for (const [stage, streaming] of [['writing', true], ['finishing', false], ['checking', false], ['voice', false], ['reading', true]] as const) {
+        const { unmount } = render(
+          <NpcTurnProgress active elapsedMs={31_000} estimateMs={null} npcName="Dana" stage={stage} streaming={streaming} replyStart={{ lowMs: 10_000, highMs: 15_000 }} />,
+        )
+        expect(document.body.textContent ?? '').not.toMatch(/Reply starts/)
+        unmount()
+      }
+    })
+
     it('quotes a wait of a minute or more in minutes, the way the clock beside it reads', () => {
       const { unmount } = renderStage({ stage: 'reading', prompt: { processed: 200, total: 2200, cached: 0 }, replyStart: { lowMs: 60_000, highMs: 120_000 } })
       expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 1–2 min.')

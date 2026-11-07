@@ -96,7 +96,8 @@ export interface NpcTurnProgressProps {
  * is hidden from assistive tech and three sr-only live regions carry the news
  * instead. One has the stage phrase and the estimate as that stage began (it
  * changes when the stage does, never with a progress report); one has the
- * elapsed time and the current estimate on a 30 s grid; one has the
+ * elapsed time on a 30 s grid, with the current estimate while the turn is
+ * still getting ready or reading; one has the
  * reply-speed footnote from five seconds on. Nothing is announced about the
  * wait while the reply streams, since the transcript's live region is already
  * reading it, and "Your turn." is announced at commit. All three regions are
@@ -173,7 +174,14 @@ export default function NpcTurnProgress({
   const estimateText = hasEstimate ? formatDuration(quotedEstimateMs) : ''
 
   // ── Captions ───────────────────────────────────────────────────────────
-  const replyStartText = hasStages && replyStart ? replyStartCopy(replyStart) : ''
+  // A reply-start estimate only means something while the engine has yet to
+  // start the reply: getting ready or reading. Once words stream the
+  // transcript is the progress, and checking is a second, unstreamed try that
+  // no figure describes. The screen already passes none then; the panel holds
+  // to the same rule itself, because the announcements below keep a figure
+  // sampled earlier and would otherwise carry it into a later stage.
+  const estimateCanApply = hasStages && !streaming && (liveStage === 'waiting' || liveStage === 'reading')
+  const replyStartText = estimateCanApply && replyStart ? replyStartCopy(replyStart) : ''
   const detail = hasStages
     ? replyStartText
     : !hasEstimate
@@ -232,9 +240,12 @@ export default function NpcTurnProgress({
           ? t(`turnProgress.stillWaitingOf${suffix}`, { name: name ?? '', elapsed: announcedElapsedText, estimate: estimateText })
           : t(`turnProgress.stillWaiting${suffix}`, { name: name ?? '', elapsed: announcedElapsedText })
   // The estimate rides along on the same half-minute grid, so a long wait
-  // hears an up-to-date figure without hearing one per progress report.
+  // hears an up-to-date figure without hearing one per progress report. The
+  // figure was sampled when the slot began, so it is dropped once the turn
+  // has moved on to a stage no estimate applies to: reading, then writing,
+  // then checking can all fall within one half-minute.
   const announcementText = elapsedAnnouncement
-    ? [elapsedAnnouncement, slotEstimateText].filter(Boolean).join(' ')
+    ? [elapsedAnnouncement, estimateCanApply ? slotEstimateText : ''].filter(Boolean).join(' ')
     : ''
 
   const indeterminate = !hasReadingBar && !hasEstimate

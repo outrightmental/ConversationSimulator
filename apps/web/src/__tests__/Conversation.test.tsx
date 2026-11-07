@@ -1676,6 +1676,42 @@ describe('Conversation screen', () => {
       expect(screen.getByTestId('npc-turn-progress-status')).not.toHaveTextContent(/Reply starts/)
     })
 
+    it('carries no estimate into the half-minute announcement once a retry has begun', async () => {
+      // The half-minute announcement samples the estimate when its slot opens.
+      // A slow read that crosses 30 s, a reply that fails its check before any
+      // words are released, and the retry can all fall within one slot, and
+      // the retry is a stage no estimate applies to.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 20, writing_tps: 3, first_token_ms: 90000, first_words_ms: 100000, total_ms: 180000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await waitFor(() => expect(mockApi.getRollingSpeeds).toHaveBeenCalled())
+        await submitFirst()
+        const announcement = screen.getByTestId('npc-turn-progress-announcement')
+        await vi.advanceTimersByTimeAsync(1_000)
+        fire(progress('waiting', null, 1))
+        await vi.advanceTimersByTimeAsync(1_000)
+        fire(progress('reading', { processed: 200, total: 2200, cached: 0 }, 2))
+        await vi.advanceTimersByTimeAsync(29_000)
+        // Still reading past 30 s: the announcement carries the estimate.
+        expect(announcement).toHaveTextContent(/30s so far\. The reply is not lost\. Reply starts in about/)
+        fire(progress('writing', null, 3))
+        await vi.advanceTimersByTimeAsync(4_000)
+        fire(progress('checking', null, 4))
+        await vi.advanceTimersByTimeAsync(2_000)
+        expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Dana Whitfield is trying that again…')
+        expect(announcement).toHaveTextContent('Still waiting on Dana Whitfield — 30s so far. The reply is not lost.')
+        expect(announcement).not.toHaveTextContent(/Reply starts/)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('keeps the finishing stage visible with the meters hidden', async () => {
       const { fire } = connect()
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
