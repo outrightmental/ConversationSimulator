@@ -9,7 +9,7 @@ ConversationSimulator runs a local LLM, optionally local STT (Whisper) and TTS (
 
 ## Latency budgets
 
-These are the official latency budgets for the **mid-spec reference machine** (Apple M2 / NVIDIA RTX 3060 equivalent). In-app performance warnings fire when a measurement exceeds the corresponding budget. Nightly CI smoke tests flag any regression greater than 20 % against these values.
+These are the official latency budgets for the **mid-spec reference machine** (Apple M2 / NVIDIA RTX 3060 equivalent). Nightly CI smoke tests flag any regression greater than 20 % against these values.
 
 | Metric | Budget | Condition |
 |--------|--------|-----------|
@@ -102,7 +102,7 @@ Worth knowing about every number the panel quotes:
   seconds, to five seconds under a minute, and to the whole minute beyond
   ("Reply starts in about 1–2 min.").
 - **They never leave the machine.** The per-turn records live in the local
-  session database beside the transcript (see [privacy](privacy.md)); the
+  session database beside the transcript (see [privacy](/trust/privacy/)); the
   older whole-turn samples sit in browser local storage under
   `convsim.turnTiming`. **Clear all local data** in Settings forgets both.
 - **Nothing nags.** The amber "first token took…" rows and the separate
