@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
@@ -47,11 +48,18 @@ from convsim_core.scenario_state import (
 from convsim_core.scenarios import resolve_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
-from convsim_core.services.model_manager_service import get_active_config
+from convsim_core.services.model_manager_service import get_active_config, recorded_model_id
 from convsim_core.services.relationship_memory import update_relationship_memory
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
 from convsim_core.services.tts_queue import synthesize_utterance
+from convsim_core.services.turn_timing import (
+    TurnClock,
+    TurnTimingBuilder,
+    VoiceTiming,
+    load_turn_timings,
+    persist_turn_timing,
+)
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
 logger = logging.getLogger(__name__)
@@ -251,6 +259,10 @@ class TurnEntry(BaseModel):
     emotion: Optional[str] = None
     flow_state_after: Optional[str] = None
     created_at: str
+    # What the turn cost (issue #519); NPC rows only, and only for turns that
+    # reached the model. Carried here so a turn restored after a reload still
+    # has its record.
+    timing: Optional[Dict[str, Any]] = None
 
 
 class TranscriptResponse(BaseModel):
@@ -292,6 +304,7 @@ class TurnDebugDetail(BaseModel):
     used_fallback: bool
     parse_events: List[Dict[str, Any]]
     prompt_metadata: Optional[Dict[str, Any]]
+    timing: Optional[Dict[str, Any]] = None
 
 
 class SessionDebugResponse(BaseModel):
@@ -495,6 +508,25 @@ def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
         return requested
     runtime_id = get_active_config(conn).get("runtime_id")
     return runtime_id if runtime_id in _SESSION_PINNED_RUNTIME_IDS else None
+
+
+def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) -> str | None:
+    """The model identity to stamp on this turn's timing record, or None (issue #519).
+
+    Only a selection that served the turn is recorded. A session pinned to a
+    scripted or fake runtime ran on that runtime whatever the player has
+    selected, and so did an unpinned session when the live runtime is not the
+    selected one; in both cases the record's ``context.model_id`` already
+    names what the runtime itself reported, and the registry id stays None
+    rather than attributing the turn to a model that never ran. A file path
+    is never recorded (see ``recorded_model_id``).
+    """
+    if setup.get("runtime_id") in _SESSION_PINNED_RUNTIME_IDS:
+        return None
+    active = get_active_config(conn)
+    if active.get("runtime_id") != runtime.id:
+        return None
+    return recorded_model_id(conn, active.get("model_id"))
 
 
 def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
@@ -781,6 +813,9 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
 
 @router.post("/{session_id}/turn", response_model=TurnResponse)
 async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request) -> TurnResponse:
+    # The turn's clock starts the moment the request arrives: every figure in
+    # its timing record (issue #519) is measured from here.
+    clock = TurnClock()
     db = request.app.state.db
     conn = db.connection()
     row = conn.execute(
@@ -809,6 +844,11 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     runtime = _resolve_runtime(request, setup)
     save_transcript = setup.get("save_transcript", True)
     source_mode = setup.get("input_mode", "text-only")
+    timing = TurnTimingBuilder(
+        clock=clock,
+        runtime_id=runtime.id,
+        registry_model_id=_recorded_model_for(conn, runtime, setup),
+    )
 
     try:
         result = await process_turn(
@@ -824,6 +864,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             state_variable_overrides=info.state_variable_overrides,
             scenario_events=info.events,
             ending_conditions=info.ending_conditions,
+            timing=timing,
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -898,6 +939,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             difficulty_settings_patience=diff_settings.patience if diff_settings else 50,
             enabled=bool(npc_thinking_pause_enabled),
         )
+        synth_started = time.perf_counter()
         tts_events = await _run_tts_for_utterance(
             utterance=result.npc_utterance,
             session_id=session_id,
@@ -908,6 +950,23 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             now=now,
             thinking_pause_ms=pause_ms,
         )
+        # Synthesis runs here, after the pipeline returned, so the voice stage
+        # is timed here. The queue synthesizes every sentence before answering,
+        # so the moment the first chunk was ready is not observable yet
+        # (first_audio_ms stays null until #533/#544).
+        timing.voice = VoiceTiming(
+            synth_ms=round((time.perf_counter() - synth_started) * 1000.0, 1),
+            first_audio_ms=None,
+        )
+
+    # Build the turn's record once, here, after the pipeline's transaction
+    # committed and after synthesis, so the total is the whole request (issue
+    # #519); the pipeline hands back the builder it filled rather than a record
+    # of its own. An input safety stop never reached the model and has none.
+    if result.timing is not None:
+        record = result.timing.build()
+        persist_turn_timing(conn, session_id, result.turn_number, record, now)
+        npc_event.payload["timing"] = record.model_dump()
 
     return TurnResponse(
         session_id=session_id,
@@ -997,6 +1056,8 @@ async def get_session_debug(session_id: str, request: Request) -> SessionDebugRe
         else:
             prompt_by_turn[tn] = payload
 
+    timings_by_turn = load_turn_timings(conn, session_id)
+
     all_game_turns = sorted(set(raw_by_game_turn) | set(debug_by_turn))
     turns: List[TurnDebugDetail] = []
     for game_turn in all_game_turns:
@@ -1008,6 +1069,7 @@ async def get_session_debug(session_id: str, request: Request) -> SessionDebugRe
             used_fallback=debug.get("used_fallback", False),
             parse_events=debug.get("parse_events", []),
             prompt_metadata=prompt_by_turn.get(game_turn),
+            timing=timings_by_turn.get(game_turn),
         ))
 
     return SessionDebugResponse(session_id=session_id, turns=turns)
@@ -1143,9 +1205,20 @@ async def delete_session(session_id: str, request: Request) -> None:
         conn.execute("DELETE FROM turn_sessions WHERE session_id = ?", (session_id,))
 
 
-def _turns_from_rows(rows: list) -> List[TurnEntry]:
-    return [
-        TurnEntry(
+def _turns_from_rows(
+    rows: list, timings: Optional[Dict[int, Dict[str, Any]]] = None
+) -> List[TurnEntry]:
+    """Rows → entries. NPC rows carry their turn's timing record when given.
+
+    NPC rows are stored at ``turn_number = game_turn * 2`` (players at
+    ``2n - 1``), and the records are keyed by game turn.
+    """
+    entries: List[TurnEntry] = []
+    for t in rows:
+        timing = None
+        if timings and t["role"] == "npc":
+            timing = timings.get(int(t["turn_number"]) // 2)
+        entries.append(TurnEntry(
             turn_number=t["turn_number"],
             role=t["role"],
             content=t["content"],
@@ -1153,9 +1226,9 @@ def _turns_from_rows(rows: list) -> List[TurnEntry]:
             emotion=t["emotion"],
             flow_state_after=t["flow_state_after"],
             created_at=t["created_at"],
-        )
-        for t in rows
-    ]
+            timing=timing,
+        ))
+    return entries
 
 
 @router.get("/{session_id}/transcript", response_model=TranscriptResponse)
@@ -1190,7 +1263,7 @@ async def get_transcript(session_id: str, request: Request) -> TranscriptRespons
         session_id=session_id,
         scenario_id=row["scenario_id"],
         transcript_saved=True,
-        turns=_turns_from_rows(turn_rows),
+        turns=_turns_from_rows(turn_rows, load_turn_timings(conn, session_id)),
     )
 
 

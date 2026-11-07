@@ -229,6 +229,7 @@ Base URL: `http://127.0.0.1:7355`
 | GET    | `/api/sessions/{id}/transcript`   | Retrieve full transcript                 |
 | GET    | `/api/sessions/{id}/export`       | Export session JSON (turns + events + debrief) |
 | DELETE | `/api/sessions/{id}`              | Delete session and transcript            |
+| GET    | `/api/performance/rolling`        | This machine's recent turn speeds (medians over `turn_timing` records) |
 
 **Idempotency note.** `POST /turn` is not idempotent. Before retrying after
 a network failure, call `GET /api/sessions/{id}` to check whether the turn
@@ -446,7 +447,7 @@ The database lives at `~/.convsim/db/convsim.sqlite` with WAL mode and
 | `scenario_versions`    | Versioned scenario JSON content                      |
 | `turn_sessions`        | Active and completed sessions                        |
 | `turn_session_turns`   | Individual player and NPC turns                      |
-| `turn_session_events`  | Per-turn events (state_delta, scenario_event, etc.)  |
+| `turn_session_events`  | Per-turn events (state_delta, scenario_event, turn_timing, etc.) |
 | `session_debriefs`     | Generated debrief documents (JSON)                   |
 | `installed_models`     | Downloaded model files and install status            |
 | `model_registry`       | Curated model definitions with checksums             |

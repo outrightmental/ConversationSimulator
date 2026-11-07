@@ -234,13 +234,15 @@ def test_token_budget_reaches_the_runtime(client, monkeypatch):
 
     from convsim_core.services import turn_pipeline as tp
 
-    real_collect = tp._collect_runtime_output
+    # process_turn reads the runtime through the timed collector (issue #519),
+    # so that is the seam the budget has to be seen crossing.
+    real_collect = tp._collect_runtime_output_timed
 
-    async def _spy(runtime, request):
+    async def _spy(runtime, request, *args, **kwargs):
         captured.append(request.max_tokens)
-        return await real_collect(runtime, request)
+        return await real_collect(runtime, request, *args, **kwargs)
 
-    monkeypatch.setattr(tp, "_collect_runtime_output", _spy)
+    monkeypatch.setattr(tp, "_collect_runtime_output_timed", _spy)
 
     client.put("/api/runtime/settings", json={"reply_speed": "fast"})
     _play_one_turn(client)

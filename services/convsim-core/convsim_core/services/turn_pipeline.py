@@ -20,6 +20,7 @@ import concurrent.futures
 import json
 import logging
 import sqlite3
+import time
 from dataclasses import dataclass, replace as dataclass_replace
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
@@ -35,6 +36,7 @@ from convsim_prompt import (
     compose_turn_prompt,
     parse_turn_output,
 )
+from convsim_prompt.types import ScenarioData
 from convsim_prompt.types import ResponseStyleOverrides, ScenarioData
 
 from convsim_core.input_router import (
@@ -45,7 +47,7 @@ from convsim_core.input_router import (
     route_player_input,
 )
 from convsim_core.runtime.base import ChatRuntime
-from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
+from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatProgress, ChatRequest, ChatToken
 from convsim_core.scenario_state import (
     ScenarioEvent,
     apply_state_delta,
@@ -59,6 +61,12 @@ from convsim_core.services.reply_speed import (
     load_reply_speed,
     profile_for,
     scaled_max_words,
+)
+from convsim_core.services.turn_timing import (
+    ExtraCallKind,
+    StreamObservation,
+    TurnClock,
+    TurnTimingBuilder,
 )
 from convsim_core.storage.repositories.relationship_repo import get_relationship_recap
 
@@ -155,21 +163,62 @@ class _SyncRuntimeBridge:
     parse_turn_output's except clause, which logs it and falls back gracefully.
     """
 
-    def __init__(self, runtime: ChatRuntime) -> None:
+    def __init__(
+        self,
+        runtime: ChatRuntime,
+        timing: Optional[TurnTimingBuilder] = None,
+        parse_events: Optional[List[TurnEvent]] = None,
+    ) -> None:
         self._runtime = runtime
+        self._timing = timing
+        # The same list the parser appends its events to, read at call time to
+        # tell the two kinds of extra call apart (see _call_kind).
+        self._parse_events = parse_events if parse_events is not None else []
+
+    def _call_kind(self) -> ExtraCallKind:
+        """Which of the parser's two follow-up calls is being made.
+
+        Every extra model call is counted in the turn's record (issue #519).
+        The parser makes at most one structural repair and at most one
+        content-safety retry, in that order, and reports an
+        ``output_violation_detected`` event before the retry and never before
+        the repair. So the events it has emitted by the time it calls say which
+        call this is, without the core reading the prompt text, which belongs
+        to the parser.
+        """
+        if any(e.event_type == "output_violation_detected" for e in self._parse_events):
+            return "safety_retry"
+        return "repair"
 
     def call_llm(self, prompt: str) -> str:
+        final_holder: List[ChatFinal] = []
+
         async def _call() -> str:
             request = ChatRequest(
                 messages=[ChatMessage(role="user", content=prompt)],
             )
-            text, _ = await _collect_runtime_output(self._runtime, request)
+            text, _, final = await _collect_runtime_output_timed(self._runtime, request)
+            if final is not None:
+                final_holder.append(final)
             return text
 
+        kind = self._call_kind()
+        started = time.perf_counter()
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
             return pool.submit(asyncio.run, _call()).result(timeout=60)
         finally:
+            if self._timing is not None:
+                final = final_holder[0] if final_holder else None
+                tokens: Optional[int] = None
+                if final is not None:
+                    if final.timings is not None and final.timings.output_tokens is not None:
+                        tokens = final.timings.output_tokens
+                    elif final.output_tokens > 0:
+                        tokens = final.output_tokens
+                self._timing.record_extra_call(
+                    kind, (time.perf_counter() - started) * 1000.0, tokens
+                )
             # Never wait on a hung repair call — the 60s timeout above must be
             # the real ceiling. A context manager would call shutdown(wait=True)
             # on exit and block indefinitely if the runtime never returns, so we
@@ -201,6 +250,11 @@ class TurnPipelineResult:
     new_flow_state: str
     turn_number: int
     used_fallback: bool
+    # What the turn cost so far (issue #519): the builder the pipeline filled,
+    # for the caller to add what it alone can see (voice, the whole request)
+    # and build the record once. None only for turns that never reached the
+    # model: an input safety stop answers from a canned line.
+    timing: Optional[TurnTimingBuilder] = None
 
 
 def _normalize_text(text: str) -> str:
@@ -349,25 +403,52 @@ def _load_recent_turns(session_id: str, conn: sqlite3.Connection, limit: int = 1
     return entries
 
 
-async def _collect_runtime_output(
-    runtime: ChatRuntime, request: ChatRequest
-) -> tuple[str, Optional[Dict[str, Any]]]:
-    """Stream from the runtime and return (raw_text, structured).
+async def _collect_runtime_output_timed(
+    runtime: ChatRuntime,
+    request: ChatRequest,
+    observation: Optional[StreamObservation] = None,
+) -> tuple[str, Optional[Dict[str, Any]], Optional[ChatFinal]]:
+    """Stream from the runtime and return (raw_text, structured, final).
 
     ``structured`` is the pre-parsed JSON dict from ``ChatFinal.structured``
     when the runtime used native JSON-schema constraints.  The caller should
     prefer ``structured`` over re-parsing ``raw_text`` when it is not None,
     because grammar-constrained output is always valid JSON.
+
+    When an ``observation`` is given, the moments the engine's signals arrived
+    — first progress chunk, first token, final — are stamped on it with a
+    monotonic clock, which is how the turn's stages are timed (issue #519).
     """
     raw_text = ""
     structured: Optional[Dict[str, Any]] = None
+    final: Optional[ChatFinal] = None
     async for chunk in runtime.chat_stream(request):
         if isinstance(chunk, ChatFinal):
             raw_text = chunk.text
             structured = chunk.structured
+            final = chunk
+            if observation is not None:
+                observation.saw_final(chunk, time.perf_counter())
             break  # ChatFinal is authoritative; trailing tokens must not append to it.
         elif isinstance(chunk, ChatToken):
+            if observation is not None:
+                observation.saw_token(time.perf_counter())
             raw_text += chunk.text
+        elif isinstance(chunk, ChatProgress):
+            if observation is not None:
+                observation.saw_progress(chunk, time.perf_counter())
+    return raw_text, structured, final
+
+
+async def _collect_runtime_output(
+    runtime: ChatRuntime, request: ChatRequest
+) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Stream from the runtime and return (raw_text, structured).
+
+    The untimed form of :func:`_collect_runtime_output_timed`, kept for callers
+    that only want the text.
+    """
+    raw_text, structured, _ = await _collect_runtime_output_timed(runtime, request)
     return raw_text, structured
 
 
@@ -386,6 +467,7 @@ async def process_turn(
     state_variable_overrides: Optional[Dict[str, Any]] = None,
     scenario_events: Optional[List[ScenarioEvent]] = None,
     ending_conditions: Optional[Dict[str, Any]] = None,
+    timing: Optional[TurnTimingBuilder] = None,
 ) -> TurnPipelineResult:
     """Execute the full player-turn pipeline and persist results.
 
@@ -394,9 +476,16 @@ async def process_turn(
     difficulty level (caller provides it to keep this function stateless about
     scenario lookup).
 
+    ``timing`` is the record of what this turn cost (issue #519). The router
+    starts its clock when the request arrives and passes the builder in; a
+    caller that passes none gets a builder started here, so the record is never
+    missing for a turn that reached the model.
+
     Raises TurnInputError if the player text fails validation.
     Never raises for model errors — uses safe fallback instead.
     """
+    if timing is None:
+        timing = TurnTimingBuilder(clock=TurnClock(), runtime_id=runtime.id)
     # Capture the moment the player's turn arrived, before any LLM work. The
     # player turn is persisted with this timestamp while the NPC turn is stamped
     # after inference completes, so their gap reflects real response latency
@@ -435,6 +524,8 @@ async def process_turn(
         )
     # REDIRECT: safety policy is already injected into the LLM prompt; continue.
     # OK: proceed normally.
+
+    compose_started = time.perf_counter()
 
     # 3. Load session state.
     session_id: str = session_row["session_id"]
@@ -502,7 +593,16 @@ async def process_turn(
         "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",
         runtime.id, session_id, turn_number, prompt.estimated_token_count, prompt.was_truncated,
     )
-    raw_text, native_structured = await _collect_runtime_output(runtime, request)
+    timing.compose_ms = (time.perf_counter() - compose_started) * 1000.0
+    observation = StreamObservation(sent_at=time.perf_counter())
+    timing.observation = observation
+    raw_text, native_structured, final = await _collect_runtime_output_timed(
+        runtime, request, observation
+    )
+    # A reply the token budget cut off, or one the caller cancelled, is
+    # recorded as stopped so the rolling medians leave it out (issue #519).
+    timing.mark_finish(final.finish_reason if final is not None else None)
+    parse_started = time.perf_counter()
 
     # 8. Validate / repair / fallback.
     # When the runtime returned a pre-parsed structured dict (via native JSON-schema
@@ -513,8 +613,8 @@ async def process_turn(
 
     # Wrap the runtime so parse_turn_output can make synchronous repair calls.
     # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
-    runtime_bridge = _SyncRuntimeBridge(runtime)
     turn_parse_events: List[TurnEvent] = []
+    runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events)
     turn_output = parse_turn_output(
         parse_input,
         runtime=runtime_bridge,
@@ -524,6 +624,13 @@ async def process_turn(
     used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
     if used_fallback:
         logger.warning("Turn output fell back to safe utterance for session %s turn %d", session_id, turn_number)
+    timing.fallback = used_fallback
+    # The repair calls run inside parse_turn_output, so their wall time is
+    # subtracted here: they are reported as extra_calls, not as "other".
+    timing.parse_ms = max(
+        0.0,
+        (time.perf_counter() - parse_started) * 1000.0 - sum(c.ms for c in timing.extra_calls),
+    )
 
     # 9. Handle safety status from model output.
     safety_stopped = turn_output.safety.status == "stop"
@@ -582,6 +689,7 @@ async def process_turn(
         "layers_present": list(prompt.layer_map.keys()),
     })
 
+    persist_started = time.perf_counter()
     with conn:
         player_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
@@ -724,6 +832,8 @@ async def process_turn(
             ),
         )
 
+    timing.persist_ms = (time.perf_counter() - persist_started) * 1000.0
+
     visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs)
 
     logger.debug(
@@ -757,4 +867,5 @@ async def process_turn(
         new_flow_state=new_flow_state,
         turn_number=turn_number,
         used_fallback=used_fallback,
+        timing=timing,
     )

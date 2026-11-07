@@ -9,14 +9,47 @@ from typing import AsyncGenerator
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.registry import register
 from convsim_core.runtime.types import (
+    ChatChunk,
     ChatFinal,
+    ChatProgress,
     ChatRequest,
+    ChatTimings,
     ChatToken,
     ModelInfo,
     RuntimeCapabilities,
     RuntimeHealth,
     RuntimeStatus,
 )
+
+# Deterministic speeds the fake engine "measures", so timing tests have fixed
+# figures to assert against (issue #519): one millisecond per prompt token read,
+# two per token written.
+FAKE_READING_TPS = 1000.0
+FAKE_WRITING_TPS = 500.0
+
+
+def deterministic_timings(input_tokens: int, output_tokens: int) -> ChatTimings:
+    """The engine report a fake or scripted runtime attaches to its ChatFinal."""
+    prompt_ms = round(input_tokens * (1000.0 / FAKE_READING_TPS), 1)
+    generation_ms = round(output_tokens * (1000.0 / FAKE_WRITING_TPS), 1)
+    return ChatTimings(
+        prompt_tokens=input_tokens,
+        cached_tokens=0,
+        evaluated_tokens=input_tokens,
+        output_tokens=output_tokens,
+        prompt_ms=prompt_ms,
+        generation_ms=generation_ms,
+        reading_tps=FAKE_READING_TPS,
+        writing_tps=FAKE_WRITING_TPS,
+    )
+
+
+def deterministic_progress(input_tokens: int) -> list[ChatProgress]:
+    """Two reading-progress chunks: nothing read yet, then everything read."""
+    return [
+        ChatProgress(stage="reading", processed=0, total=input_tokens, cached=0),
+        ChatProgress(stage="reading", processed=input_tokens, total=input_tokens, cached=0),
+    ]
 
 _MODELS = [
     ModelInfo(id="fake-small", name="Fake Small", size_category="small", context_length=4096),
@@ -88,10 +121,10 @@ class FakeChatRuntime(ChatRuntime):
     async def list_models(self) -> list[ModelInfo]:
         return list(_MODELS)
 
-    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         return self._stream(request)
 
-    async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         if request.json_schema is not None:
             # Return the debrief narrative response when the debrief schema is detected.
             if _DEBRIEF_SCHEMA_DISCRIMINANT in (request.json_schema.get("properties") or {}):
@@ -105,18 +138,26 @@ class FakeChatRuntime(ChatRuntime):
             structured = None
 
         words = response_text.split()
+        input_tokens = sum(len(m.content.split()) for m in request.messages)
+        # A real engine reports prompt progress before the first token; the fake
+        # does the same with fixed values so the pipeline's stage timing is
+        # exercised in tests (issue #519).
+        for progress in deterministic_progress(input_tokens):
+            await asyncio.sleep(0)
+            yield progress
         for word in words:
             await asyncio.sleep(0)
             yield ChatToken(text=word + " ")
 
         model_id = request.model_id or "fake-small"
-        input_tokens = sum(len(m.content.split()) for m in request.messages)
         yield ChatFinal(
             text=response_text,
             model_id=model_id,
             input_tokens=input_tokens,
             output_tokens=len(words),
             structured=structured,
+            timings=deterministic_timings(input_tokens, len(words)),
+            finish_reason="stop",
         )
 
     async def health(self) -> RuntimeHealth:

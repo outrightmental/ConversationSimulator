@@ -1,0 +1,20 @@
+: synthetic — written from llama-server b9415's documented stream shape, not captured. See README.md.
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk","prompt_progress":{"total":2034,"cache":0,"processed":256,"time_ms":2950.0}}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk","prompt_progress":{"total":2034,"cache":0,"processed":1024,"time_ms":11800.0}}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk","prompt_progress":{"total":2034,"cache":0,"processed":2034,"time_ms":23400.0}}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":""}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"{\"npc_utterance\": \"That's"}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk","timings":{"prompt_n":2034,"prompt_ms":23400.0,"prompt_per_token_ms":11.5,"prompt_per_second":86.9,"predicted_n":1,"predicted_ms":154.0,"predicted_per_token_ms":154.0,"predicted_per_second":6.5,"cache_n":0}}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" insightful."}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk","timings":{"prompt_n":2034,"prompt_ms":23400.0,"prompt_per_token_ms":11.5,"prompt_per_second":86.9,"predicted_n":2,"predicted_ms":308.0,"predicted_per_token_ms":154.0,"predicted_per_second":6.5,"cache_n":0}}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" You've done your homework.\", \"npc_emotion\": \"impressed\", \"state_delta\": {\"trust\": 5}, \"event_flags\": [\"player_demonstrates_knowledge\"], \"rubric_observations\": [], \"safety\": {\"status\": \"ok\"}, \"session_control\": {\"continue_session\": true}}"}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk","timings":{"prompt_n":2034,"prompt_ms":23400.0,"prompt_per_token_ms":11.5,"prompt_per_second":86.9,"predicted_n":60,"predicted_ms":9230.0,"predicted_per_token_ms":153.8,"predicted_per_second":6.5,"cache_n":0}}
+
+data: {"choices":[{"finish_reason":"stop","index":0,"delta":{}}],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk"}
+
+data: {"choices":[],"created":1762406400,"id":"chatcmpl-1","model":"qwen3-4b","object":"chat.completion.chunk","usage":{"completion_tokens":61,"prompt_tokens":2034,"total_tokens":2095},"timings":{"prompt_n":2034,"prompt_ms":23400.0,"prompt_per_token_ms":11.5,"prompt_per_second":86.9,"predicted_n":61,"predicted_ms":9384.0,"predicted_per_token_ms":153.8,"predicted_per_second":6.5,"cache_n":0}}
+
+data: [DONE]
