@@ -16,6 +16,7 @@ from convsim_core.runtime.fake import FakeChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatProgress, ChatRequest, ChatToken
 from convsim_core.services.model_manager_service import set_active_config
 from convsim_core.services.turn_salvage import partial_object, salvage_turn_output
+from convsim_core.services.turn_timing import TURN_TIMING_EVENT_TYPE
 
 _SETUP = {
     "scenario_id": "behavioral_interview",
@@ -160,6 +161,17 @@ class _LineSecondRuntime(_ThreeSentenceRuntime):
         yield ChatFinal(text=text, model_id="fake-small", input_tokens=10, output_tokens=10, structured=obj)
 
 
+def _timing_events(client: TestClient, session_id: str) -> list[dict]:
+    """The turn_timing records persisted for one session, oldest first."""
+    conn = client.app.state.db.connection()
+    rows = conn.execute(
+        "SELECT payload_json FROM turn_session_events "
+        "WHERE session_id = ? AND event_type = ? ORDER BY id",
+        (session_id, TURN_TIMING_EVENT_TYPE),
+    ).fetchall()
+    return [json.loads(r["payload_json"]) for r in rows]
+
+
 def _session_on(app, client: TestClient, runtime) -> str:
     set_active_config(app.state.db.connection(), "llama_cpp", "some-model")
     app.state.runtime = runtime
@@ -269,6 +281,65 @@ class TestWordStreaming:
         npc = next(e for e in res.json()["events"] if e["event_type"] == "npc_turn")
         assert npc["payload"]["timing"]["first_words_ms"] is None
         assert npc["payload"]["salvaged"] is False
+
+
+# ---------------------------------------------------------------------------
+# The salvaged flag on the timing record
+# ---------------------------------------------------------------------------
+
+
+class TestSalvagedTurnRecord:
+    """A salvaged streamed turn is recorded as one (issue #519 meets #538).
+
+    The pipeline sets ``salvaged`` on the timing builder it hands back, and the
+    router builds and persists the record from that builder, so the flag has
+    to survive the hand-off. The rolling query filters on ``stopped`` and
+    ``fallback`` only, so a salvaged turn is counted unless it is also one of
+    those.
+    """
+
+    def test_a_turn_salvaged_after_a_blocked_sentence_is_persisted_salvaged(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            sid, body, _events = _turn_with_socket(app, client, _ViolationInThirdSentence())
+            persisted = _timing_events(client, sid)
+            rolling = client.get("/api/performance/rolling?runtime_id=fake").json()
+
+        npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+        assert npc["payload"]["salvaged"] is True
+        assert npc["payload"]["timing"]["salvaged"] is True
+        assert len(persisted) == 1
+        record = persisted[0]
+        assert record["salvaged"] is True
+        # The pipeline closed the stream itself when the third sentence failed
+        # the check, so the engine reported no finish reason: the turn is
+        # salvaged, not stopped, and no fallback line was spoken.
+        assert record["stopped"] is False
+        assert record["fallback"] is False
+        assert record["finish_reason"] is None
+        assert record["first_words_ms"] is not None
+        # Neither stopped nor fallback, so the rolling window counts it.
+        assert rolling["samples"] == 1
+
+    def test_a_turn_salvaged_after_the_budget_cut_the_json_is_persisted_salvaged_and_stopped(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            sid, body, _events = _turn_with_socket(app, client, _CutInsideBookkeeping())
+            persisted = _timing_events(client, sid)
+            rolling = client.get("/api/performance/rolling?runtime_id=fake").json()
+
+        npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+        assert npc["payload"]["salvaged"] is True
+        assert len(persisted) == 1
+        record = persisted[0]
+        assert record["salvaged"] is True
+        # Here the engine did report why it ended, and the token budget cut
+        # the reply, so the same turn is also stopped.
+        assert record["stopped"] is True
+        assert record["finish_reason"] == "length"
+        assert record["fallback"] is False
+        # Left out of the rolling window as a stopped turn.
+        assert rolling["samples"] == 0
 
 
 # ---------------------------------------------------------------------------
