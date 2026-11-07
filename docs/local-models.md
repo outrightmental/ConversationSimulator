@@ -10,8 +10,10 @@ Inference happens on your computer, and no prompts, transcripts, or model output
 ## How the model manager works
 
 During first-run setup, click **Set me up** on the welcome screen. The card
-shows the recommended model's size and license, and the download starts as soon
-as you click. The recommended model is the registry's `role: starter` entry
+shows the recommended model's size and license, and the download starts when
+you click, unless the preflight check finds something to fix first, such as too
+little free disk space (a **Getting things ready** screen then says what it
+is). The recommended model is the registry's `role: starter` entry
 (Qwen3 4B Instruct Q4_K_M) on every machine; it is not chosen by hardware.
 
 After first-run setup you can switch model in the **AI engine** section of
