@@ -19,7 +19,7 @@ In addition to the [system requirements](/start/install/#system-requirements):
 | Requirement | Minimum | Needed for |
 |---|---|---|
 | Python | 3.10 or newer | `convsim-core` |
-| Node.js | 18 LTS or newer | the web UI, packages and scripts |
+| Node.js | 20 LTS or newer | the web UI, packages and scripts |
 | pnpm (recommended) or npm | pnpm 9 or newer | installing the workspace |
 | Rust | 1.80 or newer | the desktop app only |
 
@@ -43,7 +43,8 @@ Before installing anything, confirm your system meets the requirements:
 
 The check reports OS version, CPU architecture, RAM, disk space, audio device
 availability, and port conflicts on the five service ports (7354 to 7358). It
-also reports the installed Python and Node.js versions for the developer path.
+also reports the installed Python and Node.js versions for the developer path
+(the Node.js item passes on 18 or newer; see step 1).
 All items marked `FAIL` must be resolved before the app will work; `WARN` items
 are advisory.
 
@@ -55,10 +56,16 @@ are advisory.
 - Ubuntu/Debian: `sudo apt install python3.11 python3.11-venv`
 - Windows: download from <https://www.python.org/downloads/>
 
-**Node.js 18 LTS+**
+**Node.js 20 LTS+**
 
 - All platforms: download from <https://nodejs.org/>
-- Or use a version manager: `nvm install 18` / `fnm install 18`
+- Or use a version manager: `nvm install 20` / `fnm install 20`
+
+The locked dependencies need Node.js 20 or newer. `better-sqlite3`, which the
+pack loader and the `convsim` CLI load, lists Node 20.x and 22.x through 26.x
+in its `engines` field, and the docs site depends on packages that need 20.19
+or newer. CI runs Node 24. The first-run check and the setup scripts still
+accept any Node.js 18 or newer, so they will not warn you about 18 or 19.
 
 **pnpm (recommended) or npm**
 
@@ -98,7 +105,8 @@ cd ConversationSimulator
 
 The setup script:
 
-- Confirms Python 3.10+ and Node.js 18+ are present.
+- Confirms Python 3.10+ and Node.js are present. Its Node.js check only
+  requires 18, not the 20 the workspace needs (see step 1).
 - Installs frontend packages (`pnpm install` or `npm install`).
 - Creates the Python virtual environment for `convsim-core` under
   `services/convsim-core/.venv/` and installs `convsim-core` with its test

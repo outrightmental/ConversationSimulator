@@ -58,9 +58,10 @@ That is the whole procedure. Skip to [Set up your AI](#3-set-up-your-ai-first-la
 
 ## 2. Build from source — free
 
-The engine is Apache-2.0 and the five official scenario packs are CC BY 4.0, so
-you can always build and run the app yourself at no cost. It is the same
-software; you are supplying the build instead of paying for one.
+The engine is Apache-2.0, five of the six official scenario packs are CC BY 4.0
+and the sixth, the First Words tutorial, is Apache-2.0, so you can always build
+and run the app yourself at no cost. It is the same software; you are supplying
+the build instead of paying for one.
 
 Check out a **release tag** rather than `main` — tags are the versions we test
 and ship:
@@ -156,7 +157,7 @@ Inside it:
 | Folder | Purpose |
 |---|---|
 | `db/` | Session database (SQLite) |
-| `data/` | General app data. Raw microphone recordings go to `data/audio/` only while **Save raw audio recordings** is turned on in Settings |
+| `data/` | General app data. Raw microphone recordings go to `data/audio/` only while **Save raw audio recordings (advanced)** is turned on; the switch sits under **Show advanced** at the bottom of Settings |
 | `logs/` | Runtime logs |
 | `models/llm/` | Downloaded model weights |
 | `packs/` | Installed scenario packs: copies of the official packs, packs you import, and the Creator Workbench's `local-dev/` packs |
@@ -166,19 +167,24 @@ Inside it:
 
 **Settings → Local folders** lists all of these except `db/` (as Data, Logs,
 Models, Packs, Exports, Cache and Crash bundles), shows the exact paths and
-opens them. Override the whole tree with `CONVSIM_DATA_ROOT`, or single folders
-with `CONVSIM_DB_DIR`,
-`CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`, `CONVSIM_PACKS_DIR`,
-`CONVSIM_EXPORTS_DIR`, `CONVSIM_CACHE_DIR` and `CONVSIM_CRASH_BUNDLES_DIR`. If
-you run the services from source without the desktop shell, convsim-core uses
-`%LOCALAPPDATA%\outrightmental\convsim\` on Windows and `~/.local/share/convsim/`
-on Linux instead. Data from older builds that used `~/.convsim/` is copied to
-the new folder on first launch; model weights are not, so download the model
-again.
+opens them. Move single folders with `CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`,
+`CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`, `CONVSIM_PACKS_DIR`, `CONVSIM_EXPORTS_DIR`,
+`CONVSIM_CACHE_DIR` and `CONVSIM_CRASH_BUNDLES_DIR`; the desktop shell passes them
+through to convsim-core. `CONVSIM_DATA_ROOT` moves the whole tree, but only when
+convsim-core runs without the desktop shell: the shell always sets it to the
+folder above. If you run the services from source without the desktop shell,
+convsim-core uses `%LOCALAPPDATA%\outrightmental\convsim\` on Windows and
+`~/.local/share/convsim/` on Linux instead. Data from older builds that used
+`~/.convsim/` is copied to the new folder on first launch; model weights are not,
+so download the model again.
 
-Two things still live under `~/.convsim/`: the AI engine that a source build
-downloads on first run (`~/.convsim/bin/`; the Steam build has it bundled) and
-the voice synthesis cache (`~/.convsim/tts_cache/`).
+A few things still live under `~/.convsim/`: the AI engine that a source build
+downloads on first run (`~/.convsim/bin/`; the Steam build has it bundled), the
+voice input and voice activity detection models (`~/.convsim/models/stt/` and
+`~/.convsim/models/vad/`, where the download scripts under `runtimes/` put them)
+and the voice synthesis cache (`~/.convsim/tts_cache/`). When you run from source
+with `scripts/dev.sh` or `scripts/dev.ps1`, logs go to `~/.convsim/logs/` as well
+unless you set `CONVSIM_LOG_DIR`.
 
 ---
 

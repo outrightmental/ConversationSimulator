@@ -73,22 +73,35 @@ so it is outside this policy. The demo edition does not show the card.
 ### Destination directory
 
 Downloaded model files are written to `models/llm/` under the app's data
-folder (`convsim_core.paths.platform_data_root`):
+folder. The desktop shell builds that folder from the operating system's
+local data directory and the app identifier `com.outrightmental.convsim`,
+and passes it to convsim-core as `CONVSIM_DATA_ROOT` whenever it launches
+the service, which every packaged build does. The demo edition's shell uses
+the same identifier for this folder even though its bundle identifier
+differs, so the demo and the full app share one models folder:
 
 | Platform | Models folder |
 |----------|---------------|
-| Linux / Steam Deck | `$XDG_DATA_HOME/convsim/models/llm/`, or `~/.local/share/convsim/models/llm/` when `XDG_DATA_HOME` is unset |
+| Linux / Steam Deck | `$XDG_DATA_HOME/com.outrightmental.convsim/models/llm/`, or `~/.local/share/com.outrightmental.convsim/models/llm/` when `XDG_DATA_HOME` is unset |
 | macOS | `~/Library/Application Support/com.outrightmental.convsim/models/llm/` |
-| Windows | `%LOCALAPPDATA%\outrightmental\convsim\models\llm\` |
+| Windows | `%LOCALAPPDATA%\com.outrightmental.convsim\models\llm\` |
 
-The desktop shell passes this folder to convsim-core as `CONVSIM_DATA_ROOT`;
-developers can point `CONVSIM_DATA_ROOT` or `CONVSIM_MODELS_DIR` elsewhere.
-The app has no setting for moving the folder. The **Saves to** row of the
-confirmation screen (**Storage path** in the model manager) shows the
-filename under a `~/.convsim/models/llm/` prefix. That prefix is wrong on
-every build, including developer runs from source: `~/.convsim` is the
-legacy data location, and model files are written under the platform folder
-above. Only the filename on that row is accurate.
+Settings shows the real path in the **Local folders** list as the **Models**
+row (`GET /api/privacy/folders`). The app has no setting for moving the
+folder; developers can point `CONVSIM_DATA_ROOT` or `CONVSIM_MODELS_DIR`
+elsewhere. When convsim-core is started without `CONVSIM_DATA_ROOT`, for
+example a developer running the Python service on its own,
+`convsim_core.paths.platform_data_root` falls back to its own defaults:
+`$XDG_DATA_HOME/convsim` (or `~/.local/share/convsim`) on Linux and
+`%LOCALAPPDATA%\outrightmental\convsim` on Windows, which are different
+folders from the ones the desktop app uses; the macOS fallback is the same
+folder as above.
+
+The **Saves to** row of the confirmation screen (**Storage path** in the
+model manager) shows the filename under a `~/.convsim/models/llm/` prefix.
+That prefix is wrong on every build, including developer runs from source:
+`~/.convsim` is the legacy data location, and model files are written under
+the folders above. Only the filename on that row is accurate.
 
 Files are named after the model ID:
 
@@ -262,8 +275,9 @@ Validation runs in three places:
   [`.github/workflows/ci.yml`](https://github.com/outrightmental/ConversationSimulator/blob/main/.github/workflows/ci.yml)
   runs `services/convsim-core/tests/test_model_registry.py` on every pull
   request and every push to `main`. It validates `registry.yaml` against the
-  schema, rejects any `PENDING` value, and fails if a model weight file is
-  found in the repository.
+  schema, rejects any `PENDING` value, and fails if a model weight file
+  (`.gguf`, `.bin`, `.safetensors`, `.pt` or `.ckpt`) is found anywhere under
+  `model-registry/`. It does not scan the rest of the repository.
 - The nightly
   [`.github/workflows/registry-nightly.yml`](https://github.com/outrightmental/ConversationSimulator/blob/main/.github/workflows/registry-nightly.yml)
   runs `scripts/validate-registry.py --url-check`, which also confirms every
@@ -315,10 +329,11 @@ If a download fails because of a network error (connection reset, timeout,
 DNS failure):
 
 1. The `.part` file is deleted and the install record is marked `failed`
-   with the error text reported by the HTTP library, or "Download failed."
-   when it reported none (a timeout, for example). There is no automatic
-   retry.
-2. The wizard shows that text with **Try again**. It also has a friendlier
+   with the error text reported by the HTTP library, stored as is; for a
+   timeout that text is empty. The setup job's model stage carries the same
+   text, or "Download failed." when the record's text is empty, and the
+   stage text is what the player sees. There is no automatic retry.
+2. The wizard shows the stage text with **Try again**. It also has a friendlier
    **Network connection lost** panel with a **Retry** button, but that panel
    appears only when the error text contains a phrase such as
    "offline", "timed out" or "connection refused". The texts the download
@@ -336,9 +351,17 @@ If the app exits (graceful shutdown or crash) while a download is in progress:
 - The `.part` file is left on disk, because the download task died with the
   process.
 - On the next launch, convsim-core re-drives the newest unfinished install
-  job on its own (`resume_orphaned_jobs`), and the wizard reopens on the
-  **Setting up your AI** progress step. There is no separate prompt to
-  resume or start over.
+  job on its own (`resume_orphaned_jobs`). Whether a screen shows it depends
+  on whether first-run setup was ever finished. While no onboarding outcome
+  is recorded (`GET /api/setup/status` answers `never-run`), the app sends
+  the player to the wizard, which reopens on the **Setting up your AI**
+  progress step; there is no separate prompt to resume or start over. Once
+  an outcome is recorded (the wizard was finished, or **Cancel and go home**
+  was pressed at some earlier point), the job still resumes in the
+  background but no screen reopens for it. The model manager shows the
+  running job again only when the player presses **Confirm & install** for
+  the same model: `POST /api/setup/install` then reattaches to the active
+  job instead of starting a new one.
 - The download sends `Range: bytes=<size of .part>-`. If the server answers
   `206 Partial Content`, the transfer appends from where it stopped. If it
   answers `200`, the `.part` file is truncated and the download restarts from
@@ -400,9 +423,12 @@ exists for API callers; the app's screens do not call it directly.
 
 Binaries come from the official llama.cpp GitHub releases
 (`https://github.com/ggml-org/llama.cpp/releases`). An in-app install fetches
-the latest release at the time of the install; the app does not show the tag
-(`GET /api/sidecar/download-runtime` reports it for API callers). Steam depot
-builds bundle the tag pinned in
+the latest release at the time of the install. The app does not show the tag,
+and no endpoint reports which tag an in-app install fetched: the pipeline
+keeps only byte counts from the engine download, and
+`GET /api/sidecar/download-runtime` reports a tag only for a download started
+through `POST /api/sidecar/download-runtime`, which the app's screens do not
+use. Steam depot builds bundle the tag pinned in
 `runtimes/llama_cpp/download-runtime.sh` and `download-runtime.ps1` (`b9415`
 at this release).
 
