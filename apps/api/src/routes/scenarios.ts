@@ -81,6 +81,10 @@ function packScenarioToScenarioInfo(
     estimated_length_label: estimatedLengthLabel,
     tags: m.tags ?? [],
     recommended_model: m.requirements?.recommended_llm ?? [],
+    // The player's objective, which the Conversation Brief leads with. Only
+    // the player-visible half: `goals.hidden` is the NPC's covert agenda and
+    // has no place in a player-facing payload.
+    player_visible_goals: s.goals?.player_visible ?? [],
   };
 }
 

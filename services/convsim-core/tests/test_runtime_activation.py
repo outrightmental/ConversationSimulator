@@ -13,13 +13,22 @@ any selection. These tests pin the three guarantees that fix it:
 3. an unknown persisted runtime id falls back to the config default.
 """
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
-from convsim_core.runtime.active import resolve_startup_runtime_id
+from convsim_core.runtime.active import (
+    ensure_llama_sidecar_running,
+    resolve_startup_runtime_id,
+)
+from convsim_core.runtime.launch import LaunchConfig, resolve_launch_config
+from convsim_core.runtime.sidecar import SidecarState
 from convsim_core.services.model_manager_service import set_active_config
+from convsim_core.storage.database import Database
 
 
 def _config(tmp_path: Path) -> ServiceConfig:
@@ -72,3 +81,83 @@ def test_unknown_persisted_runtime_falls_back_to_config(tmp_path):
         conn = app.state.db.connection()
         set_active_config(conn, runtime_id="does-not-exist", model_id=None)
         assert resolve_startup_runtime_id(conn, "fake") == "fake"
+
+
+# ── Engine launch configuration (issue #523) ─────────────────────────────────
+
+
+def _seed_registry_model(conn, *, registry_id: str, context_length: int, file_path: str) -> None:
+    conn.execute(
+        "INSERT INTO model_registry (id, name, provider, context_length) VALUES (?, ?, ?, ?)",
+        (registry_id, "Registry Model", "test", context_length),
+    )
+    conn.execute(
+        "INSERT INTO installed_models (registry_id, filename, file_path, install_status) "
+        "VALUES (?, ?, ?, 'ready')",
+        (registry_id, Path(file_path).name, file_path),
+    )
+    conn.commit()
+
+
+def _stopped_sidecar() -> MagicMock:
+    sidecar = MagicMock()
+    sidecar.state = SidecarState.STOPPED
+    sidecar.start = AsyncMock()
+    return sidecar
+
+
+@pytest.mark.asyncio
+async def test_autostart_launches_with_the_registry_launch_config(tmp_path, monkeypatch):
+    """ensure_llama_sidecar_running — the autostart behind /api/models/use, the
+    benchmark and app startup — resolves the same launch configuration as the
+    other two start sites (issue #523): the registry's context size for the
+    model, one slot, small batches."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        model = tmp_path / "registry-model.gguf"
+        model.write_bytes(b"gguf")
+        _seed_registry_model(conn, registry_id="reg-model", context_length=6144, file_path=str(model))
+
+        sidecar = _stopped_sidecar()
+        app = SimpleNamespace(state=SimpleNamespace(db=db, sidecar=sidecar))
+        monkeypatch.setattr(
+            "convsim_core.runtime.sidecar.find_executable", lambda: "/fake/llama-server"
+        )
+
+        started = await ensure_llama_sidecar_running(app, model_path=str(model))
+
+        assert started == str(model)
+        sidecar.start.assert_awaited_once()
+        kwargs = sidecar.start.await_args.kwargs
+        assert kwargs["model_path"] == str(model)
+        assert kwargs["executable"] == "/fake/llama-server"
+        assert kwargs["launch"] == resolve_launch_config(str(model), conn)
+        assert kwargs["launch"] == LaunchConfig(context_length=6144)
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_autostart_without_a_model_path_resolves_the_ready_model(tmp_path, monkeypatch):
+    """App-startup autostart passes no path; the newest ready install is used
+    and its registry context size still reaches the launch configuration."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        model = tmp_path / "registry-model.gguf"
+        model.write_bytes(b"gguf")
+        _seed_registry_model(conn, registry_id="reg-model", context_length=6144, file_path=str(model))
+
+        sidecar = _stopped_sidecar()
+        app = SimpleNamespace(state=SimpleNamespace(db=db, sidecar=sidecar))
+        monkeypatch.setattr(
+            "convsim_core.runtime.sidecar.find_executable", lambda: "/fake/llama-server"
+        )
+
+        started = await ensure_llama_sidecar_running(app)
+
+        assert started == str(model)
+        assert sidecar.start.await_args.kwargs["launch"] == LaunchConfig(context_length=6144)
+    finally:
+        db.close()

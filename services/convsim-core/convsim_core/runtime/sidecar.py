@@ -18,6 +18,12 @@ from enum import Enum
 from pathlib import Path
 from typing import IO
 
+from convsim_core.runtime.launch import (
+    LAUNCH_ENV_VARS,
+    LaunchConfig,
+    context_length_for_command,
+    launch_env,
+)
 from convsim_core.runtime.procflags import CREATE_NO_WINDOW
 from convsim_core.runtime.supervisor import SidecarProcess, assert_localhost
 
@@ -205,9 +211,20 @@ class LlamaCppSidecar(SidecarProcess):
         context_length: int | None = None,
         threads: int | None = None,
         gpu_layers: int | None = None,
+        launch: LaunchConfig | None = None,
         startup_timeout: float = _STARTUP_TIMEOUT,
     ) -> None:
         """Launch llama-server and block until the /health endpoint is ready.
+
+        ``launch`` is the launch configuration (issue #523): context size,
+        slot count, batch size and host-memory cache bound. Callers resolve it
+        with ``resolve_launch_config()`` so every start site launches the same
+        way for the same model; when omitted the defaults apply (one slot,
+        8192-token context, 256-token batches, 1 GiB cache). An explicit
+        ``context_length`` is a statement for this start alone: it goes on
+        the command line as ``--ctx-size`` and wins over both
+        ``launch.context_length`` and a ``LLAMA_ARG_CTX_SIZE`` pinned in the
+        environment, which otherwise keeps the flag off the command line.
 
         Raises RuntimeError on port conflict, missing executable, or startup
         failure. Raises TimeoutError if startup_timeout elapses before /health
@@ -232,6 +249,17 @@ class LlamaCppSidecar(SidecarProcess):
                 "Stop the existing process or configure a different port."
             )
             raise RuntimeError(self._error)
+
+        # The launch settings travel two ways (see runtime/launch.py): the
+        # context size as --ctx-size, which every engine build has, and the
+        # rest as LLAMA_ARG_* variables, which an engine build lacking the
+        # matching flag ignores instead of refusing to start. Both are applied
+        # with setdefault semantics, so an operator's own LLAMA_ARG_* wins.
+        if launch is None:
+            launch = LaunchConfig()
+        env = launch_env(launch)
+        if context_length is None:
+            context_length = context_length_for_command(launch, env)
 
         cmd = build_command(
             exe, model_path,
@@ -258,21 +286,16 @@ class LlamaCppSidecar(SidecarProcess):
         self._port = port
         self._started_at = datetime.now(timezone.utc).isoformat()
 
+        # The effective LLAMA_ARG_* line is what lets a runtime.log excerpt
+        # (issue #489) show how the engine was launched, overrides included.
+        launch_vars = " ".join(f"{k}={env[k]}" for k in LAUNCH_ENV_VARS if k in env)
         header = (
             f"\n--- llama-server start {self._started_at} ---\n"
             f"cmd: {' '.join(cmd)}\n"
+            f"env: {launch_vars}\n"
         ).encode()
         log_fh.write(header)
         log_fh.flush()
-
-        # NPC turns need fast, in-character JSON — not visible chain-of-thought.
-        # Reasoning-family models (Qwen3, DeepSeek-R1 distils) otherwise spend
-        # hundreds of tokens thinking, blowing the turn token budget (truncated
-        # JSON → fallback utterance) and multiplying latency. LLAMA_ARG_REASONING
-        # is honoured by current llama-server builds and silently ignored by
-        # older ones, unlike the equivalent CLI flag which would fail startup.
-        env = dict(os.environ)
-        env.setdefault("LLAMA_ARG_REASONING", "off")
 
         try:
             self._process = await asyncio.create_subprocess_exec(

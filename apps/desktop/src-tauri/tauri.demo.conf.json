@@ -20,6 +20,13 @@
     ]
   },
   "bundle": {
+    "icon": [
+      "icons-demo/32x32.png",
+      "icons-demo/128x128.png",
+      "icons-demo/128x128@2x.png",
+      "icons-demo/icon.icns",
+      "icons-demo/icon.ico"
+    ],
     "shortDescription": "Conversation Simulator demo — five AI conversations, running entirely on your computer",
     "longDescription": "The Steam Next Fest demo of Conversation Simulator: download one AI model and play five curated conversations with characters that run 100% on your device. No data leaves your machine."
   }

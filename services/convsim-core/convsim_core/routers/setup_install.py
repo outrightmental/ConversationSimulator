@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from convsim_core.edition import EDITION_RESTRICTED, demo_model_allowed, is_demo
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.seeder import seed_official_packs
+from convsim_core.runtime.launch import resolve_launch_config
 from convsim_core.runtime.llama_cpp_download import DownloadProgress, download_binary
 from convsim_core.runtime.sidecar import LlamaCppSidecar, SidecarState, find_executable
 from convsim_core.services.model_download_service import execute_download
@@ -409,9 +410,14 @@ async def _run_pipeline(
                 _fail("warmup", "llama-server binary not found after the engine stage completed.")
                 return
 
+            # Same launch configuration as the autostart and the sidecar API
+            # (issue #523): the model's registry context size, one slot, small
+            # batches. The install record was marked ready above, so the path
+            # maps back to its registry row.
             await sidecar.start(
                 model_path=model_file_path,
                 executable=exe,
+                launch=resolve_launch_config(model_file_path, conn),
                 startup_timeout=120.0,
             )
 

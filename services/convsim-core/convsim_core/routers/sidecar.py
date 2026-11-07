@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from convsim_core.edition import require_demo_model_path
 from convsim_core.errors import ConvsimError
+from convsim_core.runtime.launch import resolve_launch_config
 from convsim_core.runtime.llama_cpp_download import (
     DownloadProgress,
     DownloadState,
@@ -172,6 +173,10 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
             status_code=409,
         )
 
+    # Same launch configuration as the autostart and the install pipeline
+    # (issue #523). An explicit context_length in the request still wins.
+    launch = resolve_launch_config(body.model_path, request.app.state.db.connection())
+
     try:
         await sidecar.start(
             body.model_path,
@@ -181,6 +186,7 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
             context_length=body.context_length,
             threads=body.threads,
             gpu_layers=body.gpu_layers,
+            launch=launch,
             startup_timeout=body.startup_timeout,
         )
     except (RuntimeError, TimeoutError) as exc:

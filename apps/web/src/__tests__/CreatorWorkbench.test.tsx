@@ -717,6 +717,51 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  describe('copy validation output', () => {
+    const FAILED_VALIDATION = {
+      valid: false,
+      errors: [
+        { severity: 'error' as const, rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'Fix it' },
+      ],
+      warnings: [],
+    }
+
+    afterEach(() => {
+      delete (navigator as unknown as { clipboard?: unknown }).clipboard
+    })
+
+    async function clickCopy() {
+      vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+      vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: FAILED_VALIDATION })
+      renderWorkbench()
+      fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+      const btn = await screen.findByTestId('copy-validation-button')
+      fireEvent.click(btn)
+      return btn
+    }
+
+    it('confirms when the report reached the clipboard', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+      const btn = await clickCopy()
+
+      await waitFor(() => expect(btn).toHaveTextContent('Copied'))
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining('[ERROR] manifest.yaml /author: author required'))
+    })
+
+    it('says so when no clipboard path works', async () => {
+      // jsdom has neither navigator.clipboard nor document.execCommand, which
+      // is also what a desktop shell with a refused clipboard grant looks like.
+      // The label used to stay on "Copy" as if nothing had been pressed.
+      expect(navigator.clipboard).toBeUndefined()
+
+      const btn = await clickCopy()
+
+      await waitFor(() => expect(btn).toHaveTextContent('Copy failed'))
+    })
+  })
+
   it('shows service error when validator API fails', async () => {
     vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
     vi.mocked(api.workbench.validate).mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'Internal server error', status: 500 } })

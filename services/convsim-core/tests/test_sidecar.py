@@ -14,8 +14,10 @@ import sys
 import textwrap
 from pathlib import Path
 
+import httpx
 import pytest
 
+from convsim_core.runtime.launch import LAUNCH_ENV_VARS, LaunchConfig, resolve_launch_config
 from convsim_core.runtime.sidecar import (
     LlamaCppSidecar,
     SidecarState,
@@ -23,6 +25,8 @@ from convsim_core.runtime.sidecar import (
     build_command,
     find_executable,
 )
+from convsim_core.services.model_manager_service import register_user_gguf
+from convsim_core.storage.database import Database
 
 
 # ---------------------------------------------------------------------------
@@ -516,18 +520,68 @@ _FAKE_LLAMA_SERVER = textwrap.dedent("""\
     Handles:
       GET  /health                    → 200 {"status":"ok"}
       GET  /v1/models                 → 200 {"data":[{"id":"fake-model"}]}
+      GET  /props                     → 200 slot count and per-slot context: the
+                                        context from --ctx-size, else LLAMA_ARG_CTX_SIZE;
+                                        the slot count from --parallel, else
+                                        LLAMA_ARG_N_PARALLEL (a flag beats its variable,
+                                        as on llama-server); the engine defaults
+                                        (issue #489) when neither is given. The batch
+                                        and cache settings are accepted, not reported.
+      GET  /__launch                  → 200 {"argv": [...], "env": {LLAMA_ARG_*}}
+                                        (test-only: what the engine was launched with)
       POST /v1/chat/completions       → SSE stream with one token then [DONE]
+
+    Like the real engine, the fake refuses a flag it does not know ("error:
+    invalid argument") and exits non-zero before it listens.
+
+    HONOUR_LAUNCH_ENV=False models an engine build that predates the
+    LLAMA_ARG_* variables and the flags behind them: it ignores the variables,
+    keeps its defaults, and refuses --parallel, --batch-size and --cache-ram on
+    the command line. It starts all the same when those settings travel as
+    variables, which is why they do.
     \"\"\"
     import http.server
     import json
+    import os
     import sys
 
-    port = 7356
+    HONOUR_LAUNCH_ENV = __HONOUR_LAUNCH_ENV__
+
+    # Flags every llama-server build has: the ones build_command() may emit.
+    BASE_FLAGS = {"--model", "--host", "--port", "--ctx-size", "--threads", "--n-gpu-layers"}
+    # Flags only a build that knows the LLAMA_ARG_* variables has.
+    LAUNCH_FLAGS = {"--parallel", "-np", "--batch-size", "-b", "--cache-ram"}
+    KNOWN_FLAGS = BASE_FLAGS | (LAUNCH_FLAGS if HONOUR_LAUNCH_ENV else set())
+
     args = sys.argv[1:]
-    for i, arg in enumerate(args):
-        if arg == "--port" and i + 1 < len(args):
-            port = int(args[i + 1])
-            break
+    flags = {}
+    for i in range(0, len(args), 2):
+        flag = args[i]
+        if flag not in KNOWN_FLAGS or i + 1 >= len(args):
+            print("error: invalid argument: " + flag, file=sys.stderr)
+            sys.exit(1)
+        flags[flag] = args[i + 1]
+
+    def _env_int(name, default):
+        raw = os.environ.get(name) if HONOUR_LAUNCH_ENV else None
+        return int(raw) if raw else default
+
+    # Engine defaults, as the log in issue #489 showed them: four slots, and
+    # the model's trained length (40960) when nothing states a context.
+    port = int(flags.get("--port", 7356))
+    model_path = flags.get("--model")
+    ctx_size = int(flags.get("--ctx-size") or _env_int("LLAMA_ARG_CTX_SIZE", 40960))
+    n_parallel = int(
+        flags.get("--parallel") or flags.get("-np") or _env_int("LLAMA_ARG_N_PARALLEL", 4)
+    )
+    launch_env = {k: v for k, v in os.environ.items() if k.startswith("LLAMA_ARG_")}
+
+    _PROPS = json.dumps({
+        "total_slots": n_parallel,
+        "default_generation_settings": {"n_ctx": ctx_size // n_parallel},
+        "model_path": model_path,
+    }).encode()
+    _LAUNCH = json.dumps({"argv": args, "env": launch_env}).encode()
 
     _SSE_CHUNK = json.dumps({
         "choices": [{"delta": {"content": "hello"}, "finish_reason": None}],
@@ -549,6 +603,10 @@ _FAKE_LLAMA_SERVER = textwrap.dedent("""\
                 self._json(b'{"status":"ok"}')
             elif self.path == "/v1/models":
                 self._json(b'{"data":[{"id":"fake-model"}]}')
+            elif self.path == "/props":
+                self._json(_PROPS)
+            elif self.path == "/__launch":
+                self._json(_LAUNCH)
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -592,10 +650,17 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _write_fake_server(tmp_path: Path) -> str:
-    """Write the fake llama-server script and return its path."""
+def _write_fake_server(tmp_path: Path, *, honour_launch_env: bool = True) -> str:
+    """Write the fake llama-server script and return its path.
+
+    ``honour_launch_env=False`` writes a build that ignores the ``LLAMA_ARG_*``
+    variables and refuses the flags behind them, standing in for an engine
+    that predates both.
+    """
     exe = tmp_path / "fake-llama-server"
-    exe.write_text(_FAKE_LLAMA_SERVER)
+    exe.write_text(
+        _FAKE_LLAMA_SERVER.replace("__HONOUR_LAUNCH_ENV__", "True" if honour_launch_env else "False")
+    )
     exe.chmod(0o755)
     return str(exe)
 
@@ -610,7 +675,6 @@ async def test_wait_for_ready_retries_on_read_error(tmp_path):
     the router's exception handler and producing a 500 instead of 503.
     Catching httpx.TransportError covers all transport-layer failures.
     """
-    import httpx
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from convsim_core.runtime.sidecar import _wait_for_ready
@@ -888,7 +952,6 @@ async def test_wait_for_ready_timeout_message_includes_http_status(tmp_path):
     which is not actionable. The fixed code must include the HTTP status code
     so users know the server was reachable but still loading.
     """
-    import httpx
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from convsim_core.runtime.sidecar import _wait_for_ready
@@ -1084,3 +1147,346 @@ async def test_start_respects_existing_reasoning_env(tmp_path, monkeypatch):
         await sidecar.start("/tmp/model.gguf", executable="/tmp/llama-server")
 
     assert captured["env"].get("LLAMA_ARG_REASONING") == "on"
+
+
+# ---------------------------------------------------------------------------
+# Launch configuration (issue #523): one slot, explicit context, small batches
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def clean_launch_env(monkeypatch):
+    """Keep LLAMA_ARG_* from the developer's shell out of these tests."""
+    for name in LAUNCH_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
+def _seed_registry_model(conn, *, registry_id: str, context_length: int, file_path: str) -> None:
+    """A registry row plus the installed-model row that points at ``file_path``."""
+    conn.execute(
+        "INSERT INTO model_registry (id, name, provider, context_length) VALUES (?, ?, ?, ?)",
+        (registry_id, "Registry Model", "test", context_length),
+    )
+    conn.execute(
+        "INSERT INTO installed_models (registry_id, filename, file_path, install_status) "
+        "VALUES (?, ?, ?, 'ready')",
+        (registry_id, Path(file_path).name, file_path),
+    )
+    conn.commit()
+
+
+async def _capture_launch(tmp_path, monkeypatch, **start_kwargs) -> dict:
+    """Run start() up to the spawn and return the argv and env it would use."""
+    captured: dict = {}
+
+    async def _fake_exec(*args, **kwargs):
+        captured["argv"] = list(args)
+        captured["env"] = kwargs.get("env")
+        raise OSError("stop after capture")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", _fake_exec)
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+    with pytest.raises(RuntimeError):
+        await sidecar.start("/tmp/model.gguf", executable="/tmp/llama-server", **start_kwargs)
+    return captured
+
+
+@pytest.mark.asyncio
+async def test_start_applies_launch_config_to_command_line_and_env(
+    tmp_path, monkeypatch, clean_launch_env
+):
+    """The context size goes on the command line; slots, batch and cache go in
+    the environment, where an engine build lacking the flag ignores them
+    instead of refusing to start. Whether a request pins a slot is decided by
+    the adapter's request body, not by the launch, so that guarantee lives in
+    test_llama_cpp_runtime.py (test_chat_stream_never_pins_a_slot)."""
+    captured = await _capture_launch(tmp_path, monkeypatch, launch=LaunchConfig(context_length=6144))
+
+    argv = captured["argv"]
+    assert argv[argv.index("--ctx-size") + 1] == "6144"
+    for flag in ("--parallel", "-np", "--batch-size", "-b", "--cache-ram"):
+        assert flag not in argv
+
+    env = captured["env"]
+    assert env["LLAMA_ARG_N_PARALLEL"] == "1"
+    assert env["LLAMA_ARG_BATCH"] == "256"
+    assert env["LLAMA_ARG_CACHE_RAM"] == "1024"
+    assert env["LLAMA_ARG_REASONING"] == "off"
+    assert "LLAMA_ARG_CTX_SIZE" not in env
+
+
+@pytest.mark.asyncio
+async def test_start_without_launch_config_uses_the_defaults(tmp_path, monkeypatch, clean_launch_env):
+    """A start that resolved nothing still never runs on the engine's own defaults."""
+    captured = await _capture_launch(tmp_path, monkeypatch)
+
+    argv = captured["argv"]
+    assert argv[argv.index("--ctx-size") + 1] == "8192"
+    assert captured["env"]["LLAMA_ARG_N_PARALLEL"] == "1"
+    assert captured["env"]["LLAMA_ARG_BATCH"] == "256"
+    assert captured["env"]["LLAMA_ARG_CACHE_RAM"] == "1024"
+
+
+@pytest.mark.asyncio
+async def test_start_forwards_a_non_default_launch_config(tmp_path, monkeypatch, clean_launch_env):
+    """start() passes on the caller's values rather than re-deriving the
+    defaults: when #529 hands it a player's launch profile, the engine must
+    run on that profile. The defaults test above cannot tell the two apart."""
+    captured = await _capture_launch(
+        tmp_path, monkeypatch,
+        launch=LaunchConfig(context_length=6144, parallel=2, batch_size=512, cache_ram_mib=0),
+    )
+
+    argv = captured["argv"]
+    assert argv[argv.index("--ctx-size") + 1] == "6144"
+    env = captured["env"]
+    assert env["LLAMA_ARG_N_PARALLEL"] == "2"
+    assert env["LLAMA_ARG_BATCH"] == "512"
+    assert env["LLAMA_ARG_CACHE_RAM"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_start_explicit_context_length_wins_over_launch_config(
+    tmp_path, monkeypatch, clean_launch_env
+):
+    captured = await _capture_launch(
+        tmp_path, monkeypatch, context_length=2048, launch=LaunchConfig(context_length=6144)
+    )
+    argv = captured["argv"]
+    assert argv[argv.index("--ctx-size") + 1] == "2048"
+
+
+@pytest.mark.asyncio
+async def test_start_respects_operator_launch_env_overrides(tmp_path, monkeypatch, clean_launch_env):
+    """A LLAMA_ARG_* already in the app's environment wins — the same rule as
+    LLAMA_ARG_REASONING — and a pinned LLAMA_ARG_CTX_SIZE keeps --ctx-size off
+    the command line so the flag cannot silently beat the variable."""
+    monkeypatch.setenv("LLAMA_ARG_N_PARALLEL", "2")
+    monkeypatch.setenv("LLAMA_ARG_CTX_SIZE", "4096")
+
+    captured = await _capture_launch(tmp_path, monkeypatch, launch=LaunchConfig(context_length=6144))
+
+    assert captured["env"]["LLAMA_ARG_N_PARALLEL"] == "2"
+    assert captured["env"]["LLAMA_ARG_CTX_SIZE"] == "4096"
+    assert "--ctx-size" not in captured["argv"]
+    assert captured["env"]["LLAMA_ARG_BATCH"] == "256"  # not overridden → still applied
+
+
+@pytest.mark.asyncio
+async def test_start_explicit_context_length_beats_a_pinned_context_variable(
+    tmp_path, monkeypatch, clean_launch_env
+):
+    """A context_length stated for this one start (the POST /api/sidecar/start
+    body) is the most specific statement there is: it goes on the command line
+    as --ctx-size and wins over both the registry value and a pinned
+    LLAMA_ARG_CTX_SIZE. Only the registry value steps aside for the variable."""
+    monkeypatch.setenv("LLAMA_ARG_CTX_SIZE", "4096")
+
+    captured = await _capture_launch(
+        tmp_path, monkeypatch, context_length=2048, launch=LaunchConfig(context_length=6144)
+    )
+
+    argv = captured["argv"]
+    assert argv[argv.index("--ctx-size") + 1] == "2048"
+    assert captured["env"]["LLAMA_ARG_CTX_SIZE"] == "4096"
+
+
+@pytest.mark.asyncio
+async def test_runtime_log_header_records_the_launch(tmp_path, monkeypatch, clean_launch_env):
+    """The runtime.log header — what #489 was diagnosed from — shows how the
+    engine was launched, variables included."""
+    await _capture_launch(tmp_path, monkeypatch, launch=LaunchConfig(context_length=6144))
+
+    text = (tmp_path / "logs" / "runtime.log").read_text()
+    assert "cmd: " in text
+    assert "--ctx-size 6144" in text
+    assert "env: " in text
+    for item in ("LLAMA_ARG_N_PARALLEL=1", "LLAMA_ARG_BATCH=256", "LLAMA_ARG_CACHE_RAM=1024"):
+        assert item in text
+
+
+async def _props_and_launch(port: int) -> tuple[dict, dict]:
+    """What the fake engine ended up with, and what it was launched with."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        props = (await client.get(f"http://127.0.0.1:{port}/props")).json()
+        seen = (await client.get(f"http://127.0.0.1:{port}/__launch")).json()
+    return props, seen
+
+
+@pytest.mark.asyncio
+async def test_fake_engine_reports_one_slot_with_the_registry_context(tmp_path, clean_launch_env):
+    """End to end against the fake engine: resolve the launch configuration for
+    a registry model, start, and read back what the engine ended up with."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        model = tmp_path / "registry-model.gguf"
+        model.write_bytes(b"gguf")
+        _seed_registry_model(conn, registry_id="reg-model", context_length=6144, file_path=str(model))
+        launch = resolve_launch_config(str(model), conn)
+        assert launch.context_length == 6144
+
+        exe = _write_fake_server(tmp_path)
+        port = _free_port()
+        sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+        await sidecar.start(
+            str(model), executable=exe, port=port, startup_timeout=15.0, launch=launch
+        )
+        try:
+            assert sidecar.state == SidecarState.RUNNING
+            props, seen = await _props_and_launch(port)
+        finally:
+            await sidecar.stop()
+    finally:
+        db.close()
+
+    assert props["total_slots"] == 1
+    assert props["default_generation_settings"]["n_ctx"] == 6144
+    assert props["model_path"] == str(model)
+    assert seen["env"]["LLAMA_ARG_N_PARALLEL"] == "1"
+    assert seen["env"]["LLAMA_ARG_BATCH"] == "256"
+    assert seen["env"]["LLAMA_ARG_CACHE_RAM"] == "1024"
+    assert seen["argv"][seen["argv"].index("--ctx-size") + 1] == "6144"
+
+
+@pytest.mark.asyncio
+async def test_fake_engine_gives_a_player_supplied_model_8192_and_one_slot(
+    tmp_path, clean_launch_env
+):
+    """A GGUF the player registered has no registry row: 8192 tokens, one slot."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        model = tmp_path / "my-own.gguf"
+        model.write_bytes(b"gguf")
+        register_user_gguf(conn, path=str(model))
+        launch = resolve_launch_config(str(model), conn)
+
+        exe = _write_fake_server(tmp_path)
+        port = _free_port()
+        sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+        await sidecar.start(
+            str(model), executable=exe, port=port, startup_timeout=15.0, launch=launch
+        )
+        try:
+            props, _seen = await _props_and_launch(port)
+        finally:
+            await sidecar.stop()
+    finally:
+        db.close()
+
+    assert props["total_slots"] == 1
+    assert props["default_generation_settings"]["n_ctx"] == 8192
+
+
+@pytest.mark.asyncio
+async def test_fake_engine_runs_on_a_pinned_context_variable(tmp_path, monkeypatch, clean_launch_env):
+    """End to end for the operator override: with LLAMA_ARG_CTX_SIZE pinned,
+    --ctx-size stays off the command line and the engine loads the pinned
+    context, not the registry's."""
+    monkeypatch.setenv("LLAMA_ARG_CTX_SIZE", "4096")
+    exe = _write_fake_server(tmp_path)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start(
+        "fake-model.gguf", executable=exe, port=port, startup_timeout=15.0,
+        launch=LaunchConfig(context_length=6144),
+    )
+    try:
+        props, seen = await _props_and_launch(port)
+    finally:
+        await sidecar.stop()
+
+    assert "--ctx-size" not in seen["argv"]
+    assert seen["env"]["LLAMA_ARG_CTX_SIZE"] == "4096"
+    assert props["default_generation_settings"]["n_ctx"] == 4096
+
+
+@pytest.mark.asyncio
+async def test_engine_that_ignores_the_launch_variables_still_starts(tmp_path, clean_launch_env):
+    """An engine build that does not recognise LLAMA_ARG_* must start all the
+    same: that is why these settings are variables and not flags. The old
+    build refuses --parallel, --batch-size and --cache-ram the way the real
+    engine refuses a flag it does not know, so start() fails here ("exited
+    early", with the engine's error in runtime.log) if a launch setting is
+    ever moved onto the command line."""
+    exe = _write_fake_server(tmp_path, honour_launch_env=False)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start(
+        "fake-model.gguf", executable=exe, port=port, startup_timeout=15.0,
+        launch=LaunchConfig(context_length=8192),
+    )
+    try:
+        assert sidecar.state == SidecarState.RUNNING
+        props, seen = await _props_and_launch(port)
+    finally:
+        await sidecar.stop()
+
+    # The variables reached the process but were ignored: the engine kept its
+    # own slot count, while --ctx-size (a flag every build has) still applied.
+    assert seen["env"]["LLAMA_ARG_N_PARALLEL"] == "1"
+    assert seen["env"]["LLAMA_ARG_BATCH"] == "256"
+    assert seen["env"]["LLAMA_ARG_CACHE_RAM"] == "1024"
+    assert props["total_slots"] == 4
+    assert props["default_generation_settings"]["n_ctx"] == 8192 // 4
+
+
+_RUNNING_STATUS = {
+    "state": "running", "pid": 42, "model_path": "/m.gguf",
+    "log_path": "/tmp/runtime.log", "host": "127.0.0.1", "port": 7356,
+    "error": None, "started_at": "2026-01-01T00:00:00+00:00",
+}
+
+
+def test_sidecar_start_endpoint_passes_the_registry_launch_config(client, tmp_path):
+    """POST /api/sidecar/start — the third start site — resolves the same launch
+    configuration as the autostart and the install pipeline for the same model."""
+    from unittest.mock import patch
+
+    conn = client.app.state.db.connection()
+    model = tmp_path / "registry-model.gguf"
+    model.write_bytes(b"gguf")
+    _seed_registry_model(conn, registry_id="reg-model", context_length=6144, file_path=str(model))
+
+    captured: dict = {}
+
+    async def _mock_start(model_path, **kwargs):
+        captured["model_path"] = model_path
+        captured.update(kwargs)
+
+    with patch.object(client.app.state.sidecar, "start", _mock_start), \
+         patch.object(client.app.state.sidecar, "get_status", return_value=_RUNNING_STATUS):
+        resp = client.post("/api/sidecar/start", json={"model_path": str(model)})
+
+    assert resp.status_code == 200, resp.text
+    assert captured["model_path"] == str(model)
+    assert captured["launch"] == resolve_launch_config(str(model), conn)
+    assert captured["launch"] == LaunchConfig(context_length=6144)
+    # Nothing explicit in the body: the launch configuration decides the context.
+    assert captured["context_length"] is None
+
+
+def test_sidecar_start_endpoint_explicit_context_length_is_still_forwarded(client, tmp_path):
+    """An explicit context_length in the request body keeps winning; the rest of
+    the launch configuration (one slot, small batches) still applies."""
+    from unittest.mock import patch
+
+    model = tmp_path / "not-installed.gguf"
+    model.write_bytes(b"gguf")
+    captured: dict = {}
+
+    async def _mock_start(model_path, **kwargs):
+        captured.update(kwargs)
+
+    with patch.object(client.app.state.sidecar, "start", _mock_start), \
+         patch.object(client.app.state.sidecar, "get_status", return_value=_RUNNING_STATUS):
+        resp = client.post(
+            "/api/sidecar/start", json={"model_path": str(model), "context_length": 2048}
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert captured["context_length"] == 2048
+    assert captured["launch"] == LaunchConfig()  # no registry row → the 8192 default

@@ -4,8 +4,11 @@ name = "convsim-desktop"
 version = "0.1.0"
 edition = "2021"
 # Tauri 2 itself builds on 1.77.2; the optional `steam` feature pulls in
-# steamworks 0.13, whose MSRV is 1.80. CI and release builds use stable.
-rust-version = "1.80.0"
+# steamworks 0.13, whose MSRV is 1.80; tauri-plugin-clipboard-manager 2.4 is
+# edition 2024 and declares 1.90, which is the binding floor. CI and release
+# builds use stable (dtolnay/rust-toolchain@stable), so this is a statement of
+# what a contributor needs locally, not a pin.
+rust-version = "1.90"
 
 [lib]
 name = "convsim_desktop_lib"
@@ -39,6 +42,13 @@ steam = ["dep:steamworks", "dep:tauri-plugin-steam-overlay-surface"]
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+# Writes the "Copy diagnostics" report to the OS clipboard over IPC. The web
+# clipboard APIs are not usable in the packaged macOS/Linux builds: the webview
+# is served from the custom `tauri://localhost` scheme, which WKWebView does not
+# treat as a secure context (so `navigator.clipboard` is undefined), and
+# `document.execCommand('copy')` needs the user gesture that the report's own
+# log-excerpt fetch has already outlived. See issue #508.
+tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-updater = "2"
