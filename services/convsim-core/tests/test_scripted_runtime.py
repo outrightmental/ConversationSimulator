@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import re
+from pathlib import Path
 
 import pytest
 
@@ -507,3 +509,523 @@ def test_session_without_runtime_id_stores_no_runtime_key(tmp_config):
         res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
         assert res.status_code == 201, res.text
         assert "runtime_id" not in res.json()["setup"]
+
+
+# ── Answering questions instead of talking past them (issue #501 §3) ─────────
+# "The model in the Tutorial doesn't seem to be able to give an explanation of
+# what the meters are and hallucinates through the scenario, as if it has given
+# a coherent explanation and received positive feedback from the user."
+#
+# It is not a model — it is this script, which had no branch for a question, so
+# "what are the meters?" got the next canned line.
+
+
+def _script_utterance(turn: int) -> str:
+    from convsim_core.runtime.scripted import _FIRST_WORDS_SCRIPT
+
+    return _FIRST_WORDS_SCRIPT[turn - 1]["npc_utterance"]
+
+
+def _script_delta(turn: int) -> dict:
+    from convsim_core.runtime.scripted import _FIRST_WORDS_SCRIPT
+
+    return _FIRST_WORDS_SCRIPT[turn - 1]["state_delta"]
+
+
+def _structured_for(runtime: ScriptedChatRuntime, text: str, turn: int) -> dict:
+    import asyncio
+
+    async def run() -> dict:
+        request = ChatRequest(
+            messages=[ChatMessage(role="user", content=text)],
+            json_schema={
+                "type": "object",
+                "properties": {"npc_utterance": {}, "session_control": {}},
+            },
+            scripted_turn_index=turn,
+        )
+        async for chunk in runtime.chat_stream(request):
+            if isinstance(chunk, ChatFinal):
+                assert chunk.structured is not None
+                return chunk.structured
+        raise AssertionError("no ChatFinal received")
+
+    return asyncio.run(run())
+
+
+def _utterance_for(runtime: ScriptedChatRuntime, text: str, turn: int) -> str:
+    return _structured_for(runtime, text, turn)["npc_utterance"]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What are the meters?",
+        "what does engagement mean?",
+        "I'm confused about the two bars",
+        "tell me what confidence means",
+        "Wait — which meter is which?",
+        "Can you tell me what the meters are",
+        # The topic fronted, then a question pointing back at it.
+        "The meters, what are they?",
+        "Confidence, what's that?",
+        "The two bars at the top: how do I move them?",
+    ],
+)
+def test_a_meter_question_is_answered(runtime, question):
+    text = _utterance_for(runtime, question, turn=2).lower()
+    assert "engagement is how interested" in text, (
+        f"a meter question must be answered, got: {text!r}"
+    )
+
+
+def test_a_meter_question_is_answered_on_any_tour_turn(runtime):
+    """The question can come at any point, not only where the tour explains them."""
+    for turn in (1, 2, 3, 4, 5):
+        text = _utterance_for(runtime, "what are the meters?", turn=turn).lower()
+        assert "engagement is how interested" in text, f"turn {turn} talked past the question"
+
+
+def test_a_mood_question_separates_mood_from_the_meters(runtime):
+    text = _utterance_for(runtime, "what is the mood in brackets?", turn=3).lower()
+    assert "not a meter" in text
+
+
+@pytest.mark.parametrize("question", ["are you a real AI?", "are you real?"])
+def test_an_is_this_ai_question_gets_a_straight_answer(runtime, question):
+    text = _utterance_for(runtime, question, turn=2).lower()
+    assert "scripted" in text
+
+
+def test_an_ending_question_is_answered(runtime):
+    text = _utterance_for(runtime, "how does this conversation end?", turn=2).lower()
+    assert "three ways" in text
+
+
+def test_a_debrief_question_is_answered(runtime):
+    text = _utterance_for(runtime, "what is the debrief?", turn=2).lower()
+    assert "after a conversation ends" in text
+
+
+def test_a_statement_about_the_meters_follows_the_tour(runtime):
+    """Not every mention of a meter is a question about one."""
+    text = _utterance_for(runtime, "The engagement meter went up, nice.", turn=3)
+    assert text == _script_utterance(3), "a statement must not be interjected on"
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        # Turn 1 asks "tell me what brought you here today"; turn 2 asks what
+        # kind of conversations the player wants to practise. These answer
+        # those prompts, and each used to trip the gate: a loose question word
+        # ("when", "how", "what" far from the topic) plus a broad topic word
+        # ("confidence", "feeling", "real", "long") anywhere in the message.
+        "I want more confidence when I talk to people",
+        "Ones where I need confidence, like when I ask for a raise",
+        "What brought me here is a real need to practise for a job interview",
+        "I am feeling good, how about you?",
+        "Feeling nervous about interviews, how about you?",
+        "How long have you been doing this?",
+        # A fronted topic answers nothing when the next sentence asks: the
+        # question has to share the sentence to borrow its topic.
+        "I like the meters. What do you think about me?",
+    ],
+)
+def test_an_answer_to_the_tours_own_prompt_is_not_treated_as_a_question(runtime, statement):
+    """Alex must not open with "Good question —" on a player who did not ask one.
+
+    That is the issue #501 §3 failure from the other side: the player says
+    something, and the reply addresses something they did not say.
+    """
+    text = _utterance_for(runtime, statement, turn=2)
+    assert text == _script_utterance(2), (
+        f"a plain answer was taken for a question: {statement!r} -> {text!r}"
+    )
+
+
+def test_an_unrelated_question_follows_the_tour(runtime):
+    """A question the script has no answer for must not derail the tour."""
+    text = _utterance_for(runtime, "What is the weather like?", turn=3)
+    assert text == _script_utterance(3)
+
+
+def test_an_answer_carries_the_tour_line_along(runtime):
+    """Asking must not cost the player the beat that turn was going to deliver.
+
+    Substituting the answer for the tour line drops a beat AND drops that
+    turn's state_delta, so Engagement stops crossing 60 on schedule and turn
+    4's "Engagement crossed the mark" announces an event that never fired —
+    the issue's own complaint, reintroduced by the fix for it.
+    """
+    structured = _structured_for(runtime, "what are the meters?", turn=3)
+    assert structured["npc_utterance"].endswith(_script_utterance(3))
+    assert structured["state_delta"] == _script_delta(3)
+
+
+def test_the_tour_reaches_the_turning_point_even_if_every_turn_is_a_question(runtime):
+    """Engagement must still cross 60 by the turn that announces it has.
+
+    The scenario starts Engagement at 30 and the event threshold is "above 60";
+    the script's deltas are what get it there, so they have to land whether or
+    not the player asked something.
+    """
+    engagement = 30
+    for turn in (1, 2, 3):
+        structured = _structured_for(runtime, "what are the meters?", turn=turn)
+        engagement += structured["state_delta"]["engagement"]
+    assert engagement > 60, (
+        f"Engagement reached only {engagement}; turn 4 claims it crossed 60"
+    )
+
+
+def test_question_keywords_are_matched_on_word_boundaries(runtime):
+    """'explain' contains 'ai' and 'show' contains 'how'.
+
+    Matching bare substrings would answer "can you explain that again?" with
+    the is-this-AI answer.
+    """
+    text = _utterance_for(runtime, "Can you explain that again?", turn=3)
+    assert "i am scripted" not in text.lower(), (
+        f"'ai' was matched inside another word: {text!r}"
+    )
+
+
+def test_an_answered_question_still_continues_the_session(runtime):
+    structured = _structured_for(runtime, "what are the meters?", turn=2)
+    assert structured["session_control"]["continue_session"] is True
+
+
+def test_a_question_on_the_final_turn_is_answered_and_still_ends_the_session(runtime):
+    """The last turn has to close — and it has to answer, like every other turn.
+
+    The ending branches say nothing about the meters or the script, so handing
+    a question straight to one of them talks past it on the last line the
+    player reads. The answer rides in front of the branch; the branch's
+    session_control still closes the session.
+    """
+    structured = _structured_for(runtime, "but what are the meters?", turn=6)
+    assert "engagement is how interested" in structured["npc_utterance"].lower(), (
+        f"the final turn talked past the question: {structured['npc_utterance']!r}"
+    )
+    assert structured["session_control"]["continue_session"] is False
+
+    # "ai" is not an ending keyword, so this fell through to the default
+    # branch ("That's completely understandable…") with the question unanswered.
+    structured = _structured_for(runtime, "wait, are you an AI?", turn=6)
+    assert "i am scripted" in structured["npc_utterance"].lower()
+    assert structured["session_control"]["continue_session"] is False
+
+
+def test_interjections_pass_npc_output_validation():
+    """The answers go through the same validators as the scripted turns."""
+    from convsim_prompt.turn_output import _validate as validate_turn_output
+    from convsim_core.runtime.scripted import (
+        _FIRST_WORDS_SCRIPT,
+        _INTERJECTIONS,
+        _pick_ending_turn,
+        _with_answer,
+    )
+
+    for keywords, answer in _INTERJECTIONS:
+        composed = _with_answer(_FIRST_WORDS_SCRIPT[0], answer)
+        validate_turn_output(composed), f"interjection for {sorted(keywords)} failed validation"
+
+    # On the final turn the answer rides on an ending branch instead.
+    for player_text in ("I'm so excited!", "how does this work?", "ok"):
+        for _keywords, answer in _INTERJECTIONS:
+            validate_turn_output(_with_answer(_pick_ending_turn(player_text), answer))
+
+
+def test_the_prompt_scaffolding_is_not_matched_as_player_words(runtime):
+    """The runtime is handed the composed PLAYER_UTTERANCE layer, not bare words.
+
+    That layer ends with "=== END PLAYER INPUT ===", which contains "end" — so
+    matching the message as received answered any question at all with the
+    endings answer, and made the debrief answer (a later cluster) unreachable.
+    These go through the runtime, not _pick_interjection, precisely because the
+    unwrapping is the thing under test.
+    """
+    from convsim_prompt.layers import build_player_utterance_layer
+
+    def utterance(player_text: str, turn: int) -> str:
+        return _utterance_for(runtime, build_player_utterance_layer(player_text), turn)
+
+    assert utterance("Tell me about yourself", 3) == _script_utterance(3)
+    assert utterance("What is the weather like?", 3) == _script_utterance(3)
+    assert "debrief comes after" in utterance("How am I scored?", 3)
+    assert "engagement is how interested" in utterance("What are the meters?", 3).lower()
+
+
+# ── Plain language in the tutorial copy (issue #501 §2) ──────────────────────
+# The report named the words that landed badly: 'runtime', 'event', 'state',
+# 'flag'. The tutorial itself used three of them plus "hidden prompt" and
+# "rubric dimensions" — while teaching a player who by definition does not know
+# them yet.
+
+_FORBIDDEN_TUTORIAL_WORDS = (
+    "scenario event",
+    "event flag",
+    "hidden prompt",
+    "hidden instructions",
+    "rubric",
+    "state variable",
+    "state meter",
+    "runtime",
+    "threshold",
+)
+
+#: The bare words the report named. They cannot go in the phrase list above,
+#: because the warm_moment npc_instruction has to quote them to forbid them —
+#: but that instruction is hidden from the player, so the spoken copy gets a
+#: word-boundary sweep of its own:
+#: test_tutorial_spoken_copy_avoids_the_bare_words_the_report_named.
+_FORBIDDEN_TUTORIAL_BARE_WORDS_RE = re.compile(
+    r"\b(events?|flags?|state|prompt)\b", re.IGNORECASE
+)
+
+_PACK_SCENARIO_YAML = (
+    Path(__file__).resolve().parents[3]
+    / "packs"
+    / "official"
+    / "first-words"
+    / "scenarios"
+    / "first_words_tutorial.yaml"
+)
+
+
+def _load_pack_tutorial() -> tuple[dict, dict]:
+    """The pack's scenario and the NPC file its `npc.ref` points at."""
+    import yaml
+
+    data = yaml.safe_load(_PACK_SCENARIO_YAML.read_text(encoding="utf-8"))
+    npc_yaml = (_PACK_SCENARIO_YAML.parent / data["npc"]["ref"]).resolve()
+    return data, yaml.safe_load(npc_yaml.read_text(encoding="utf-8"))
+
+
+def _tutorial_scenario_strings() -> list[tuple[str, str]]:
+    """Every player-facing string of the tutorial scenario, from BOTH copies.
+
+    The tutorial is defined twice: as a pack (packs/official/first-words) and
+    as a hardcoded catalog entry. resolve_scenario_info consults the catalog
+    first, so in the full edition — the playtester's "default settings" — the
+    catalog entry is the one that plays, and the pack only supplies the library
+    card, rubric and safety policy. A rewrite applied to one and not the other
+    is invisible to a reader and invisible to a player of the other edition.
+
+    The two copies are swept symmetrically — the same fields of each, the pack
+    NPC file (npcs/alex_chen.yaml) included — because sweeping the catalog's
+    persona alone let the pack's keep "Demonstrate every core mechanic —
+    meters, events, endings, debrief" after the catalog's was rewritten.
+    The event npc_instruction strings are NOT here: they are hidden
+    instructions, not spoken copy, and _tutorial_event_instructions has them.
+    """
+    from convsim_core.scenarios import SCENARIOS
+
+    out: list[tuple[str, str]] = []
+
+    info = SCENARIOS["first_words_tutorial"]
+    out.append(("catalog opening_npc_says", info.opening_npc_says or ""))
+    out += [
+        (f"catalog player_visible_goals[{i}]", g)
+        for i, g in enumerate(info.scenario_data.player_visible_goals)
+    ]
+    out.append(("catalog player_role_brief", info.scenario_data.player_role_brief))
+    npc = info.scenario_data.npc
+    out.append(("catalog npc speaking_style", npc.public_persona.speaking_style))
+    out += [
+        (f"catalog npc hidden_agenda[{i}]", a)
+        for i, a in enumerate(npc.private_persona.hidden_agenda)
+    ]
+
+    data, npc_data = _load_pack_tutorial()
+    out.append(("pack summary", data.get("summary") or ""))
+    out.append(("pack opening.npc_says", (data.get("opening") or {}).get("npc_says") or ""))
+    out += [
+        (f"pack player_visible[{i}]", g)
+        for i, g in enumerate(((data.get("goals") or {}).get("player_visible")) or [])
+    ]
+    out.append(("pack player_role.brief", (data.get("player_role") or {}).get("brief") or ""))
+    pack_public = npc_data.get("public_persona") or {}
+    pack_private = npc_data.get("private_persona") or {}
+    out.append(("pack npc speaking_style", pack_public.get("speaking_style") or ""))
+    out += [
+        (f"pack npc hidden_agenda[{i}]", a)
+        for i, a in enumerate(pack_private.get("hidden_agenda") or [])
+    ]
+    return out
+
+
+def _tutorial_event_instructions() -> list[tuple[str, str]]:
+    """The event npc_instruction strings of both copies.
+
+    Hidden from the player, and allowed to name the words they forbid — the
+    warm_moment instruction says 'Do not use the words "event", "flag", "state"
+    or "prompt"' — so they are swept for the phrase list only, never for the
+    bare words.
+    """
+    from convsim_core.scenarios import SCENARIOS
+
+    info = SCENARIOS["first_words_tutorial"]
+    data, _npc_data = _load_pack_tutorial()
+    out = [
+        (f"catalog event {e.id} npc_instruction", e.npc_instruction)
+        for e in (info.events or [])
+    ]
+    out += [
+        (f"pack event {e.get('id')} npc_instruction", e.get("npc_instruction") or "")
+        for e in (data.get("events") or [])
+    ]
+    return out
+
+
+def _tutorial_debrief_strings() -> list[tuple[str, str]]:
+    """Every player-facing string of the tutorial's scripted debrief.
+
+    The debrief is the last screen of the first session, and it reaches the
+    player as prose — so it is tutorial copy exactly as much as the spoken
+    lines are. Left out of this sweep it kept the whole vocabulary the script
+    had dropped ("state meters", "scenario events fire at threshold
+    crossings", "the debrief rubric ... each dimension", and the raw event id
+    `warm_moment`).
+    """
+    from convsim_core.runtime.scripted import _DEBRIEF_RESPONSE as d
+
+    out = [("debrief summary", d["summary"])]
+    for field in ("strengths", "improvements", "missed_opportunities", "replay_suggestions"):
+        out += [(f"debrief {field}[{i}]", s) for i, s in enumerate(d[field])]
+    out += [
+        (f"debrief turning_points[{i}] description", tp["description"])
+        for i, tp in enumerate(d["turning_points"])
+    ]
+    return out
+
+
+def _spoken_tutorial_strings() -> list[tuple[str, str]]:
+    """Everything the player reads: script turns, answers, ending branches,
+    the debrief, and the scenario copy of both definitions — but not the
+    event npc_instruction strings, which are hidden."""
+    from convsim_core.runtime.scripted import (
+        _FIRST_WORDS_SCRIPT,
+        _INTERJECTIONS,
+        _pick_ending_turn,
+    )
+
+    out = [(f"script turn {i}", t["npc_utterance"]) for i, t in enumerate(_FIRST_WORDS_SCRIPT, 1)]
+    out += [(f"interjection {sorted(k)[0]}", answer) for k, answer in _INTERJECTIONS]
+    out += [
+        (f"ending branch {text!r}", _pick_ending_turn(text)["npc_utterance"])
+        for text in ("I'm so excited!", "how does this work?", "ok")
+    ]
+    return out + _tutorial_debrief_strings() + _tutorial_scenario_strings()
+
+
+def _all_tutorial_utterances() -> list[tuple[str, str]]:
+    return _spoken_tutorial_strings() + _tutorial_event_instructions()
+
+
+def test_the_tutorial_debrief_does_not_name_a_raw_event_id():
+    """`warm_moment` is a pack author's identifier, not a thing to show a player."""
+    offenders = [
+        where
+        for where, text in _tutorial_debrief_strings()
+        if "warm_moment" in text
+    ]
+    assert offenders == [], f"a raw identifier reaches the player in: {offenders}"
+
+
+@pytest.mark.parametrize("forbidden", _FORBIDDEN_TUTORIAL_WORDS)
+def test_tutorial_copy_avoids_simulator_jargon(forbidden):
+    offenders = [
+        where for where, text in _all_tutorial_utterances() if forbidden in text.lower()
+    ]
+    assert offenders == [], (
+        f"the tutorial must not teach the mechanics in the engine's own words; "
+        f"{forbidden!r} appears in: {offenders}"
+    )
+
+
+def test_tutorial_spoken_copy_avoids_the_bare_words_the_report_named():
+    """'event', 'flag', 'state', 'prompt' — the words issue #501 §2 called out.
+
+    The phrase sweep above cannot list them bare, so before this test existed
+    the pre-rewrite turn 6 ("meters, events, ending conditions, and the
+    debrief") passed every guard. The event npc_instruction strings are the
+    one place allowed to name them, and they are left out here.
+    """
+    # The guard has to catch the line it exists for.
+    assert _FORBIDDEN_TUTORIAL_BARE_WORDS_RE.search(
+        "You've covered all the basics: meters, events, ending conditions, and the debrief."
+    )
+    # ...and it has to be word-bounded, or "statement" and "estate" would trip it.
+    assert _FORBIDDEN_TUTORIAL_BARE_WORDS_RE.search("a statement about your estate") is None
+
+    offenders = [
+        (where, match.group(0))
+        for where, text in _spoken_tutorial_strings()
+        for match in [_FORBIDDEN_TUTORIAL_BARE_WORDS_RE.search(text)]
+        if match is not None
+    ]
+    assert offenders == [], (
+        f"the tutorial must not teach the mechanics in the engine's own words; "
+        f"spoken copy uses a bare word the report named in: {offenders}"
+    )
+
+
+def test_tutorial_catalog_entry_matches_the_pack():
+    """The two definitions of the tutorial must agree on what the player gets.
+
+    The catalog entry is what plays in the full edition and the pack is what
+    plays in the demo, so a divergence means two editions run two different
+    tutorials — which is exactly what happened to the issue #501 rewrite until
+    this test existed.
+    """
+    from convsim_core.scenarios import SCENARIOS
+
+    info = SCENARIOS["first_words_tutorial"]
+    data, _npc_data = _load_pack_tutorial()
+
+    def _collapse(text: str) -> str:
+        return " ".join((text or "").split())
+
+    # The setup screen is where the player meets these three first.
+    assert info.scenario_data.title == data["title"], (
+        "the title differs between the two definitions"
+    )
+    assert info.scenario_data.player_role_label == data["player_role"]["label"], (
+        "the player role label differs between the two definitions"
+    )
+    assert _collapse(info.scenario_data.player_role_brief) == _collapse(
+        data["player_role"]["brief"]
+    ), "the player brief — the first copy the player reads — differs between the two definitions"
+    assert info.max_turns == data["duration"]["max_turns"], (
+        "the played turn budget and the pack's must match"
+    )
+    assert (
+        info.ending_conditions["timeout"]["value"] == data["ending_conditions"]["timeout"]["value"]
+    ), "the played timeout and the pack's must match"
+    assert _collapse(info.opening_npc_says or "") == _collapse(
+        data["opening"]["npc_says"]
+    ), "the opening line the player reads differs between the two definitions"
+    assert info.scenario_data.player_visible_goals == data["goals"]["player_visible"], (
+        "the player-visible goals differ between the two definitions"
+    )
+    pack_events = {e["id"]: _collapse(e["npc_instruction"]) for e in data["events"]}
+    catalog_events = {e.id: _collapse(e.npc_instruction) for e in (info.events or [])}
+    assert catalog_events == pack_events, "the event instructions differ between the two definitions"
+
+
+def test_tutorial_copy_does_not_claim_the_player_said_something():
+    """No line may presume an engaged, positive reply it never received.
+
+    The screenshot in the issue is the script congratulating a player who had
+    asked a question.
+    """
+    presumptive = ("great! see how", "did you see that?", "that sounds like a great goal")
+    offenders = [
+        (where, phrase)
+        for where, text in _all_tutorial_utterances()
+        for phrase in presumptive
+        if phrase in text.lower()
+    ]
+    assert offenders == [], f"presumptive copy survives in: {offenders}"

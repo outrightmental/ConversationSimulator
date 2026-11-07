@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import type { SessionCreateRequest } from '@convsim/shared'
+import type { ReplySpeed, SessionCreateRequest } from '@convsim/shared'
 import type { ImportPackResponse } from '../api/client'
 import Settings from '../screens/Settings'
 import { readTurnSamples, recordTurnSample } from '../lib/turnEstimate'
@@ -17,6 +17,8 @@ vi.mock('../api/client', () => ({
     getFolders: vi.fn(),
     clearLocalData: vi.fn(),
     listSessions: vi.fn(),
+    // Session rows are labelled by scenario title now, not slug (issue #501 §2).
+    listScenarios: vi.fn(),
     deleteSession: vi.fn(),
     exportSession: vi.fn(),
     getModels: vi.fn(),
@@ -76,6 +78,7 @@ const STUB_RUNTIME_SETTINGS = {
     temperature: null,
     top_p: null,
     repeat_penalty: null,
+    reply_speed: null,
   },
   recommended: {
     context_length: null,
@@ -84,6 +87,7 @@ const STUB_RUNTIME_SETTINGS = {
     temperature: null,
     top_p: null,
     repeat_penalty: null,
+    reply_speed: 'balanced' as const,
   },
   requires_restart: false,
 }
@@ -162,6 +166,7 @@ beforeEach(() => {
   mockApi.getDataFolder.mockResolvedValue({ ok: true, data: { path: '/home/user/.convsim/db' } })
   mockApi.getFolders.mockResolvedValue({ ok: true, data: STUB_FOLDERS })
   mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [] } })
+  mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
   mockApi.listPacks.mockResolvedValue({ ok: true, data: { packs: [], total: 0 } })
   mockApi.importPack.mockResolvedValue({ ok: true, data: { pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' } })
   mockApi.validatePack.mockResolvedValue({ ok: true, data: { pack_id: 'pack-alpha', valid: true, errors: [] } })
@@ -548,6 +553,24 @@ describe('clear local data', () => {
     await waitFor(() => expect(mockApi.clearLocalData).toHaveBeenCalledOnce())
   })
 
+  it('announces the change once everything is cleared, so the resume strip re-asks', async () => {
+    // Clearing removes every session, the in-progress one the chrome's resume
+    // banner was offering included; that banner keeps its own copy.
+    const onChanged = vi.fn()
+    window.addEventListener('convsim:sessions-changed', onChanged)
+    try {
+      mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 3 } })
+      await renderSettings()
+      fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+      await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+      await waitFor(() => expect(mockApi.clearLocalData).toHaveBeenCalledOnce())
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    } finally {
+      window.removeEventListener('convsim:sessions-changed', onChanged)
+    }
+  })
+
   it('forgets the turn timings this browser has measured (issue #488)', async () => {
     // The button promises to delete cached data from the device; how slow this
     // machine's turns are is cached on the device, in localStorage rather than
@@ -646,7 +669,164 @@ describe('clear local data', () => {
 // Your sessions
 // ---------------------------------------------------------------------------
 
+// ── Issue #501 §1/§2: the two sections a lost first-time player needed ───────
+
+describe('reply speed and wording sections', () => {
+  it('names reply speed as its own section, anchored for a deep link', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-reply-speed-section')).toBeInTheDocument(),
+    )
+    // The conversation screen's slow-reply notice links to /settings#reply-speed.
+    expect(screen.getByTestId('settings-reply-speed-section')).toHaveAttribute(
+      'id',
+      'reply-speed',
+    )
+    expect(screen.getByRole('heading', { name: /reply speed/i })).toBeInTheDocument()
+  })
+
+  it('re-selects balanced after the engine panel resets the runtime settings', async () => {
+    // Reset clears reply_speed on the server with everything else. The two
+    // panels each read the settings for themselves, so without a nudge the
+    // speed control kept "Quick replies" checked while the engine had gone
+    // back to balanced — and the player concluded the setting does nothing.
+    let stored: ReplySpeed | null = 'fast'
+    const withStored = () => ({
+      ...STUB_RUNTIME_SETTINGS,
+      settings: { ...STUB_RUNTIME_SETTINGS.settings, reply_speed: stored },
+    })
+    mockApi.getRuntimeSettings.mockImplementation(async () => ({ ok: true, data: withStored() }))
+    mockApi.resetRuntimeSettings.mockImplementation(async () => {
+      stored = null
+      return { ok: true, data: withStored() }
+    })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('reply-speed-fast')).toHaveAttribute('aria-checked', 'true'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
+    await waitFor(() => screen.getByRole('button', { name: /reset to defaults/i }))
+    fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('reply-speed-balanced')).toHaveAttribute('aria-checked', 'true'),
+    )
+    expect(screen.getByTestId('reply-speed-fast')).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('offers the wording levels', async () => {
+    await renderSettings()
+    await waitFor(() => expect(screen.getByTestId('wording-options')).toBeInTheDocument())
+    expect(screen.getByTestId('wording-plain')).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('calls the engine section what it is rather than "Runtime"', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^ai engine$/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('heading', { name: /^runtime$/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('your sessions', () => {
+  it('asks for the whole list rather than the server default page of 50', async () => {
+    // Both list endpoints default to the newest 50. This list is the only place
+    // an older session can be resumed, exported or deleted one at a time, and
+    // nothing here says when it is partial — so ask for the server maximum.
+    await renderSettings()
+    expect(mockApi.listSessions).toHaveBeenCalledWith('all', 500)
+  })
+
+  it('announces the change when a session is deleted, so the resume strip re-asks', async () => {
+    // The chrome's resume banner keeps its own copy of the in-progress set;
+    // without this it still offered the row just deleted, and Resume 404'd.
+    const onChanged = vi.fn()
+    window.addEventListener('convsim:sessions-changed', onChanged)
+    try {
+      mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+      mockApi.deleteSession.mockResolvedValue({ ok: true, data: undefined })
+      await renderSettings()
+      await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      await waitFor(() => expect(mockApi.deleteSession).toHaveBeenCalledWith('sess-aaa'))
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    } finally {
+      window.removeEventListener('convsim:sessions-changed', onChanged)
+    }
+  })
+
+  it('does not announce a deletion that failed', async () => {
+    const onChanged = vi.fn()
+    window.addEventListener('convsim:sessions-changed', onChanged)
+    try {
+      mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+      mockApi.deleteSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
+      await renderSettings()
+      await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      expect(onChanged).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('convsim:sessions-changed', onChanged)
+    }
+  })
+
+  it('offers Resume for an unfinished session', async () => {
+    // Issue #501 §1: Settings is the screen the playtester got lost on, so
+    // every unfinished conversation is one click from here — not only the
+    // newest one the chrome banner offers.
+    mockApi.listSessions.mockResolvedValue({
+      ok: true,
+      data: { sessions: [{ ...SESSION_A, state: 'PlayerTurnListening' as const }] },
+    })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /resume session sess-aaa/i })).toBeInTheDocument(),
+    )
+  })
+
+  it('does not offer Resume for a finished session', async () => {
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /export session sess-aaa/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /resume session/i })).not.toBeInTheDocument()
+  })
+
+  it('does not offer Resume for a session that never started', async () => {
+    // Nothing has been said yet, so there is no conversation to go back to.
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_B] } })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /export session sess-bbb/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /resume session/i })).not.toBeInTheDocument()
+  })
+
+  it('labels a session by its scenario title and plain state', async () => {
+    mockApi.listScenarios.mockResolvedValue({
+      ok: true,
+      data: [{ scenario_id: 'behavioral_interview', title: 'The Behavioral Interview' } as never],
+    })
+    mockApi.listSessions.mockResolvedValue({
+      ok: true,
+      data: { sessions: [{ ...SESSION_A, state: 'PlayerTurnListening' as const }] },
+    })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByText('The Behavioral Interview')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('Your turn')).toBeInTheDocument()
+    expect(screen.queryByText('PlayerTurnListening')).not.toBeInTheDocument()
+  })
+
   it('shows "No sessions yet." when the list is empty', async () => {
     mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [] } })
     await renderSettings()
@@ -788,7 +968,7 @@ describe('advanced: raw audio saving', () => {
 
   it('advanced section appears after clicking show advanced', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() =>
       expect(
         screen.getByRole('checkbox', { name: /save raw audio recordings/i }),
@@ -798,14 +978,14 @@ describe('advanced: raw audio saving', () => {
 
   it('raw audio saving is off by default', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     expect(screen.getByRole('checkbox', { name: /save raw audio recordings/i })).not.toBeChecked()
   })
 
   it('shows a warning when raw audio saving is enabled', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     await waitFor(() =>
@@ -815,9 +995,9 @@ describe('advanced: raw audio saving', () => {
 
   it('advanced section collapses when hide advanced is clicked', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
-    fireEvent.click(screen.getByRole('button', { name: /hide advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide advanced' }))
     expect(
       screen.queryByRole('checkbox', { name: /save raw audio recordings/i }),
     ).not.toBeInTheDocument()
@@ -842,7 +1022,7 @@ describe('advanced: developer debug mode', () => {
 
   it('developer debug toggle appears after clicking Show advanced', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() =>
       expect(
         screen.getByRole('checkbox', { name: /developer debug mode/i }),
@@ -852,14 +1032,14 @@ describe('advanced: developer debug mode', () => {
 
   it('developer debug mode is off by default', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     expect(screen.getByRole('checkbox', { name: /developer debug mode/i })).not.toBeChecked()
   })
 
   it('shows a warning when developer debug mode is enabled', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /developer debug mode/i }))
     await waitFor(() =>
@@ -869,7 +1049,7 @@ describe('advanced: developer debug mode', () => {
 
   it('writes devMode to localStorage when toggled on', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /developer debug mode/i }))
     expect(localStorage.getItem('convsim.devMode')).toBe('true')
@@ -878,7 +1058,7 @@ describe('advanced: developer debug mode', () => {
   it('initialises as checked when convsim.devMode is set in localStorage', async () => {
     localStorage.setItem('convsim.devMode', 'true')
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     expect(screen.getByRole('checkbox', { name: /developer debug mode/i })).toBeChecked()
   })
@@ -973,8 +1153,10 @@ describe('steam cloud sync section', () => {
 describe('demo edition', () => {
   // The demo trims Settings to the privacy controls every edition must keep
   // (gate F-06): language, transcript saving, local folders, sessions and
-  // clear-data. Model tiers, voice, Steam Cloud, pack management, NPC memory,
-  // system health and the advanced toggles are full-app depth.
+  // clear-data — plus reply speed, the one speed control a player with a fixed
+  // curated model has (issue #501 §1). Model tiers, voice, Steam Cloud, pack
+  // management, NPC memory, system health and the advanced toggles are
+  // full-app depth.
   async function renderDemoSettings() {
     vi.stubEnv('VITE_CONVSIM_EDITION', 'demo')
     render(
@@ -1004,21 +1186,41 @@ describe('demo edition', () => {
 
   it('hides model tiers, voice, Steam Cloud, packs, NPC memory, system health and advanced', async () => {
     await renderDemoSettings()
-    expect(screen.queryByRole('heading', { name: /^runtime$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^ai engine$/i })).not.toBeInTheDocument()
+    // Reply speed scales reply length, not model choice, so it stays even
+    // though the engine section goes; wording is readability and stays too
+    // (issue #501).
+    expect(screen.getByTestId('settings-reply-speed-section')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /open model manager/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /voice output/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('steam-cloud-section')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /pack management/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('relationship-memory-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('settings-system-health')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /show advanced/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show advanced' })).not.toBeInTheDocument()
   })
 
   it('does not call the full-app-only endpoints', async () => {
     await renderDemoSettings()
     expect(mockApi.listPacks).not.toHaveBeenCalled()
-    expect(mockApi.getRuntimeSettings).not.toHaveBeenCalled()
     expect(mockApi.listVoices).not.toHaveBeenCalled()
+  })
+
+  it('keeps reply speed, which the slow-reply notice names, without the model-manager pointer', async () => {
+    // A demo player on modest hardware had "closing other apps usually helps"
+    // and no speed control at all — the #501 dead end in the edition being
+    // shipped. The runtime-settings endpoint is not edition-gated, so the
+    // control works; only the pointer to the model manager is full-app depth.
+    await renderDemoSettings()
+    await waitFor(() => expect(screen.getByTestId('reply-speed-options')).toBeInTheDocument())
+    expect(mockApi.getRuntimeSettings).toHaveBeenCalled()
+    expect(screen.getByTestId('reply-speed-fast')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /choose a model/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the wording control, which is readability rather than full-app depth', async () => {
+    await renderDemoSettings()
+    expect(screen.getByTestId('settings-wording-section')).toBeInTheDocument()
   })
 
   it('says that clearing local data also clears the full version, which shares the folder', async () => {

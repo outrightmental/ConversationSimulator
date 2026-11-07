@@ -7,6 +7,15 @@ import { ApiErrorView } from './ApiErrorView'
 import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 import { AI_ENGINE_DOCS_URL as DOCS_URL, UPDATE_DOCS_URL } from '../setup/docsUrls'
 
+/**
+ * Fired on `window` after this panel changes the runtime settings on the
+ * server. The reset endpoint clears every key, `reply_speed` included, and
+ * ReplySpeedPanel shows that key from its own read — so without a nudge it kept
+ * "Quick replies" selected while the engine had gone back to balanced, and the
+ * player concluded the setting does nothing (issue #501 §1).
+ */
+export const RUNTIME_SETTINGS_CHANGED_EVENT = 'convsim:runtime-settings-changed'
+
 const PROVIDER_NAMES: Record<string, string> = {
   llama_cpp: 'llama.cpp',
   ollama: 'Ollama',
@@ -38,7 +47,16 @@ function parseInt2(s: string): number | null {
   return isNaN(n) ? null : n
 }
 
-function settingsToForm(s: RuntimeSettings): Record<keyof RuntimeSettings, string> {
+/** The numeric knobs this panel edits.
+ *
+ *  `reply_speed` is part of the same persisted settings object but is not one
+ *  of these: it is a named plain-language choice with its own control above
+ *  this panel (issue #501 §1), not a number behind an "advanced" toggle. */
+type AdvancedSettingKey = Exclude<keyof RuntimeSettings, 'reply_speed'>
+
+type AdvancedForm = Record<AdvancedSettingKey, string>
+
+function settingsToForm(s: RuntimeSettings): AdvancedForm {
   return {
     context_length: s.context_length !== null ? String(s.context_length) : '',
     gpu_layers: s.gpu_layers !== null ? String(s.gpu_layers) : '',
@@ -49,7 +67,7 @@ function settingsToForm(s: RuntimeSettings): Record<keyof RuntimeSettings, strin
   }
 }
 
-function validateForm(form: Record<keyof RuntimeSettings, string>): FieldError[] {
+function validateForm(form: AdvancedForm): FieldError[] {
   const errs: FieldError[] = []
 
   const cl = parseInt2(form.context_length)
@@ -85,7 +103,7 @@ function validateForm(form: Record<keyof RuntimeSettings, string>): FieldError[]
   return errs
 }
 
-function formToRequest(form: Record<keyof RuntimeSettings, string>): Partial<RuntimeSettings> {
+function formToRequest(form: AdvancedForm): Partial<RuntimeSettings> {
   return {
     context_length: parseInt2(form.context_length),
     gpu_layers: parseInt2(form.gpu_layers),
@@ -206,7 +224,7 @@ export default function RuntimeSettingsPanel() {
   const [basicApplySuccess, setBasicApplySuccess] = useState(false)
 
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [form, setForm] = useState<Record<keyof RuntimeSettings, string>>({
+  const [form, setForm] = useState<AdvancedForm>({
     context_length: '',
     gpu_layers: '',
     threads: '',
@@ -271,7 +289,7 @@ export default function RuntimeSettingsPanel() {
     loadData()
   }
 
-  function handleFieldChange(field: keyof RuntimeSettings, value: string) {
+  function handleFieldChange(field: AdvancedSettingKey, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
     setFieldErrors((prev) => {
       const next = { ...prev }
@@ -297,6 +315,7 @@ export default function RuntimeSettingsPanel() {
     setRequiresRestart(r.data.requires_restart)
     setForm(settingsToForm(r.data.settings))
     setAdvApplying(false)
+    window.dispatchEvent(new CustomEvent(RUNTIME_SETTINGS_CHANGED_EVENT))
   }
 
   async function handleReset() {
@@ -309,6 +328,7 @@ export default function RuntimeSettingsPanel() {
     setRequiresRestart(r.data.requires_restart)
     setAdvApplyError(null)
     setResetting(false)
+    window.dispatchEvent(new CustomEvent(RUNTIME_SETTINGS_CHANGED_EVENT))
   }
 
   const health = modelsData?.runtime_health
@@ -480,7 +500,7 @@ export default function RuntimeSettingsPanel() {
       {settingsUnavailable && (
         <div
           role="status"
-          aria-label="runtime advanced settings unavailable"
+          aria-label="advanced engine settings unavailable"
           style={{
             padding: '0.6rem 0.75rem',
             borderRadius: '6px',
@@ -491,7 +511,7 @@ export default function RuntimeSettingsPanel() {
             marginBottom: '1rem',
           }}
         >
-          Advanced runtime settings are not available in this version of ConversationSimulator.
+          Advanced engine settings are not available in this version of ConversationSimulator.
           Update to the latest version to change context length, GPU layers, CPU threads and
           sampling. The provider and model settings above still work.{' '}
           <a
@@ -506,12 +526,17 @@ export default function RuntimeSettingsPanel() {
         </div>
       )}
 
-      {/* Advanced toggle */}
+      {/* Advanced toggle. Named after the section above it ("AI engine") rather
+          than after the runtime: "runtime" is one of the four words the
+          issue #501 playtest named as unexplained jargon, and this label is
+          visible on Settings without expanding anything. The notes inside the
+          disclosure stay in engine terms — that is the "deliberately peek into
+          the settings" the issue asks for. */}
       {!settingsUnavailable && (
         <button
           onClick={() => setShowAdvanced((v) => !v)}
           aria-expanded={showAdvanced}
-          aria-label={showAdvanced ? 'hide runtime advanced settings' : 'show runtime advanced settings'}
+          aria-label={showAdvanced ? 'hide advanced engine settings' : 'show advanced engine settings'}
           style={{
             background: 'none',
             border: 'none',
@@ -522,7 +547,7 @@ export default function RuntimeSettingsPanel() {
             marginBottom: '0.75rem',
           }}
         >
-          {showAdvanced ? '▾ Hide runtime advanced settings' : '▸ Show runtime advanced settings'}
+          {showAdvanced ? '▾ Hide advanced engine settings' : '▸ Show advanced engine settings'}
         </button>
       )}
 

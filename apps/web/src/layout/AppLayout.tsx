@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import OfflineIndicator from '../components/OfflineIndicator'
+import ResumeSessionBanner from '../components/ResumeSessionBanner'
 import { useTranslation } from '../i18n'
 import { useGamepadNavigation } from '../hooks/useGamepadNavigation'
 import { useSteamKeyboard } from '../hooks/useSteamKeyboard'
@@ -180,6 +181,10 @@ export default function AppLayout() {
         </nav>
         <OfflineIndicator />
       </header>
+
+      {/* One click back into a conversation the player navigated away from
+          (issue #501). Renders nothing when there is none. */}
+      <ResumeSessionBanner />
 
       <main
         id="main-content"

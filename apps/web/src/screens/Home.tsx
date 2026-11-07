@@ -16,6 +16,7 @@ import { useAppUpdate } from '../hooks/useAppUpdate'
 import { useIsDemo } from '../edition'
 import DemoConversations from '../components/DemoConversations'
 import DemoUpsellCard from '../components/DemoUpsellCard'
+import { useResumableSession } from '../hooks/useResumableSession'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://docs.conversationsimulator.com/'
@@ -37,6 +38,10 @@ export default function Home() {
   // engine status, and one upsell. Library, workbench, logbook and the pack
   // and model surfaces are not part of the demo.
   const isDemo = useIsDemo()
+
+  // Home had no way back into a conversation the player walked away from
+  // (issue #501 §1) — not here and not in the nav.
+  const resumable = useResumableSession()
 
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
   const [reseeding, setReseeding] = useState(false)
@@ -178,6 +183,17 @@ export default function Home() {
         aria-label={t('home.primaryActions')}
         style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '20rem' }}
       >
+        {/* First in the list, and only when there is one: resuming beats
+            starting over, which is what the playtester did instead. */}
+        {resumable.result.state === 'ready' && (
+          <Link
+            to={`/conversation/${resumable.result.session.session_id}`}
+            data-testid="home-resume-link"
+            style={{ fontWeight: 600 }}
+          >
+            {t('home.resumeScenario')}
+          </Link>
+        )}
         <Link to="/library">{t('home.startScenario')}</Link>
         <Link to="/workbench">{t('home.createEdit')}</Link>
         <Link to="/settings">{t('home.installModel')}</Link>
