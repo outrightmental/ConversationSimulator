@@ -495,11 +495,14 @@ class TestComputeMetrics:
         arc = m["state_arc"]
         # Two NPC response turns with credibility deltas
         assert len(arc) == 2
-        # After turn 2: credibility = 5
-        assert arc[0]["turn_number"] == 2
+        # Numbered by whole turn (player message + reply), the one numbering
+        # turning_points and the transcript labels use (issue #501 §4): NPC
+        # row 2 closes whole turn 1 and NPC row 4 closes whole turn 2.
+        # After turn 1: credibility = 5
+        assert arc[0]["turn_number"] == 1
         assert arc[0]["state"]["credibility"] == 5
-        # After turn 4: credibility = 5 + 3 = 8
-        assert arc[1]["turn_number"] == 4
+        # After turn 2: credibility = 5 + 3 = 8
+        assert arc[1]["turn_number"] == 2
         assert arc[1]["state"]["credibility"] == 8
 
     def test_state_arc_anchored_to_true_meter_values(self):

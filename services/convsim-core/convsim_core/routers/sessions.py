@@ -26,6 +26,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
 from convsim_core.edition import (
+    DEMO_SCENARIO_IDS,
     EDITION_RESTRICTED,
     demo_pack_id_for,
     demo_scenario_id_allowed,
@@ -38,7 +39,11 @@ from convsim_core.runtime.active import (
     unpinned_session_runtime_is_model_free,
 )
 from convsim_core.runtime.base import ChatRuntime
-from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
+from convsim_core.scenario_state import (
+    build_variable_defs,
+    initialize_state,
+    partition_state_by_visibility,
+)
 from convsim_core.scenarios import resolve_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
@@ -580,6 +585,15 @@ async def list_sessions(
     # are a pack author's scratch session, not part of the player's history.
     clauses = ["substr(scenario_id, 1, ?) != ?"]
     params: List[Any] = [len(_WORKBENCH_SCENARIO_PREFIX), _WORKBENCH_SCENARIO_PREFIX]
+    if is_demo(request.app.state.service_config):
+        # The demo shares its data folder with the full app (issue #495), so
+        # this table can hold sessions of scenarios the demo never offers. The
+        # create route refuses those ids and the scenario routes 404 them; left
+        # unfiltered here, the resume strip would offer one and the turn route
+        # would play it. Same gate as create_session, applied to every status.
+        placeholders = ", ".join("?" for _ in DEMO_SCENARIO_IDS)
+        clauses.append(f"scenario_id IN ({placeholders})")
+        params.extend(DEMO_SCENARIO_IDS)
     if status == "in_progress":
         placeholders = ", ".join("?" for _ in RESUMABLE_FLOW_STATES)
         clauses.append(f"flow_state IN ({placeholders})")
@@ -623,9 +637,16 @@ def _visible_state_for(request: Request, row: Any) -> Dict[str, int]:
     state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
     info = _resolve_scenario(request, row["scenario_id"])
     overrides = info.state_variable_overrides if info is not None else None
-    visible, _ = partition_state_by_visibility(
-        state_vars, build_variable_defs(overrides)
-    )
+    defs = build_variable_defs(overrides)
+    if not state_vars and row["flow_state"] != "NotStarted":
+        # start_session only flips flow_state; the variables are first written
+        # by process_turn. Between the opening and the first reply the row is
+        # therefore empty while the opening event has already shown the player
+        # the scenario's initial meters — the exact moment the tutorial's
+        # "go to Settings, then Resume" path lands on (issue #501). Report the
+        # same values the opening event did, computed the same way.
+        state_vars = initialize_state(defs)
+    visible, _ = partition_state_by_visibility(state_vars, defs)
     return visible
 
 

@@ -7,6 +7,12 @@ responses (GET /api/sessions)"), but the route was never registered: the
 request answered 405, so Settings' "Your sessions" list only ever showed an
 error and nothing in the app could find a conversation to resume.
 """
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+
+from convsim_core.app import create_app
 
 # The Creator Workbench fixtures build a profile with a loadable local pack,
 # which is what makes a preview session possible at all.
@@ -165,6 +171,31 @@ def test_single_session_reports_the_visible_meters(client):
     assert all(isinstance(v, int) for v in body["visible_state"].values())
 
 
+def test_visible_meters_are_reported_before_the_first_turn(client):
+    """Resume between the opening and the first reply keeps the meters (issue #501).
+
+    start_session only flips flow_state; the variables are first persisted by
+    the first turn. The opening event has already shown the player the
+    scenario's initial meters by then, so a player who reads the opening, steps
+    out to Settings and clicks Resume must get those same values back — not an
+    empty object that makes the meters panel vanish until they send a message.
+    """
+    session_id = _create(client)
+    start = client.post(f"/api/sessions/{session_id}/start").json()
+    opening = next(e for e in start["events"] if e["event_type"] == "npc_opening")
+    assert opening["payload"]["visible_state"], "the opening should carry meters"
+
+    body = client.get(f"/api/sessions/{session_id}").json()
+    assert body["state"] == "PlayerTurnListening"
+    assert body["visible_state"] == opening["payload"]["visible_state"]
+
+
+def test_unstarted_session_reports_no_meters(client):
+    """Before the opening nothing has been shown, so there is nothing to restore."""
+    session_id = _create(client)
+    assert client.get(f"/api/sessions/{session_id}").json()["visible_state"] == {}
+
+
 def test_visible_meters_exclude_hidden_variables(client):
     """Hidden state variables are hidden from the player, resume included."""
     from convsim_core.scenario_state import build_variable_defs
@@ -199,6 +230,68 @@ def test_workbench_preview_is_never_offered_for_resume(ts_client):
         "/api/sessions", params={"status": "in_progress"}
     ).json()["sessions"] == []
     assert ts_client.get("/api/sessions").json()["sessions"] == []
+
+
+# ── Demo edition ─────────────────────────────────────────────────────────────
+# The demo shares its data folder with the full app (issue #495), so the table
+# this endpoint reads can hold sessions of scenarios the demo never offers.
+
+
+@pytest.fixture()
+def demo_client(tmp_config):
+    app = create_app(tmp_config.model_copy(update={"edition": "demo"}))
+    with TestClient(app) as c:
+        yield c
+
+
+def _insert_started_row(client, session_id: str, scenario_id: str) -> None:
+    """A started session, written the way the full app leaves one behind.
+
+    The demo's create route refuses these scenario ids, so the only way such a
+    row reaches a demo build is through the shared data folder.
+    """
+    conn = client.app.state.db.connection()
+    conn.execute(
+        "INSERT INTO turn_sessions "
+        "(session_id, scenario_id, flow_state, state_vars_json, fired_events_json, "
+        "turn_count, setup_json, created_at) "
+        "VALUES (?, ?, 'PlayerTurnListening', '{}', '[]', 0, ?, ?)",
+        (
+            session_id,
+            scenario_id,
+            json.dumps({**_SETUP, "scenario_id": scenario_id}),
+            "2026-01-01T00:00:00+00:00",
+        ),
+    )
+    conn.commit()
+
+
+def test_demo_lists_only_the_demo_conversations(demo_client):
+    """A full-app session in the shared folder is never offered to the demo.
+
+    create_session already refuses the non-demo ids and the scenario routes
+    404 them, but the resumed turn route plays whatever this list offers: left
+    unfiltered, a demo build showed "Resume your conversation —
+    first_words_tutorial" and then played a scenario it can neither create nor
+    describe. Applies to every status, so Settings' list is gated too.
+    """
+    demo_id = _create(demo_client)  # behavioral_interview is one of the five
+    assert demo_client.post(f"/api/sessions/{demo_id}/start").status_code == 200
+    _insert_started_row(demo_client, "sess-full-library", "hostile_executive_interview")
+    _insert_started_row(demo_client, "sess-tutorial", "first_words_tutorial")
+
+    in_progress = demo_client.get("/api/sessions", params={"status": "in_progress"}).json()
+    assert [s["session_id"] for s in in_progress["sessions"]] == [demo_id]
+    everything = demo_client.get("/api/sessions").json()
+    assert [s["session_id"] for s in everything["sessions"]] == [demo_id]
+
+
+def test_full_edition_lists_every_scenario(client):
+    """The gate is the demo's: the full app shows the player all of their sessions."""
+    _insert_started_row(client, "sess-full-library", "hostile_executive_interview")
+    _insert_started_row(client, "sess-tutorial", "first_words_tutorial")
+    body = client.get("/api/sessions", params={"status": "in_progress"}).json()
+    assert {s["session_id"] for s in body["sessions"]} == {"sess-full-library", "sess-tutorial"}
 
 
 # ── The copy in TypeScript must agree with this one ──────────────────────────
