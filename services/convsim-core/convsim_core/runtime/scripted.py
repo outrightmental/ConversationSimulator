@@ -280,7 +280,22 @@ _INTERJECTION_RES: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
-def _asks_about(topic: re.Pattern[str], body: str, terminator: str) -> bool:
+#: A question that points back at the thing just named — "Confidence, what's
+#: that?", "The meters, what are they?" — carries no topic word of its own: the
+#: topic sits in the fragment in front of the comma. When a clause asks and
+#: points back like this, it borrows that fragment's topic, provided the two
+#: share a sentence. "I am feeling good, how about you?" points at the
+#: listener, not back at "feeling", so it still does not qualify.
+_POINTS_BACK_RE = re.compile(
+    r"\b(?:it|its|that|this|they|them|those|these|one|ones)\b"
+)
+
+_SENTENCE_END = frozenset(".!?")
+
+
+def _asks_about(
+    topic: re.Pattern[str], body: str, terminator: str, fronted: str | None = None
+) -> bool:
     """True when this clause names one of the topic words AND asks about it.
 
     Asking means the clause ends in a question mark, opens with a question
@@ -291,11 +306,21 @@ def _asks_about(topic: re.Pattern[str], body: str, terminator: str) -> bool:
     what brought you here", and answering it with "Good question — those two
     meters…" is the issue #501 §3 complaint from the other direction: Alex
     responding to something the player did not say.
+
+    ``fronted`` is the clause in front of this one within the same sentence, if
+    any. A clause that asks and points back ("what's that?") with no topic word
+    of its own takes its topic from there (see _POINTS_BACK_RE).
     """
+    asks = "?" in terminator or _OPENS_WITH_QUESTION_RE.match(body) is not None
     mentions = list(topic.finditer(body))
     if not mentions:
-        return False
-    if "?" in terminator or _OPENS_WITH_QUESTION_RE.match(body):
+        return (
+            fronted is not None
+            and asks
+            and _POINTS_BACK_RE.search(body) is not None
+            and topic.search(fronted) is not None
+        )
+    if asks:
         return True
     return any(_QUESTION_BEFORE_TOPIC_RE.search(body[: m.start()]) for m in mentions)
 
@@ -305,8 +330,14 @@ def _pick_interjection(player_text: str) -> str | None:
     clauses = _CLAUSE_RE.findall(player_text.lower())
     # Clusters outrank clauses: the most specific answer wins, as before.
     for pattern, answer in _INTERJECTION_RES:
-        if any(_asks_about(pattern, body, terminator) for body, terminator in clauses):
-            return answer
+        for index, (body, terminator) in enumerate(clauses):
+            fronted = None
+            if index > 0:
+                previous_body, previous_terminator = clauses[index - 1]
+                if not _SENTENCE_END.intersection(previous_terminator):
+                    fronted = previous_body
+            if _asks_about(pattern, body, terminator, fronted):
+                return answer
     return None
 
 

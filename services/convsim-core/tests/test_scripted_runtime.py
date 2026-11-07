@@ -566,6 +566,10 @@ def _utterance_for(runtime: ScriptedChatRuntime, text: str, turn: int) -> str:
         "tell me what confidence means",
         "Wait — which meter is which?",
         "Can you tell me what the meters are",
+        # The topic fronted, then a question pointing back at it.
+        "The meters, what are they?",
+        "Confidence, what's that?",
+        "The two bars at the top: how do I move them?",
     ],
 )
 def test_a_meter_question_is_answered(runtime, question):
@@ -621,7 +625,11 @@ def test_a_statement_about_the_meters_follows_the_tour(runtime):
         "Ones where I need confidence, like when I ask for a raise",
         "What brought me here is a real need to practise for a job interview",
         "I am feeling good, how about you?",
+        "Feeling nervous about interviews, how about you?",
         "How long have you been doing this?",
+        # A fronted topic answers nothing when the next sentence asks: the
+        # question has to share the sentence to borrow its topic.
+        "I like the meters. What do you think about me?",
     ],
 )
 def test_an_answer_to_the_tours_own_prompt_is_not_treated_as_a_question(runtime, statement):
