@@ -5,6 +5,7 @@ import { ActionButton } from '../primitives'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import { SETUP_DOCS_URL } from '../docsUrls'
 import { useIsDemo } from '../../edition'
+import FamiliarityQuestion from '../../components/FamiliarityQuestion'
 
 const cardBase: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
@@ -47,6 +48,20 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
         <p style={{ margin: 0, fontSize: '0.875rem', color: '#a1a1aa', lineHeight: 1.6 }}>
           {t('setup.welcome.promise.body')}
         </p>
+      </div>
+
+      {/* The initial LLM-familiarity question (issue #501 §2). One row, three
+          answers, no step of its own: the single road to a first conversation
+          below must stay the single road, so this never blocks it and an
+          unanswered question means plain wording. */}
+      <div
+        style={{
+          marginBottom: '1.5rem', padding: '0.85rem 1rem',
+          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '10px',
+        }}
+      >
+        <FamiliarityQuestion heading={t('familiarity.question')} compact />
       </div>
 
       <div style={{ marginBottom: '1.5rem' }}>

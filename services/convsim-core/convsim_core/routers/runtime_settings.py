@@ -17,6 +17,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core.errors import ConvsimError
+from convsim_core.services.reply_speed import DEFAULT_REPLY_SPEED, REPLY_SPEED_PROFILES
 
 router = APIRouter()
 
@@ -29,12 +30,19 @@ _SETTING_KEYS = (
     "temperature",
     "top_p",
     "repeat_penalty",
+    # Plain-language reply pacing (issue #501). Stored alongside the numeric
+    # knobs so one Settings screen and one reset path cover all of them.
+    "reply_speed",
 )
 
 # Changing these requires restarting the llama-server sidecar to take effect.
+# reply_speed is deliberately not here: it is read per turn, so a change applies
+# to the player's very next message with no restart.
 _RESTART_REQUIRED = {"context_length", "gpu_layers"}
 
 _INT_KEYS = {"context_length", "gpu_layers", "threads"}
+
+_STR_KEYS = {"reply_speed"}
 
 
 class RuntimeSettings(BaseModel):
@@ -44,6 +52,9 @@ class RuntimeSettings(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     repeat_penalty: Optional[float] = None
+    #: "fast" | "balanced" | "detailed". None means "never chosen", which the
+    #: turn pipeline reads as the default.
+    reply_speed: Optional[str] = None
 
 
 class RuntimeSettingsResponse(BaseModel):
@@ -60,11 +71,16 @@ def load_runtime_settings(conn: sqlite3.Connection) -> RuntimeSettings:
     ).fetchall()
     stored = {row["key"][len(_KEY_PREFIX):]: row["value"] for row in rows}
 
-    values: dict[str, int | float | None] = {}
+    values: dict[str, int | float | str | None] = {}
     for key in _SETTING_KEYS:
         raw = stored.get(key)
         if raw is None or raw == "" or raw == "null":
             values[key] = None
+            continue
+        if key in _STR_KEYS:
+            # A value a newer build wrote, or one hand-edited into the database,
+            # must not surface as an option the UI cannot render.
+            values[key] = raw if raw in REPLY_SPEED_PROFILES else None
             continue
         try:
             values[key] = int(raw) if key in _INT_KEYS else float(raw)
@@ -113,13 +129,21 @@ def _validate(patch: dict[str, object]) -> list[str]:
     _check_float("temperature", 0.0, 2.0, "Temperature")
     _check_float("top_p", 0.0, 1.0, "Top-P")
     _check_float("repeat_penalty", 1.0, 2.0, "Repeat penalty")
+
+    speed = patch.get("reply_speed")
+    if "reply_speed" in patch and speed is not None and speed not in REPLY_SPEED_PROFILES:
+        options = ", ".join(sorted(REPLY_SPEED_PROFILES))
+        errors.append(f"Reply speed must be one of: {options}.")
     return errors
 
 
 def _recommended() -> RuntimeSettings:
     """Conservative recommendations; None means 'use the runtime default'."""
     cpu = os.cpu_count()
-    return RuntimeSettings(threads=max(1, (cpu or 2) // 2) if cpu else None)
+    return RuntimeSettings(
+        threads=max(1, (cpu or 2) // 2) if cpu else None,
+        reply_speed=DEFAULT_REPLY_SPEED,
+    )
 
 
 @router.get("/api/runtime/settings", response_model=RuntimeSettingsResponse)

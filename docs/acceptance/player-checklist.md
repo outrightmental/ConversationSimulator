@@ -83,13 +83,47 @@ Start the selected scenario.
 - [ ] NPC opening line delivered within 10 seconds
 - [ ] Typing a player turn and submitting returns an NPC response within 30 s (fake); with a real model on CPU it can take several minutes, and must not report a timeout error
 - [ ] Transcript updates after each turn
+- [ ] The NPC's opening is labelled **Opening**, and each exchange after it is
+      labelled **Turn N** on *both* rows — your message and the reply share one
+      number (see [Counting turns](../scenario-authoring.md#counting-turns))
 
-### P-M6 — State meters (optional)
+### P-M6 — Conversation meters (optional)
 
-Enable **Show state meters** in session settings.
+On the Conversation Brief, before starting, check **Show the conversation
+meters**. It is only offered for scenarios that permit them; a scenario that
+does not says so instead ("The conversation meters are hidden in this scenario,
+to keep it realistic"), so pick one that does.
 
-- [ ] State variables visible during conversation
-- [ ] Values change after turns that trigger state deltas
+- [ ] The toggle is already **on** without touching it — scenarios that permit
+      meters show them by default, because the scenarios that talk about them
+      (the First Words tutorial opens with "Above this conversation you'll see
+      two meters") have to be telling the truth
+- [ ] A panel headed **Conversation meters** is visible *above* the transcript —
+      the toggle and the panel use the same name
+- [ ] One bar per visible variable, each labelled in everyday words rather than
+      a raw key (`objective_progress` reads as "Objective progress"), with its
+      value out of 100
+- [ ] Values change after turns that trigger state deltas, and the change is
+      shown on the meter that moved (e.g. "▲ +10 this turn")
+- [ ] The NPC's mood is clearly **not** one of the meters: it reads "Mood: warm"
+      in the NPC panel and under each reply, never as a bare parenthetical
+      beside the bars or the turn number
+
+### P-M6b — Leave and resume (issue #501)
+
+Partway through the conversation, without ending it, navigate to **Settings**.
+
+- [ ] A **Conversation in progress** strip is visible under the header, with a
+      **Resume** button
+- [ ] **Settings → Reply speed** is findable without expanding anything, and
+      choosing **Quick replies** reports that it needs no restart
+- [ ] **Settings → Your sessions** lists the unfinished conversation with its
+      own **Resume** button
+- [ ] Resuming returns to the same conversation with the transcript, the meters
+      and the turn numbering intact — not a new session
+- [ ] The scenario's scene card and the language it was started in survive the
+      round trip (these come back from the server, not the browser's history
+      state, so also check after a full page reload)
 
 ### P-M7 — Finish and debrief
 
@@ -125,7 +159,8 @@ During or after a full session:
 | P-M3 Real model | PASS / FAIL / SKIP | | optional |
 | P-M4 Scenario select | PASS / FAIL / SKIP | | | |
 | P-M5 Speak/type | PASS / FAIL / SKIP | | | |
-| P-M6 State meters | PASS / FAIL / SKIP | | | optional |
+| P-M6 Conversation meters | PASS / FAIL / SKIP | | | optional |
+| P-M6b Leave and resume | PASS / FAIL / SKIP | | | |
 | P-M7 Debrief | PASS / FAIL / SKIP | | | |
 | P-M8 Replay | PASS / FAIL / SKIP | | | |
 | P-M9 No cloud | PASS / FAIL / SKIP | | | |

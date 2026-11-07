@@ -42,7 +42,7 @@ export function BenchmarkStep({ flow, mode, onComplete }: BenchmarkStepProps) {
                 </tr>
               )}
               <tr>
-                <td style={{ color: '#a1a1aa', paddingTop: '0.4rem', paddingBottom: '0.4rem', paddingRight: '1.5rem', whiteSpace: 'nowrap', verticalAlign: 'top' }}>Runtime</td>
+                <td style={{ color: '#a1a1aa', paddingTop: '0.4rem', paddingBottom: '0.4rem', paddingRight: '1.5rem', whiteSpace: 'nowrap', verticalAlign: 'top' }}>AI engine</td>
                 <td style={{ paddingTop: '0.4rem', paddingBottom: '0.4rem' }}>{flow.benchmarkResult.runtime_id}</td>
               </tr>
             </tbody>
@@ -61,7 +61,7 @@ export function BenchmarkStep({ flow, mode, onComplete }: BenchmarkStepProps) {
                 ))}
               </ul>
               <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem', color: '#a1a1aa' }}>
-                If generation is slow, try a smaller model or check that GPU acceleration is enabled in your runtime settings.{' '}
+                If generation is slow, try a smaller model or check that GPU acceleration is enabled in your engine settings.{' '}
                 <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">Setup docs</a>
               </p>
             </div>

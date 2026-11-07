@@ -20,7 +20,7 @@ import concurrent.futures
 import json
 import logging
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
@@ -35,7 +35,7 @@ from convsim_prompt import (
     compose_turn_prompt,
     parse_turn_output,
 )
-from convsim_prompt.types import ScenarioData
+from convsim_prompt.types import ResponseStyleOverrides, ScenarioData
 
 from convsim_core.input_router import (
     DEFAULT_REDIRECT_MESSAGE,
@@ -55,9 +55,32 @@ from convsim_core.scenario_state import (
     initialize_state,
     partition_state_by_visibility,
 )
+from convsim_core.services.reply_speed import (
+    load_reply_speed,
+    profile_for,
+    scaled_max_words,
+)
 from convsim_core.storage.repositories.relationship_repo import get_relationship_recap
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_reply_speed(scenario_data: ScenarioData, speed: str) -> ScenarioData:
+    """Return *scenario_data* with its NPC word cap scaled for *speed*.
+
+    A copy, not a mutation: ``scenario_data`` is resolved once per scenario and
+    handed to every session playing it, so writing the current player's pacing
+    preference into it would leak across sessions.
+    """
+    authored = scenario_data.response_style or ResponseStyleOverrides()
+    target = scaled_max_words(authored.max_words, speed)
+    if target == authored.max_words:
+        return scenario_data
+    return dataclass_replace(
+        scenario_data,
+        response_style=dataclass_replace(authored, max_words=target),
+    )
+
 
 MAX_TURN_CONTENT_CHARS = 2000
 
@@ -436,7 +459,11 @@ async def process_turn(
     pack_id: str = setup.get("pack_id") or scenario_data.scenario_id
     relationship_recap = get_relationship_recap(conn, npc_id, pack_id)
 
-    # 6. Build prompt.
+    # 6. Build prompt. The player's reply-speed preference (issue #501) scales
+    #    the NPC's word budget here and its token budget at step 7, so a choice
+    #    made in Settings mid-scenario applies to this very turn.
+    reply_speed = load_reply_speed(conn)
+    scenario_data = _apply_reply_speed(scenario_data, reply_speed)
     prompt_safety_policy = (
         _safety_policy_config_to_prompt_policy(safety_policy_config)
         if safety_policy_config is not None
@@ -467,8 +494,9 @@ async def process_turn(
         # regularly lands in the 300-600 token range; the 512 default left no
         # headroom and a truncated JSON object degrades to the fallback
         # utterance. Reasoning is disabled at the engine level, so the extra
-        # budget costs nothing when unused.
-        max_tokens=1024,
+        # budget costs nothing when unused. "balanced" keeps the 1024 this was
+        # hardcoded to before reply speed became a setting.
+        max_tokens=profile_for(reply_speed).max_tokens,
     )
     logger.debug(
         "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",
