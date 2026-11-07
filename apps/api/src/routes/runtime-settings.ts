@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../db.js';
+import { REPLY_SPEEDS, isReplySpeed } from '@convsim/shared';
 import type {
+  ReplySpeed,
   RuntimeSettings,
   RuntimeSettingsResponse,
   RuntimeSettingsRequest,
@@ -15,8 +17,11 @@ const SETTING_KEYS: (keyof RuntimeSettings)[] = [
   'temperature',
   'top_p',
   'repeat_penalty',
+  'reply_speed',
 ];
 
+// reply_speed is deliberately absent: it is read per turn, so a change applies
+// to the player's very next message with no restart.
 const RESTART_REQUIRED: Set<keyof RuntimeSettings> = new Set(['context_length', 'gpu_layers']);
 
 const NULL_SETTINGS: RuntimeSettings = {
@@ -26,6 +31,7 @@ const NULL_SETTINGS: RuntimeSettings = {
   temperature: null,
   top_p: null,
   repeat_penalty: null,
+  reply_speed: null,
 };
 
 interface ModelConfigRow { key: string; value: string }
@@ -45,6 +51,13 @@ export function loadRuntimeSettings(): RuntimeSettings {
     return isNaN(n) ? null : n;
   }
 
+  function speed(k: string): ReplySpeed | null {
+    // A value a newer build wrote, or one hand-edited into the database, must
+    // not surface as an option the UI cannot render.
+    const v = map[k];
+    return isReplySpeed(v) ? v : null;
+  }
+
   return {
     context_length: num('context_length'),
     gpu_layers: num('gpu_layers'),
@@ -52,6 +65,7 @@ export function loadRuntimeSettings(): RuntimeSettings {
     temperature: num('temperature'),
     top_p: num('top_p'),
     repeat_penalty: num('repeat_penalty'),
+    reply_speed: speed('reply_speed'),
   };
 }
 
@@ -126,6 +140,16 @@ function validate(req: RuntimeSettingsRequest): RuntimeSettingsFieldError[] {
     }
   }
 
+  const speed = req.reply_speed;
+  if (speed !== null && speed !== undefined) {
+    if (!isReplySpeed(speed)) {
+      errs.push({
+        field: 'reply_speed',
+        message: `Reply speed must be one of: ${[...REPLY_SPEEDS].sort().join(', ')}.`,
+      });
+    }
+  }
+
   return errs;
 }
 
@@ -159,6 +183,7 @@ export async function runtimeSettingsRoutes(app: FastifyInstance): Promise<void>
             temperature: { type: ['number', 'null'] },
             top_p: { type: ['number', 'null'] },
             repeat_penalty: { type: ['number', 'null'] },
+            reply_speed: { type: ['string', 'null'] },
           },
         },
       },

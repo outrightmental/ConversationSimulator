@@ -492,6 +492,12 @@ pack_readme_fts
 
 The MVP should implement a turn-based spoken conversation loop.
 
+**One turn is one player message plus the NPC's reply to it** — steps 6–13
+below, taken together. The two halves are not counted separately. `turn_count`,
+`duration.max_turns`, the transcript's `Turn N` labels and the debrief's key
+moments all use this one unit, and the NPC's opening (step 5) precedes the
+first turn rather than consuming it.
+
 ## 6.1 Player loop
 
 ```text
@@ -779,7 +785,7 @@ rubric:
   ref: "../rubrics/interview-rubric.yaml"
 
 duration:
-  max_turns: 18
+  max_turns: 18            # whole turns: one player message + one NPC reply
   soft_time_limit_minutes: 20
 
 opening:
@@ -1098,10 +1104,10 @@ Must show:
 Status card example:
 
 ```text
-Local runtime: Ready
-LLM: Qwen3 8B Instruct Q4_K_M
-STT: Whisper small.en
-TTS: Kokoro af_heart
+AI engine: Ready
+AI model: Qwen3 8B Instruct Q4_K_M
+Voice input: Whisper small.en
+Voice output: Kokoro af_heart
 Network required to play: No
 ```
 
@@ -1740,6 +1746,7 @@ GET  /api/scenarios
 GET  /api/scenarios/{scenario_id}
 
 POST /api/sessions
+GET  /api/sessions                       ?status=all|in_progress|ended&limit=1..500
 GET  /api/sessions/{session_id}
 POST /api/sessions/{session_id}/start
 POST /api/sessions/{session_id}/turn

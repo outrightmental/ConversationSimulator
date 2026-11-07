@@ -4,8 +4,13 @@ fixture_id: smoke_first_words_tutorial
 scenario_id: first_words_tutorial
 description: >-
   Verifies that the First Words tutorial scenario loads correctly and that
-  three scripted turns advance the session state without triggering safety
-  stops.  No model is required — uses the scripted runtime.
+  scripted turns advance the session state without triggering safety stops.
+  Turn 4 is a question about the meters so the fixture exercises that input;
+  whether it is answered is asserted by
+  services/convsim-core/tests/test_scripted_runtime.py
+  (test_a_meter_question_is_answered), because this runner's fake runtime
+  produces no utterance and the expectation vocabulary has no way to check
+  one.  No model is required — uses the scripted runtime.
 seed: 1
 input_mode: text
 difficulty: standard
@@ -27,6 +32,18 @@ turns:
       safety_status: ok
   - turn: 3
     player_input: "I see the engagement meter went up. That's interesting!"
+    expect:
+      state_delta_contains:
+        - engagement
+      session_control: continue_session
+      safety_status: ok
+  # A question about the meters, so the fixture exercises the input that
+  # issue #501 §3 reported. The answer itself is asserted in
+  # services/convsim-core/tests/test_scripted_runtime.py
+  # (test_a_meter_question_is_answered): the fake runtime this fixture runs
+  # on produces no utterance, and `expect` cannot name one.
+  - turn: 4
+    player_input: "Wait, what are the meters?"
     expect:
       state_delta_contains:
         - engagement

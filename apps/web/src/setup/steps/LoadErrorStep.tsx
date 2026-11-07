@@ -33,7 +33,7 @@ export function LoadErrorStep({ flow, mode }: LoadErrorStepProps) {
         <>
           <p role="alert" style={{ color: '#f87171' }}>{errMsg}</p>
           <div style={{ marginTop: '0.5rem', padding: '0.85rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px' }}>
-            <p style={{ margin: '0 0 0.4rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>Could not connect to the local runtime</p>
+            <p style={{ margin: '0 0 0.4rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>Could not connect to the AI engine</p>
             <p style={{ margin: '0 0 0.75rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
               The API server may not be running. Make sure you launched the app correctly, then try again.
             </p>
