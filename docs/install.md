@@ -24,7 +24,7 @@ Two install paths are available:
 | GPU VRAM | 0 GB (CPU fallback available) | 4 GB+ for starter model; see [local-models.md](local-models.md) |
 | Disk | 5 GB free | 20 GB recommended. Model weights take 3–15 GB depending on tier, plus app data |
 | Python | 3.10 or newer | Path A only |
-| Node.js | 18 LTS or newer | Path A only |
+| Node.js | 20 LTS or newer | Path A only |
 
 ---
 
@@ -58,14 +58,26 @@ before the app will work; `WARN` items are advisory.
 - Ubuntu/Debian: `sudo apt install python3.11 python3.11-venv`
 - Windows: download from <https://www.python.org/downloads/>
 
-**Node.js 18 LTS+**
+**Node.js 20 LTS+**
 
 - All platforms: download from <https://nodejs.org/>
-- Or use a version manager: `nvm install 18` / `fnm install 18`
+- Or use a version manager: `nvm install 20` / `fnm install 20`
 
-**pnpm (recommended) or npm**
+The locked dependencies need Node.js 20 or newer. `better-sqlite3`, which the
+pack loader and the `convsim` CLI load, lists Node 20.x and 22.x through 26.x
+in its `engines` field, and the docs site depends on packages that need 20.19
+or newer. CI runs Node 24. The first-run check and the setup scripts still
+accept any Node.js 18 or newer. On 18 or 19 the one warning you get is pnpm's
+`Unsupported engine` line at the start of the install, and pnpm does not stop
+there.
 
-pnpm is faster for a monorepo workspace. npm (bundled with Node.js) also works.
+**pnpm 9 or newer**
+
+The workspace needs pnpm; npm cannot install it. The packages refer to each
+other with the `workspace:` protocol, which npm does not support, so
+`npm install` stops at once with `EUNSUPPORTEDPROTOCOL`. CI installs with pnpm
+too. The lockfile is pnpm 9 format, so use pnpm 9 or newer. npm, which comes
+with Node.js, can install pnpm for you:
 
 ```bash
 npm install -g pnpm
@@ -94,8 +106,11 @@ cd ConversationSimulator
 
 The setup script:
 
-- Confirms Python 3.10+ and Node.js 18+ are present.
-- Installs frontend packages (`pnpm install` or `npm install`).
+- Confirms Python 3.10+ and Node.js are present. Its Node.js check only
+  requires 18, not the 20 the workspace needs (see step 1).
+- Installs frontend packages with `pnpm install`. If pnpm is not on your
+  `PATH` it runs `npm install` instead, which fails on this workspace, so
+  install pnpm first (step 1).
 - Creates the Python virtual environment for `convsim-core` under `services/convsim-core/.venv/`.
 - Creates local data directories under `~/.convsim/`.
 
@@ -139,7 +154,7 @@ recommendations by hardware and all runtime options.
 
 ### 7. Verify the installation
 
-Run the offline smoke test to confirm no service makes outbound network calls during play. The smoke test ships as the `convsim` CLI (`@convsim/cli`). Build it once, together with the pack loader it depends on, then run it with `node`:
+Run the offline smoke test to confirm that a scenario pack loads and plays without any outbound network access. The smoke test ships as the `convsim` CLI (`@convsim/cli`). Build it once, together with the pack loader it depends on, then run it with `node`:
 
 ```bash
 pnpm --filter @convsim/pack-loader build
@@ -147,7 +162,17 @@ pnpm --filter @convsim/cli build
 node packages/convsim-cli/dist/index.js offline-smoke-test packs/official/job-interview-basic
 ```
 
-The command exits 0 on success and prints an actionable error if any subsystem attempted an external connection during the scripted play session.
+Everything happens inside the CLI's own process. It blocks every outbound TCP
+connection that process opens to anything other than localhost, loads the pack,
+plays a short scripted session of its first scenario with the CLI's built-in
+fake runtime and builds a local debrief. No model is loaded and the services
+you started in step 4 are not contacted. The command exits 0 when nothing tried
+to connect out. It exits 1 if a connection was blocked, naming the subsystem
+and address, or if the pack failed to load.
+
+To check that `convsim-core` itself makes no outbound calls during a session,
+run the acceptance test in
+[offline-smoke-tests.md](offline-smoke-tests.md#2-run-the-offline-smoke-test-against-the-live-server).
 
 ---
 

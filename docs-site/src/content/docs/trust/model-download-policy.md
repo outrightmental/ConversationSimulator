@@ -65,7 +65,7 @@ registry entry, and a user-supplied GGUF file involves no network fetch at
 all. There is no auto-update or silent version upgrade for installed model
 weights.
 
-The chooser's third card, **Use existing Ollama model**, connects to a model
+The chooser's second card, **Use existing Ollama model**, connects to a model
 that the player's own Ollama installation already holds. The app downloads
 nothing for it (the step tells the player to pull a model with Ollama first),
 so it is outside this policy. The demo edition does not show the card.
