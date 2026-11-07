@@ -1299,8 +1299,13 @@ export default function Conversation() {
   // has arrived yet and only when the wait is worth a number.
   const replyStart = (() => {
     if (!isAwaitingNpc || streamingText.length > 0 || lineComplete) return null
+    // Only while the engine has yet to start the reply. Writing means words are
+    // on their way, and finishing and voice come after them. Checking is a
+    // second, unstreamed generation after the first one failed its check: the
+    // last progress report described the first one, and this machine's time to
+    // first words describes neither, so any number here would be invented.
     const stage = turnProgress?.stage
-    if (stage === 'writing' || stage === 'finishing') return null
+    if (stage !== 'waiting' && stage !== 'reading') return null
     const prompt = turnProgress?.prompt
     const unread =
       prompt && prompt.total !== null && prompt.processed !== null

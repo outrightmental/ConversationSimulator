@@ -1498,6 +1498,26 @@ describe('Conversation screen', () => {
       expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument()
     })
 
+    it('quotes no estimate while a failed reply is tried again', async () => {
+      // The repair is a second, unstreamed generation. Neither the first one's
+      // progress report nor this machine's time to first words says when it
+      // will be done, so the panel names the stage and quotes nothing.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 6.5, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      fire(progress('reading', { processed: 509, total: 2036, cached: 0 }, 1))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about/))
+      fire(progress('checking', null, 2))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Dana Whitfield is trying that again…'))
+      expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument()
+      expect(screen.getByTestId('npc-turn-progress-status')).not.toHaveTextContent(/Reply starts/)
+    })
+
     it('keeps the finishing stage visible with the meters hidden', async () => {
       const { fire } = connect()
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
