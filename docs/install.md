@@ -67,9 +67,11 @@ The locked dependencies need Node.js 20 or newer. `better-sqlite3`, which the
 pack loader and the `convsim` CLI load, lists Node 20.x and 22.x through 26.x
 in its `engines` field, and the docs site depends on packages that need 20.19
 or newer. CI runs Node 24. The first-run check and the setup scripts still
-accept any Node.js 18 or newer. On 18 or 19 the one warning you get is pnpm's
-`Unsupported engine` line at the start of the install, and pnpm does not stop
-there.
+accept any Node.js 18 or newer. On 18 or 19, pnpm warns `Unsupported engine`
+at the start of the install and carries on, but `better-sqlite3` has no
+prebuilt binary for those versions, so the install then compiles it from source
+with node-gyp. That needs Python and a C++ build toolchain, and without them
+the install fails.
 
 **pnpm 9 or newer**
 
