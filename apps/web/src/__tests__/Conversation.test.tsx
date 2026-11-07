@@ -1444,6 +1444,61 @@ describe('Conversation screen', () => {
       fireEvent.click(screen.getByRole('button', { name: /submit/i }))
     }
 
+    it('opens a connected turn at getting ready, not at the no-socket fallback, before the first report', async () => {
+      // Between submit and the core's first turn.progress event the panel has
+      // no stage. With the socket open that is the start of getting ready: it
+      // used to show the no-socket fallback ("thinking", the whole-turn
+      // median) and step back to "getting ready" when the event came, with an
+      // announcement for each.
+      recordTurnSample(MODEL_NAME, 40_000)
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 6.5, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb, opts) => {
+        wsCallback = cb
+        opts?.onStatus?.('open')
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getScenario.mockResolvedValue({ ok: true, data: namedScenario })
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await waitFor(() => expect(mockApi.getRollingSpeeds).toHaveBeenCalled())
+      await submitFirst()
+      const status = screen.getByTestId('npc-turn-progress-status')
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Dana Whitfield is getting ready…'))
+      expect(screen.getByTestId('npc-turn-progress-clock')).not.toHaveTextContent('~')
+      const before = status.textContent
+      expect(before).toBe('Dana Whitfield is getting ready… Reply starts in about 20–35 s.')
+      // The core's first report says the same thing, so nothing is re-announced.
+      act(() => wsCallback?.(progress('waiting', null, 1)))
+      expect(status.textContent).toBe(before)
+    })
+
+    it('falls back to the whole-turn clock when an open socket sends no stages', async () => {
+      // An older core over an open socket: no report by the first tick means
+      // none is coming, and the PR #513 behaviour stands.
+      recordTurnSample(MODEL_NAME, 40_000)
+      mockApi.connectSession.mockImplementation((_id, _cb, opts) => {
+        opts?.onStatus?.('open')
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await submitFirst()
+        await vi.advanceTimersByTimeAsync(2_000)
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('2s / ~40s')
+        expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Thinking…')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('shows the stages in order, in the fiction, with the character\'s name, and the thinking bar as read ÷ total', async () => {
       const { fire } = connect()
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))

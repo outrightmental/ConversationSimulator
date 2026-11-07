@@ -220,6 +220,9 @@ export default function Conversation() {
   // progress panel (#539 reads it); this screen uses it to keep the request's
   // deadline alive while the core is visibly working.
   const [turnProgress, setTurnProgress] = useState<TurnProgress | null>(null)
+  // Whether the session socket is open, so the panel can tell a turn whose
+  // first stage report is still on its way from a turn with no socket at all.
+  const [socketOpen, setSocketOpen] = useState(false)
   // True once the NPC's whole line has arrived over the socket but the turn
   // has not committed yet (issue #538). The reply box works again from here:
   // the player can read and answer while the core finishes its bookkeeping.
@@ -782,7 +785,7 @@ export default function Conversation() {
             // are emitted by future streaming STT backends and are safe to ignore here.
             break
         }
-      })
+      }, { onStatus: (status) => setSocketOpen(status === 'open') })
     } catch {
       // WS unavailable — REST-only mode
     }
@@ -1302,6 +1305,16 @@ export default function Conversation() {
   // reconcile interval long.
   const npcReplyOnScreen = turns[turns.length - 1]?.role === 'npc'
   const isAwaitingNpc = phase === 'submitting' && !npcReplyOnScreen
+  // The stage the panel shows. Between submit and the core's first report
+  // (the input checks and prompt composition, tens of milliseconds) there is
+  // no stage yet; with the socket open that gap is the start of getting
+  // ready, not a turn without stage events. Treating it as the no-socket case
+  // made the panel say "thinking", quote and announce the whole-turn median,
+  // and step back to "getting ready" a moment later. If no report has come by
+  // the first tick of the clock the core is not sending any (an older core),
+  // and the panel falls back as before.
+  const panelStage: TurnStage | null =
+    turnProgress?.stage ?? (socketOpen && isAwaitingNpc && waitElapsedMs < 1_000 ? 'waiting' : null)
   // When the reply will start (issue #539): from the engine's own progress
   // report and this machine's measured speeds, as a range, only while nothing
   // has arrived yet and only when the wait is worth a number.
@@ -1312,8 +1325,8 @@ export default function Conversation() {
     // second, unstreamed generation after the first one failed its check: the
     // last progress report described the first one, and this machine's time to
     // first words describes neither, so any number here would be invented.
-    if (!turnProgress || (turnProgress.stage !== 'waiting' && turnProgress.stage !== 'reading')) return null
-    const prompt = turnProgress.prompt
+    if (panelStage !== 'waiting' && panelStage !== 'reading') return null
+    const prompt = turnProgress?.prompt ?? null
     const unread =
       prompt && prompt.total !== null && prompt.processed !== null
         ? Math.max(0, prompt.total - prompt.processed)
@@ -1323,7 +1336,7 @@ export default function Conversation() {
     // by however long the player had already waited.
     const ms = estimateReplyStartMs({
       unreadPromptTokens: unread,
-      sinceReportMs: Math.max(0, waitElapsedMs - turnProgress.receivedAtMs),
+      sinceReportMs: turnProgress ? Math.max(0, waitElapsedMs - turnProgress.receivedAtMs) : 0,
       waitedMs: waitElapsedMs,
       readingTps: rollingSpeeds?.reading_tps ?? null,
       writingTps: rollingSpeeds?.writing_tps ?? null,
@@ -1674,7 +1687,7 @@ export default function Conversation() {
         estimateMs={turnEstimateMs}
         streaming={streamingText.length > 0 || turnProgress?.stage === 'writing'}
         npcName={scenario?.npc_name ?? null}
-        stage={turnProgress?.stage ?? null}
+        stage={panelStage}
         prompt={turnProgress?.prompt ?? null}
         replyStart={replyStart}
         yourTurn={phase === 'active' && sessionState === 'PlayerTurnListening' && turnsLanded > 0}

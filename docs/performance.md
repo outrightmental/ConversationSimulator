@@ -80,8 +80,9 @@ when it has something honest to say — when the reply will start.
 | The clock | Runs for the whole wait, so a long turn never looks like a frozen app. A screen reader hears each stage once, with the estimate as that stage began, and never a new figure per progress report. After 30 s it is told the elapsed time once per half-minute, with the current estimate when there is one, and that the reply is not lost. |
 | **Once this reply arrives, you can shorten the next ones under Reply speed, in Settings.** | Added under the bar once a wait passes about five seconds. It is text, not a link: leaving the screen mid-turn loses the pending message when the session resumes, so the setting is named and left for after the reply. The demo adds that closing other apps usually helps, which is the one thing its hardware can do. |
 
-With no live connection to the engine's progress (an older core, or the socket
-unavailable), the panel falls back to the previous behaviour: the clock and
+With no live connection to the engine's progress (the socket unavailable, or
+an older core that sends no stage within the first second of a turn), the
+panel falls back to the previous behaviour: the clock and
 the median of up to eight recent whole turns on this machine, with a bar that
 never fills completely and plain honesty when the turn outruns the estimate.
 
