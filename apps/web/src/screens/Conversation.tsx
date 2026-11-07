@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   InputMode,
@@ -1462,26 +1462,23 @@ export default function Conversation() {
             fontSize: '0.8rem',
           }}
         >
-          {isDemo ? (
-            `${npcLabel} is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.`
-          ) : (
-            <>
-              {npcLabel} is taking longer than usual. The model may be slow on
-              this hardware.{' '}
-              {/* The moment the player actually wants the speed setting is this
-                  one. Before #501 this sentence said "you can adjust settings"
-                  and left them to find out which — the detour that lost them
-                  their session. Resuming is one click back, via the banner in
-                  the app chrome. */}
-              <Link
-                to="/settings#reply-speed"
-                data-testid="slow-response-speed-link"
-                style={{ color: '#fcd34d', textDecoration: 'underline' }}
-              >
-                Make replies faster →
-              </Link>
-            </>
-          )}
+          {npcLabel} is taking longer than usual. The model may be slow on this
+          hardware{isDemo ? '; closing other apps usually helps.' : '.'}{' '}
+          {/* The moment the player actually wants the speed setting is this
+              one. Before #501 this sentence said "you can adjust settings" and
+              left them to find out which — the detour that lost them their
+              session. So it names the setting — but as text, not a link: this
+              notice only exists while a turn is in flight, and convsim-core
+              keeps the session in PlayerTurnListening until the reply commits,
+              so leaving now and resuming would rebuild the screen without the
+              pending message, re-enable the composer, and number the next
+              exchange one behind the server (issue #501 §4). The demo gets the
+              same sentence: its model is fixed, so reply speed is the one
+              lever it has. */}
+          <span data-testid="slow-response-speed-hint">
+            Once this reply arrives, you can shorten the next ones under Reply
+            speed, in Settings.
+          </span>
           {isVerySlowResponse && (
             // Past half a minute, say outright that the turn has not been
             // thrown away — the panel above already reports the clock, so
@@ -1577,7 +1574,12 @@ export default function Conversation() {
           </button>
         </div>
       ) : (
+        // Keyed on the input mode: VoiceInput decides text-only versus mic
+        // once, at mount. On the resume path the mode is read back from the
+        // server after the first render (issue #501 §1), so without the key a
+        // resumed push-to-talk session came back as a text-only composer.
         <VoiceInput
+          key={inputMode}
           onSubmit={(text) => void handleSubmit(text)}
           onRawStt={devMode ? (meta) => { pendingRawSttRef.current = meta } : undefined}
           onSttLatency={(ms) => recordValue('stt_final_ms', ms)}

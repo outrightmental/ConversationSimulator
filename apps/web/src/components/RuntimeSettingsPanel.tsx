@@ -7,6 +7,15 @@ import { ApiErrorView } from './ApiErrorView'
 import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 import { AI_ENGINE_DOCS_URL as DOCS_URL, UPDATE_DOCS_URL } from '../setup/docsUrls'
 
+/**
+ * Fired on `window` after this panel changes the runtime settings on the
+ * server. The reset endpoint clears every key, `reply_speed` included, and
+ * ReplySpeedPanel shows that key from its own read — so without a nudge it kept
+ * "Quick replies" selected while the engine had gone back to balanced, and the
+ * player concluded the setting does nothing (issue #501 §1).
+ */
+export const RUNTIME_SETTINGS_CHANGED_EVENT = 'convsim:runtime-settings-changed'
+
 const PROVIDER_NAMES: Record<string, string> = {
   llama_cpp: 'llama.cpp',
   ollama: 'Ollama',
@@ -306,6 +315,7 @@ export default function RuntimeSettingsPanel() {
     setRequiresRestart(r.data.requires_restart)
     setForm(settingsToForm(r.data.settings))
     setAdvApplying(false)
+    window.dispatchEvent(new CustomEvent(RUNTIME_SETTINGS_CHANGED_EVENT))
   }
 
   async function handleReset() {
@@ -318,6 +328,7 @@ export default function RuntimeSettingsPanel() {
     setRequiresRestart(r.data.requires_restart)
     setAdvApplyError(null)
     setResetting(false)
+    window.dispatchEvent(new CustomEvent(RUNTIME_SETTINGS_CHANGED_EVENT))
   }
 
   const health = modelsData?.runtime_health

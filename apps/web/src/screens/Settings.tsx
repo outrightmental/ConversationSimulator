@@ -7,6 +7,7 @@ import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import { useSteamStatus } from '../hooks/useSteamStatus'
+import { announceSessionsChanged } from '../hooks/useResumableSession'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import ReplySpeedPanel from '../components/ReplySpeedPanel'
 import WordingPanel from '../components/WordingPanel'
@@ -105,9 +106,10 @@ export default function Settings() {
   const { hash } = useLocation()
   // Demo edition (issue #495): Settings keeps language, transcript saving,
   // local folders, sessions and clear-data — the privacy controls every
-  // edition must have (gate F-06). Runtime/model tiers, voice, Steam Cloud,
-  // pack management, NPC memory, system health and the advanced toggles are
-  // full-app depth and are not rendered.
+  // edition must have (gate F-06) — and reply speed, the one speed control a
+  // player with a fixed curated model has (issue #501 §1). Runtime/model
+  // tiers, voice, Steam Cloud, pack management, NPC memory, system health and
+  // the advanced toggles are full-app depth and are not rendered.
   const isDemo = useIsDemo()
 
   const [saveTranscripts, setSaveTranscripts] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTranscripts, true))
@@ -143,9 +145,12 @@ export default function Settings() {
   }
 
   // A router navigation to /settings#reply-speed does not scroll on its own, so
-  // the slow-response notice's "Make replies faster" link would land the player
-  // at the top of a long settings page with nothing obviously changed
-  // (issue #501 §1).
+  // a deep link to the reply-speed section would land the player at the top of
+  // a long settings page with nothing obviously changed (issue #501 §1). The
+  // conversation screen's slow-response notice names the section rather than
+  // linking to it — leaving mid-turn loses the pending message on resume — so
+  // nothing links here today; the anchor is kept as the stable target for
+  // whatever does next.
   useEffect(() => {
     if (!hash) return
     const target = document.getElementById(hash.slice(1))
@@ -262,7 +267,11 @@ export default function Settings() {
   const [exportError, setExportError] = useState<ApiError | null>(null)
 
   const loadSessions = useCallback(() => {
-    void api.listSessions().then((r) => {
+    // The server's maximum, asked for explicitly: both list endpoints default
+    // to the newest 50, and this list is the only place an older session can
+    // be resumed, exported or deleted one at a time. In-progress sessions are
+    // never ended on the player's behalf, so a tester accumulates them.
+    void api.listSessions('all', 500).then((r) => {
       if (r.ok) { setSessions(r.data.sessions); setSessionsError(null) }
       else setSessionsError(r.error)
     })
@@ -291,6 +300,8 @@ export default function Settings() {
         setDeleteConfirmId(null)
         setClearState('done')
         loadSessions()
+        // The resume strip in the chrome above this list keeps its own copy.
+        announceSessionsChanged()
       } else {
         setClearError(r.error)
         setClearState('error')
@@ -309,6 +320,9 @@ export default function Settings() {
     const r = await api.deleteSession(sessionId)
     if (r.ok) {
       setSessions((prev) => prev?.filter((s) => s.session_id !== sessionId) ?? null)
+      // Without this the strip above still said "Conversation in progress …
+      // Resume" for the row just deleted, and Resume landed on a 404.
+      announceSessionsChanged()
     } else {
       setDeleteError(r.error)
     }
@@ -478,8 +492,9 @@ export default function Settings() {
       {/* Reply speed — the plain-language answer to "make the model respond
           faster" (issue #501 §1). Deliberately its own section above the
           engine knobs, and anchored so the conversation screen's slow-response
-          notice can link straight here. */}
-      {!isDemo && (
+          notice can name a place to find it. In every edition: the demo has a
+          fixed curated model and no engine panel, so this is the only speed
+          control its players get. */}
       <section id="reply-speed" style={{ marginBottom: '2rem' }} data-testid="settings-reply-speed-section">
         <SectionHeading>{t('settings.replySpeed.heading')}</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
@@ -487,7 +502,6 @@ export default function Settings() {
         </p>
         <ReplySpeedPanel />
       </section>
-      )}
 
       {/* Runtime settings */}
       {!isDemo && (

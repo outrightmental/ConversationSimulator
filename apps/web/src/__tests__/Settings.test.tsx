@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import type { SessionCreateRequest } from '@convsim/shared'
+import type { ReplySpeed, SessionCreateRequest } from '@convsim/shared'
 import type { ImportPackResponse } from '../api/client'
 import Settings from '../screens/Settings'
 import { readTurnSamples, recordTurnSample } from '../lib/turnEstimate'
@@ -553,6 +553,24 @@ describe('clear local data', () => {
     await waitFor(() => expect(mockApi.clearLocalData).toHaveBeenCalledOnce())
   })
 
+  it('announces the change once everything is cleared, so the resume strip re-asks', async () => {
+    // Clearing removes every session, the in-progress one the chrome's resume
+    // banner was offering included; that banner keeps its own copy.
+    const onChanged = vi.fn()
+    window.addEventListener('convsim:sessions-changed', onChanged)
+    try {
+      mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 3 } })
+      await renderSettings()
+      fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+      await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+      await waitFor(() => expect(mockApi.clearLocalData).toHaveBeenCalledOnce())
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    } finally {
+      window.removeEventListener('convsim:sessions-changed', onChanged)
+    }
+  })
+
   it('forgets the turn timings this browser has measured (issue #488)', async () => {
     // The button promises to delete cached data from the device; how slow this
     // machine's turns are is cached on the device, in localStorage rather than
@@ -667,6 +685,36 @@ describe('reply speed and wording sections', () => {
     expect(screen.getByRole('heading', { name: /reply speed/i })).toBeInTheDocument()
   })
 
+  it('re-selects balanced after the engine panel resets the runtime settings', async () => {
+    // Reset clears reply_speed on the server with everything else. The two
+    // panels each read the settings for themselves, so without a nudge the
+    // speed control kept "Quick replies" checked while the engine had gone
+    // back to balanced — and the player concluded the setting does nothing.
+    let stored: ReplySpeed | null = 'fast'
+    const withStored = () => ({
+      ...STUB_RUNTIME_SETTINGS,
+      settings: { ...STUB_RUNTIME_SETTINGS.settings, reply_speed: stored },
+    })
+    mockApi.getRuntimeSettings.mockImplementation(async () => ({ ok: true, data: withStored() }))
+    mockApi.resetRuntimeSettings.mockImplementation(async () => {
+      stored = null
+      return { ok: true, data: withStored() }
+    })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('reply-speed-fast')).toHaveAttribute('aria-checked', 'true'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
+    await waitFor(() => screen.getByRole('button', { name: /reset to defaults/i }))
+    fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('reply-speed-balanced')).toHaveAttribute('aria-checked', 'true'),
+    )
+    expect(screen.getByTestId('reply-speed-fast')).toHaveAttribute('aria-checked', 'false')
+  })
+
   it('offers the wording levels', async () => {
     await renderSettings()
     await waitFor(() => expect(screen.getByTestId('wording-options')).toBeInTheDocument())
@@ -683,6 +731,52 @@ describe('reply speed and wording sections', () => {
 })
 
 describe('your sessions', () => {
+  it('asks for the whole list rather than the server default page of 50', async () => {
+    // Both list endpoints default to the newest 50. This list is the only place
+    // an older session can be resumed, exported or deleted one at a time, and
+    // nothing here says when it is partial — so ask for the server maximum.
+    await renderSettings()
+    expect(mockApi.listSessions).toHaveBeenCalledWith('all', 500)
+  })
+
+  it('announces the change when a session is deleted, so the resume strip re-asks', async () => {
+    // The chrome's resume banner keeps its own copy of the in-progress set;
+    // without this it still offered the row just deleted, and Resume 404'd.
+    const onChanged = vi.fn()
+    window.addEventListener('convsim:sessions-changed', onChanged)
+    try {
+      mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+      mockApi.deleteSession.mockResolvedValue({ ok: true, data: undefined })
+      await renderSettings()
+      await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      await waitFor(() => expect(mockApi.deleteSession).toHaveBeenCalledWith('sess-aaa'))
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    } finally {
+      window.removeEventListener('convsim:sessions-changed', onChanged)
+    }
+  })
+
+  it('does not announce a deletion that failed', async () => {
+    const onChanged = vi.fn()
+    window.addEventListener('convsim:sessions-changed', onChanged)
+    try {
+      mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+      mockApi.deleteSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
+      await renderSettings()
+      await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+      await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      expect(onChanged).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('convsim:sessions-changed', onChanged)
+    }
+  })
+
   it('offers Resume for an unfinished session', async () => {
     // Issue #501 §1: Settings is the screen the playtester got lost on, so
     // every unfinished conversation is one click from here — not only the
@@ -1059,8 +1153,10 @@ describe('steam cloud sync section', () => {
 describe('demo edition', () => {
   // The demo trims Settings to the privacy controls every edition must keep
   // (gate F-06): language, transcript saving, local folders, sessions and
-  // clear-data. Model tiers, voice, Steam Cloud, pack management, NPC memory,
-  // system health and the advanced toggles are full-app depth.
+  // clear-data — plus reply speed, the one speed control a player with a fixed
+  // curated model has (issue #501 §1). Model tiers, voice, Steam Cloud, pack
+  // management, NPC memory, system health and the advanced toggles are
+  // full-app depth.
   async function renderDemoSettings() {
     vi.stubEnv('VITE_CONVSIM_EDITION', 'demo')
     render(
@@ -1091,9 +1187,10 @@ describe('demo edition', () => {
   it('hides model tiers, voice, Steam Cloud, packs, NPC memory, system health and advanced', async () => {
     await renderDemoSettings()
     expect(screen.queryByRole('heading', { name: /^ai engine$/i })).not.toBeInTheDocument()
-    // Reply speed is a model setting, so it follows the engine section out of
-    // the demo; wording is readability and stays (issue #501).
-    expect(screen.queryByTestId('settings-reply-speed-section')).not.toBeInTheDocument()
+    // Reply speed scales reply length, not model choice, so it stays even
+    // though the engine section goes; wording is readability and stays too
+    // (issue #501).
+    expect(screen.getByTestId('settings-reply-speed-section')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /open model manager/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /voice output/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('steam-cloud-section')).not.toBeInTheDocument()
@@ -1106,8 +1203,19 @@ describe('demo edition', () => {
   it('does not call the full-app-only endpoints', async () => {
     await renderDemoSettings()
     expect(mockApi.listPacks).not.toHaveBeenCalled()
-    expect(mockApi.getRuntimeSettings).not.toHaveBeenCalled()
     expect(mockApi.listVoices).not.toHaveBeenCalled()
+  })
+
+  it('keeps reply speed, which the slow-reply notice names, without the model-manager pointer', async () => {
+    // A demo player on modest hardware had "closing other apps usually helps"
+    // and no speed control at all — the #501 dead end in the edition being
+    // shipped. The runtime-settings endpoint is not edition-gated, so the
+    // control works; only the pointer to the model manager is full-app depth.
+    await renderDemoSettings()
+    await waitFor(() => expect(screen.getByTestId('reply-speed-options')).toBeInTheDocument())
+    expect(mockApi.getRuntimeSettings).toHaveBeenCalled()
+    expect(screen.getByTestId('reply-speed-fast')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /choose a model/i })).not.toBeInTheDocument()
   })
 
   it('keeps the wording control, which is readability rather than full-app depth', async () => {

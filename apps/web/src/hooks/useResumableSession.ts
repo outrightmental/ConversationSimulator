@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { SessionCreateResponse } from '@convsim/shared'
 
@@ -22,6 +22,21 @@ export type ResumableSessionState =
   | { state: 'none' }
   | { state: 'ready'; session: SessionCreateResponse }
 
+/**
+ * Fired on `window` by whatever ends, deletes or clears sessions, so every
+ * mounted resume affordance re-asks at once. The banner sits in the app chrome
+ * directly above Settings' own session list; without this, deleting the
+ * in-progress session there left the strip above still offering to resume it,
+ * and Resume then landed on a 404 (issue #501 §1). `storage`-style events only
+ * reach *other* documents, so this one is dispatched by hand, the same way
+ * `plainLanguage.ts` announces a wording change.
+ */
+export const SESSIONS_CHANGED_EVENT = 'convsim:sessions-changed'
+
+export function announceSessionsChanged(): void {
+  window.dispatchEvent(new CustomEvent(SESSIONS_CHANGED_EVENT))
+}
+
 export function useResumableSession(enabled = true): {
   result: ResumableSessionState
   refetch: () => void
@@ -29,13 +44,21 @@ export function useResumableSession(enabled = true): {
   const [result, setResult] = useState<ResumableSessionState>(
     enabled ? { state: 'loading' } : { state: 'none' },
   )
+  // Every refetch, and every flip of `enabled`, opens a new generation and a
+  // response from an older one is dropped. The banner's "End it" refetches and
+  // then navigates to the debrief, where the hook is disabled; the listing it
+  // fired could land after that and re-show the strip — offering the
+  // next-newest session — on the one screen it is documented to stay off.
+  const generationRef = useRef(0)
 
   const refetch = useCallback(() => {
+    const generation = ++generationRef.current
     if (!enabled) {
       setResult({ state: 'none' })
       return
     }
     void api.listSessions('in_progress', 1).then((r) => {
+      if (generation !== generationRef.current) return
       if (!r.ok) {
         // An unreachable core is reported by the status panel and the startup
         // guard; a resume affordance that cannot be loaded is simply absent
@@ -57,17 +80,20 @@ export function useResumableSession(enabled = true): {
   // Ending a conversation, or starting one, happens on another screen. Refresh
   // when the window regains focus so the banner never offers to resume a
   // session that has since ended (mirrors the setup-status revalidation in
-  // App.tsx, added for the same reason in issue #380).
+  // App.tsx, added for the same reason in issue #380) — and whenever a screen
+  // in this window says the sessions changed under it.
   useEffect(() => {
     if (!enabled) return
-    function onFocus() {
+    function onChange() {
       refetch()
     }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onFocus)
+    window.addEventListener('focus', onChange)
+    document.addEventListener('visibilitychange', onChange)
+    window.addEventListener(SESSIONS_CHANGED_EVENT, onChange)
     return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onFocus)
+      window.removeEventListener('focus', onChange)
+      document.removeEventListener('visibilitychange', onChange)
+      window.removeEventListener(SESSIONS_CHANGED_EVENT, onChange)
     }
   }, [enabled, refetch])
 

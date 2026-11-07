@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { StrictMode } from 'react'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Conversation from '../screens/Conversation'
 import type {
@@ -351,6 +351,51 @@ describe('Conversation screen', () => {
       // halves of it, and nothing numbered 1.
       expect(screen.getAllByText('Turn 4')).toHaveLength(2)
       expect(screen.queryByText('Turn 1')).not.toBeInTheDocument()
+    })
+
+    it('restores the voice input mode when resuming, not just the transcript', async () => {
+      // Issue #501 §1: the resume path has no route state, so the composer
+      // mounted text-only, and VoiceInput decides text-only versus mic once, at
+      // mount. The input mode read back from the server arrived too late to be
+      // honoured and a push-to-talk session came back without its mic.
+      mockApi.startSession.mockResolvedValue({
+        ok: false,
+        error: { kind: 'network', message: 'INVALID_TRANSITION' },
+      })
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: 'behavioral_interview',
+          transcript_saved: true,
+          turns: [
+            { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in.', flow_state_after: 'PlayerTurnListening' },
+          ],
+        },
+      })
+      mockApi.getSession.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: 'behavioral_interview',
+          state: 'PlayerTurnListening',
+          created_at: '2026-07-01T00:00:00Z',
+          setup: { input_mode: 'push-to-talk' },
+          turn_count: 0,
+          visible_state: {},
+        },
+      } as never)
+      renderConversation()
+
+      // jsdom has no MediaRecorder, so the voice-mode composer reports capture
+      // as unsupported — a notice only that composer renders, which makes it
+      // the marker that the mode was restored. The text-only composer's own
+      // notice must be gone with it.
+      await waitFor(() =>
+        expect(screen.getByText(/microphone capture is not supported/i)).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('text-only-notice')).not.toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument()
     })
   })
 
@@ -1858,20 +1903,45 @@ describe('Conversation screen', () => {
     // Issue #501 §1: the playtester hit a slow turn, went to Settings to speed
     // the model up, "was a little unclear on how to do that", and lost the
     // session. This notice is where that detour starts, so it names the setting
-    // and links straight at it instead of saying "you can adjust settings".
-    it('points the player at the reply-speed setting by name', async () => {
+    // instead of saying "you can adjust settings" — but as text, not a link:
+    // the notice only exists while a turn is in flight, and leaving then loses
+    // the pending message on resume and puts the turn numbering one behind the
+    // server (issue #501 §4).
+    it('names the reply-speed setting without a link away from the in-flight turn', async () => {
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       vi.useFakeTimers({ shouldAdvanceTime: true })
       try {
         await submitAndWait(6_000)
-        const link = screen.getByTestId('slow-response-speed-link')
-        expect(link).toHaveTextContent(/make replies faster/i)
-        // The anchor matters: /settings alone lands the player at the top of a
-        // long page with nothing obviously changed.
-        expect(link).toHaveAttribute('href', '/settings#reply-speed')
+        const notice = screen.getByTestId('slow-response-indicator')
+        const hint = screen.getByTestId('slow-response-speed-hint')
+        expect(hint).toHaveTextContent(/reply speed/i)
+        expect(hint).toHaveTextContent(/settings/i)
+        // Honest about the timing: changing it now does not shorten this reply.
+        expect(hint).toHaveTextContent(/once this reply arrives/i)
+        expect(within(notice).queryByRole('link')).not.toBeInTheDocument()
         expect(screen.queryByText(/you can adjust settings/i)).not.toBeInTheDocument()
       } finally {
         vi.useRealTimers()
+      }
+    })
+
+    it('names the setting in the demo edition too, where reply speed is the only speed lever', async () => {
+      // The demo's curated model is fixed and its Settings has no engine panel,
+      // so a demo player on modest hardware had "closing other apps usually
+      // helps" and nothing else — the exact #501 dead end, in the edition
+      // being shipped.
+      vi.stubEnv('VITE_CONVSIM_EDITION', 'demo')
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(6_000)
+        const notice = screen.getByTestId('slow-response-indicator')
+        expect(notice).toHaveTextContent(/closing other apps usually helps/i)
+        expect(screen.getByTestId('slow-response-speed-hint')).toHaveTextContent(/reply speed/i)
+        expect(within(notice).queryByRole('link')).not.toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+        vi.unstubAllEnvs()
       }
     })
 

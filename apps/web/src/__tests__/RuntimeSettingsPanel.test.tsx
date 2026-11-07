@@ -624,3 +624,59 @@ describe('RuntimeSettingsPanel — apply advanced and reset', () => {
     )
   })
 })
+
+// ── Announcing changes to the other settings controls ─────────────────────────
+
+describe('RuntimeSettingsPanel — announces runtime settings changes', () => {
+  // Reset clears every key on the server, reply_speed included, and the
+  // reply-speed control reads that key from its own request (issue #501 §1).
+  // Without this event it kept "Quick replies" selected after a reset while the
+  // engine had gone back to balanced.
+  const EVENT = 'convsim:runtime-settings-changed'
+
+  async function openAdvanced() {
+    await renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
+    await waitFor(() => screen.getByRole('spinbutton', { name: /context length/i }))
+  }
+
+  it('after a reset', async () => {
+    const onChanged = vi.fn()
+    window.addEventListener(EVENT, onChanged)
+    try {
+      await openAdvanced()
+      fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
+      await waitFor(() => expect(mockApi.resetRuntimeSettings).toHaveBeenCalledOnce())
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    } finally {
+      window.removeEventListener(EVENT, onChanged)
+    }
+  })
+
+  it('after applying advanced settings', async () => {
+    const onChanged = vi.fn()
+    window.addEventListener(EVENT, onChanged)
+    try {
+      await openAdvanced()
+      fireEvent.click(screen.getByRole('button', { name: /apply advanced settings/i }))
+      await waitFor(() => expect(mockApi.updateRuntimeSettings).toHaveBeenCalledOnce())
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    } finally {
+      window.removeEventListener(EVENT, onChanged)
+    }
+  })
+
+  it('not after a reset that failed, since nothing changed', async () => {
+    mockApi.resetRuntimeSettings.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'reset failed' } })
+    const onChanged = vi.fn()
+    window.addEventListener(EVENT, onChanged)
+    try {
+      await openAdvanced()
+      fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      expect(onChanged).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener(EVENT, onChanged)
+    }
+  })
+})
