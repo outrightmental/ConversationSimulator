@@ -38,11 +38,23 @@ def test_balanced_preserves_pre_change_behaviour():
 
 def test_fast_shortens_and_detailed_lengthens():
     assert scaled_max_words(90, "fast") < 90 < scaled_max_words(90, "detailed")
-    assert (
-        profile_for("fast").max_tokens
-        < profile_for("balanced").max_tokens
-        < profile_for("detailed").max_tokens
-    )
+    # A longer reply needs more room; the word cap alone carries "fast".
+    assert profile_for("detailed").max_tokens > profile_for("balanced").max_tokens
+
+
+def test_no_speed_lowers_the_token_budget_below_balanced():
+    """The speed-up is the word cap; the token budget is a ceiling, not a cost.
+
+    A lower ceiling generates nothing faster — the model stops when the JSON
+    closes — but the non-utterance parts of the structured output do not shrink
+    with the reply, and local models do not reliably honour the word cap. At
+    640 a 70-word reply plus full rubric observations was cut mid-object and
+    the player got the fallback utterance: a worse turn than the slow one
+    "Quick replies" was picked to escape.
+    """
+    balanced = profile_for("balanced").max_tokens
+    assert profile_for("fast").max_tokens >= balanced
+    assert min(p.max_tokens for p in REPLY_SPEED_PROFILES.values()) == balanced
 
 
 def test_scaling_is_relative_to_the_authored_cap():

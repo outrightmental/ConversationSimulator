@@ -18,9 +18,10 @@ This module turns that into one named choice with three settings:
 ``fast`` and ``detailed`` *scale* the scenario's authored word cap rather than
 replacing it, so a pack that deliberately writes terse NPCs stays terse relative
 to a pack that writes expansive ones, and ``balanced`` leaves the author's
-number exactly as written. The token budget moves with it: the
-structured turn output lands in the 300–600 token range at the default 90-word
-cap, so a shorter reply needs less headroom and a longer one needs more.
+number exactly as written. The speed-up comes from the word cap alone: the
+runtime's generation budget is a ceiling, not a cost (unused budget is never
+generated), so ``fast`` keeps the full ``balanced`` budget and only
+``detailed`` raises it to make room for the longer reply it asks for.
 """
 from __future__ import annotations
 
@@ -44,6 +45,10 @@ class ReplySpeedProfile:
     #: Multiplier applied to the scenario's authored ``response_style.max_words``.
     word_scale: float
     #: Ceiling for the runtime's generation budget for the structured turn JSON.
+    #: Never below the ``balanced`` value: the fixed-size parts of that JSON
+    #: (state_delta, event_flags, rubric_observations, safety, session_control)
+    #: do not shrink with the utterance, and a truncated object degrades to the
+    #: fallback utterance — the regime the 1024 budget was raised to escape.
     max_tokens: int
 
 
@@ -63,7 +68,12 @@ MIN_SCALED_MAX_WORDS = 30
 MAX_SCALED_MAX_WORDS = 200
 
 REPLY_SPEED_PROFILES: dict[str, ReplySpeedProfile] = {
-    "fast": ReplySpeedProfile(word_scale=0.5, max_tokens=640),
+    # Same budget as balanced on purpose: a lower ceiling buys no speed (the
+    # model stops when the JSON closes) and local models do not reliably honour
+    # the word cap, so a 640 ceiling re-created the truncated-JSON fallbacks
+    # the 1024 budget exists to prevent — a worse turn than the slow one the
+    # player was trying to escape (issue #501).
+    "fast": ReplySpeedProfile(word_scale=0.5, max_tokens=1024),
     # Unchanged from the hardcoded pre-#501 behaviour, so the default player
     # experience is byte-for-byte what it was.
     "balanced": ReplySpeedProfile(word_scale=1.0, max_tokens=1024),

@@ -247,8 +247,10 @@ def compute_metrics(
         for var_name, var_delta in delta_clean.items():
             running_state[var_name] = running_state.get(var_name, 0) + var_delta
         if turn["role"] == "npc":
+            # Whole turns, like turning_points and the transcript labels, so one
+            # debrief carries a single turn numbering (issue #501 §4).
             state_arc.append({
-                "turn_number": turn["turn_number"],
+                "turn_number": whole_turn_of(turn["turn_number"]),
                 "state": dict(running_state),
             })
 
