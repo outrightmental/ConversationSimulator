@@ -1049,6 +1049,10 @@ export default function Conversation() {
         // wedged, nothing about the model at all). Feeding that to the estimate
         // would quote minutes for turns that take seconds.
         _stopWaitClock()
+        // The turn did land, though, and the core recorded its timing: count
+        // it, so the measured speeds are read again and "Your turn." is
+        // announced, as they are for a reply the request itself delivered.
+        setTurnsLanded((n) => n + 1)
         return
       }
       // The request answered while the screen was polling. That answer replaces

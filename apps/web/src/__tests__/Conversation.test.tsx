@@ -2404,6 +2404,26 @@ describe('Conversation screen', () => {
       }
     })
 
+    it('counts an adopted reply as a landed turn: "Your turn." and fresh speeds', async () => {
+      // The adopted turn is not timed on the client (its wait measures the
+      // polling), but it did land and the core did record it. Skipping the
+      // count left a screen-reader player with no "Your turn." on the first
+      // turn of a screen, and the reply-start estimate on stale speeds.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(DEADLINE_MS)
+        await waitFor(() =>
+          expect(screen.getByText('Committed by the server while the UI waited.')).toBeInTheDocument(),
+        )
+        await waitFor(() => expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent('Your turn.'))
+        // Once on opening the screen, and again for the turn that landed.
+        await waitFor(() => expect(mockApi.getRollingSpeeds).toHaveBeenCalledTimes(2))
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('keeps waiting past the deadline and adopts a reply that lands later', async () => {
       // The core's own budget outlasts the deadline — it allows 180s of engine
       // silence and *then* a full reply, so hardware slower than the machine in
