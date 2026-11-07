@@ -93,17 +93,16 @@ export interface NpcTurnProgressProps {
  * the wait itself; the heading and the half-minute announcement already do.
  *
  * Accessibility: everything the panel draws changes every second, so all of it
- * is hidden from assistive tech and two sr-only live regions carry the news
- * instead — one with the stage phrase and the estimate as that stage began
- * (it changes when the stage does, never with a progress report), one with
- * the elapsed time and the current estimate on a 30 s grid. Nothing is
- * announced while the reply streams —
- * the transcript's live region is already reading it — and "Your turn." is
- * announced at commit. Both regions are rendered whether or not a turn is out,
- * with empty text between turns: a live region created in the same breath as
- * its text is not reliably announced. The footnote is the one visible part
- * left audible: it appears once and never changes, so it is a status region
- * of its own. During a wait, focus rests on the panel so a controller's next
+ * is hidden from assistive tech and three sr-only live regions carry the news
+ * instead. One has the stage phrase and the estimate as that stage began (it
+ * changes when the stage does, never with a progress report); one has the
+ * elapsed time and the current estimate on a 30 s grid; one has the
+ * reply-speed footnote from five seconds on. Nothing is announced about the
+ * wait while the reply streams, since the transcript's live region is already
+ * reading it, and "Your turn." is announced at commit. All three regions are
+ * rendered whether or not a turn is out, with empty text between turns: a
+ * live region created in the same breath as its text is not reliably
+ * announced. During a wait, focus rests on the panel so a controller's next
  * press does not leave the conversation.
  */
 export default function NpcTurnProgress({
@@ -250,6 +249,10 @@ export default function NpcTurnProgress({
   // Judged on the clock the player sees, whether or not words have started: a
   // long reply is exactly what Reply speed shortens.
   const showSpeedHint = elapsedMs >= SPEED_HINT_MS
+  const speedHintText =
+    active && showSpeedHint
+      ? [demo ? t('turnProgress.closeOtherApps') : '', t('turnProgress.speedHint')].filter(Boolean).join(' ')
+      : ''
 
   return (
     <>
@@ -264,6 +267,9 @@ export default function NpcTurnProgress({
         style={srOnly}
       >
         {announcementText}
+      </span>
+      <span data-testid="npc-turn-progress-hint" role="status" style={srOnly}>
+        {speedHintText}
       </span>
 
       {active && (
@@ -410,10 +416,11 @@ export default function NpcTurnProgress({
             // speed is the one lever it has, plus the one thing its hardware
             // can do. The test ids are the ones the #501 tests were written
             // against; the sentence moved, its meaning did not.
+            // Hidden like the rest of the panel: the sr-only hint region above
+            // carries the same sentence, and was mounted before it had any.
             <div
               data-testid="slow-response-indicator"
-              role="status"
-              aria-live="polite"
+              aria-hidden="true"
               style={{ fontSize: '0.75rem', color: 'var(--cs-text-muted, #a1a1aa)' }}
             >
               {demo && <>{t('turnProgress.closeOtherApps')} </>}

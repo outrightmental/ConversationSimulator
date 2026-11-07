@@ -2324,7 +2324,7 @@ describe('Conversation screen', () => {
         expect(hint).toHaveTextContent(/settings/i)
         // Honest about the timing: changing it now does not shorten this reply.
         expect(hint).toHaveTextContent(/once this reply arrives/i)
-        expect(within(notice).queryByRole('link')).not.toBeInTheDocument()
+        expect(within(notice).queryByRole('link', { hidden: true })).not.toBeInTheDocument()
         expect(screen.queryByText(/you can adjust settings/i)).not.toBeInTheDocument()
         // It reads with the panel, not beside it.
         expect(within(screen.getByTestId('npc-turn-progress')).getByTestId('slow-response-indicator')).toBe(notice)
@@ -2346,7 +2346,7 @@ describe('Conversation screen', () => {
         const notice = screen.getByTestId('slow-response-indicator')
         expect(notice).toHaveTextContent(/closing other apps usually helps/i)
         expect(screen.getByTestId('slow-response-speed-hint')).toHaveTextContent(/reply speed/i)
-        expect(within(notice).queryByRole('link')).not.toBeInTheDocument()
+        expect(within(notice).queryByRole('link', { hidden: true })).not.toBeInTheDocument()
       } finally {
         vi.useRealTimers()
         vi.unstubAllEnvs()
@@ -2923,6 +2923,7 @@ describe('Conversation screen', () => {
         'npc-turn-progress-clock',
         'npc-turn-progress-status',
         'npc-turn-progress-announcement',
+        'npc-turn-progress-hint',
       ]) {
         expect(transcript).not.toContainElement(screen.getByTestId(testId))
       }

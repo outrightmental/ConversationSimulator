@@ -225,6 +225,7 @@ describe('NpcTurnProgress', () => {
       expect(screen.queryByTestId('npc-turn-progress')).not.toBeInTheDocument()
       expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent('')
       expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent('')
+      expect(screen.getByTestId('npc-turn-progress-hint')).toHaveTextContent('')
     })
 
     it('starts announcing the moment a turn goes out', () => {
@@ -469,11 +470,25 @@ describe('NpcTurnProgress', () => {
       expect(screen.getByTestId('slow-response-indicator')).not.toHaveTextContent(/closing other apps/i)
     })
 
-    it('is a status region of its own, since the rest of the panel is hidden from assistive tech', () => {
-      renderProgress(6_000, null)
-      const notice = screen.getByTestId('slow-response-indicator')
-      expect(notice).toHaveAttribute('role', 'status')
-      expect(notice).not.toHaveAttribute('aria-hidden')
+    it('is announced through a region that was mounted before the sentence arrived', () => {
+      // The footnote used to be a status region mounted at five seconds with
+      // its sentence already inside: the pattern a screen reader may never
+      // announce. Its sentence now arrives in a region that has been there,
+      // empty, since before the turn went out.
+      const { rerender } = render(<NpcTurnProgress active={false} elapsedMs={0} estimateMs={null} demo />)
+      const region = screen.getByTestId('npc-turn-progress-hint')
+      expect(region).toHaveAttribute('role', 'status')
+      expect(region).toHaveTextContent('')
+      rerender(<NpcTurnProgress active elapsedMs={4_000} estimateMs={null} demo />)
+      expect(region).toHaveTextContent('')
+      rerender(<NpcTurnProgress active elapsedMs={6_000} estimateMs={null} demo />)
+      expect(screen.getByTestId('npc-turn-progress-hint')).toBe(region)
+      expect(region).toHaveTextContent(/^Closing other apps usually helps\. Once this reply arrives, you can shorten the next ones under Reply speed, in Settings\.$/)
+      // The visible footnote is hidden like the rest of the panel, so the
+      // sentence is heard once.
+      expect(screen.getByTestId('slow-response-indicator')).toHaveAttribute('aria-hidden', 'true')
+      rerender(<NpcTurnProgress active={false} elapsedMs={0} estimateMs={null} demo />)
+      expect(region).toHaveTextContent('')
     })
   })
 
