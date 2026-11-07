@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Installation guide
 
-Conversation Simulator runs entirely on your computer — no cloud inference, no telemetry. You need a local model before any conversation can start; the app downloads it on first run after you accept its license.
+Conversation Simulator runs entirely on your computer — no cloud inference, no telemetry. You need a local model before any conversation can start; the app downloads it on first run and shows its size and license before you begin.
 
 Two install paths are available:
 
@@ -18,11 +18,11 @@ Two install paths are available:
 
 | Requirement | Minimum | Notes |
 |---|---|---|
-| OS | macOS 14+, Ubuntu 22.04+, Windows 10 | macOS 13 Ventura and earlier are no longer supported (app minimum is macOS 14) |
-| CPU | Any 64-bit x86 or Apple Silicon | Apple Silicon recommended for CPU inference |
+| OS | macOS 14+, Ubuntu 22.04+, Windows 10 (build 19041 or newer) | macOS 13 Ventura and earlier are not supported: the bundled AI engine needs macOS 14 |
+| CPU | Any 64-bit x86 or Apple Silicon | On macOS, Apple Silicon is recommended: the AI engine uses Metal acceleration there. The Steam build for macOS is built for Apple Silicon only, so an Intel Mac needs a source build |
 | RAM | 8 GB | 16 GB recommended for standard-tier models |
 | GPU VRAM | 0 GB (CPU fallback available) | 4 GB+ for starter model; see [local-models.md](local-models.md) |
-| Disk | 20 GB free | 3–15 GB for model weights plus app data |
+| Disk | 5 GB free | 20 GB recommended. Model weights take 3–15 GB depending on tier, plus app data |
 | Python | 3.10 or newer | Path A only |
 | Node.js | 18 LTS or newer | Path A only |
 
@@ -126,14 +126,14 @@ Press **Ctrl-C** to stop everything cleanly. Logs are written to `~/.convsim/log
 
 ### 5. Open the app
 
-Navigate to <http://127.0.0.1:7354> in your browser. The home screen shows the status of each service and whether a model is loaded.
+Navigate to <http://127.0.0.1:7354> in your browser. On a fresh install the app opens the welcome screen (next step). After setup, the home screen shows whether the AI engine, the model and the voice services are ready.
 
 ### 6. Set up a local model (first run)
 
 On first run the app shows the **welcome screen**. Click **Set me up**. The
 app downloads and configures the recommended model automatically.
 
-Alternatively, expand **Advanced** (*use Ollama or a local GGUF file*) on the
+Alternatively, expand **Advanced: use Ollama or a local GGUF file** on the
 welcome screen to use Ollama or a custom GGUF file. See [local-models.md](local-models.md) for model
 recommendations by hardware and all runtime options.
 
@@ -143,86 +143,65 @@ Run the offline smoke test to confirm no service makes outbound network calls du
 
 ```bash
 pnpm --filter @convsim/cli build
-npx convsim offline-smoke-test packs/official/job-interview-basic
+node packages/convsim-cli/dist/index.js offline-smoke-test packs/official/job-interview-basic
 ```
 
 The command exits 0 on success and prints an actionable error if any subsystem attempted an external connection during the scripted play session.
 
 ---
 
-## Beta builds — direct-download channel
+## Updates and rollback
 
-Beta builds are published to GitHub Releases as versioned pre-releases (e.g.
-`v0.1.0-beta.1`).  They are distinct from the Steam beta branch (covered by
-the Steam depot workflow).
+**On Steam,** Steam handles updates; the Steam build has no in-app updater.
+Pre-release builds go to the Steam **beta** branch first (opt in from the app's
+Properties → Betas in your Steam library). If a release has to be withdrawn, we
+set the previous build live again and Steam delivers it; there is nothing for
+you to do.
 
-### In-app update notice
+There is no direct-download channel: no installers or beta builds are published
+on GitHub, so the only prebuilt binaries come through Steam.
 
-The desktop app checks for a new beta on launch and shows a non-intrusive
-banner on the home screen when one is found.  The banner never appears during
-an active conversation session.  Click **View notes** to open the release page,
-or **Install** to open it and download the new build.  The check is skipped
-silently when you are offline.
+**From source,** update by checking out a newer release tag and rebuilding; roll
+back by checking out an earlier one. Data created in a newer version is
+forward-compatible with older versions at the same schema version (see
+[schemas/VERSIONING.md](../schemas/VERSIONING.md)).
 
-### SmartScreen and Gatekeeper warnings (beta builds before signing certs land)
+### SmartScreen and Gatekeeper warnings (source builds)
 
-Beta builds may be unsigned until code-signing certificates are provisioned
-(tracked in [#235](https://github.com/outrightmental/ConversationSimulator/issues/235)).
-Both macOS Gatekeeper and Windows Defender SmartScreen will warn about unverified
-publishers.  Once #235 ships, these warnings disappear automatically.
+A build you make yourself is not code-signed, so macOS Gatekeeper and Windows
+Defender SmartScreen warn about an unverified publisher. The signed builds are
+the ones distributed through Steam.
 
-**macOS — Gatekeeper bypass for unsigned beta builds:**
+**macOS:** do not double-click the app directly. Right-click (or Control-click)
+the icon → **Open** → click **Open** in the dialog. Or, in **System Settings →
+Privacy & Security → Security**, scroll down and click **Open Anyway** after the
+first blocked launch.
 
-1. Download the `.dmg` and open it.
-2. Drag **Conversation Simulator** to `/Applications`.
-3. Do **not** double-click the app directly — right-click (or Control-click)
-   the icon → **Open** → click **Open** in the dialog.
-4. Alternatively, in **System Settings → Privacy & Security → Security**
-   scroll down and click **Open Anyway** after the first blocked launch.
+**Windows:** if SmartScreen shows "Windows protected your PC", click **More
+info**, then **Run anyway**.
 
-Once signed and notarised (#235), the app opens normally without any bypass.
-
-**Windows — SmartScreen bypass for unsigned beta builds:**
-
-1. Run the `.exe` installer.
-2. If SmartScreen shows "Windows protected your PC", click **More info**.
-3. Click **Run anyway**.
-
-Once signed with an EV code-signing certificate (#235), SmartScreen displays
-the verified publisher name instead of this warning.
-
-**Linux — no bypass needed:**
-
-The `.AppImage` is not code-signed at the OS level.  Mark it executable and
-run it directly:
+**Linux:** no bypass needed. If you built the desktop app (see
+[platform-notes.md](platform-notes.md)), Tauri writes the AppImage to
+`apps/desktop/src-tauri/target/release/bundle/appimage/` and names it after the
+product, with a space: `Conversation Simulator_<version>_amd64.AppImage`. Mark
+it executable and run it:
 
 ```bash
-chmod +x conversation-simulator_<version>_amd64.AppImage
-./conversation-simulator_<version>_amd64.AppImage
+cd apps/desktop/src-tauri/target/release/bundle/appimage
+chmod +x "Conversation Simulator_"*.AppImage
+./"Conversation Simulator_"*.AppImage
 ```
-
-### Rollback
-
-Every beta release remains permanently downloadable from its versioned release
-page (e.g., `releases/tag/v0.1.0-beta.1`).  To roll back:
-
-1. Download the installer from the previous versioned release page.
-2. Install over the current version — the NSIS installer and macOS DMG both
-   support in-place downgrades.
-3. Data created in a newer beta is forward-compatible with older betas at the
-   same schema version (see [schemas/VERSIONING.md](../schemas/VERSIONING.md)).
 
 ---
 
 ## Path B — Steam
 
-Install **Conversation Simulator** from Steam on Windows, macOS, Linux, or Steam
-Deck. Steam handles installation and updates; there is nothing to download by hand
-and no checksum to verify.
+Install **Conversation Simulator** from Steam on Windows, macOS (Apple Silicon),
+Linux, or Steam Deck. Steam handles installation and updates; there is nothing to
+download by hand and no checksum to verify.
 
 The Steam build is Authenticode-signed on Windows, signed and notarised on macOS,
-and bundles the llama.cpp AI engine, so the app is standalone — your first
-conversation can start while the model is still downloading.
+and bundles the llama.cpp AI engine, so there is nothing to install separately.
 
 ### Why there is no GitHub installer
 
@@ -246,14 +225,43 @@ output goes to the Steam depot.
 
 ## Data locations
 
-| Path | Purpose |
-|---|---|
-| `~/.convsim/db/` | Session database (SQLite) |
-| `~/.convsim/data/` | Exported data and pack cache |
-| `~/.convsim/logs/` | Runtime logs |
-| `~/.convsim/models/llm/` | Downloaded model weights |
+The desktop app keeps its data under one folder in your platform's local
+app-data location:
 
-Override any of these with environment variables: `CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`.
+| Platform | Data folder |
+|---|---|
+| macOS | `~/Library/Application Support/com.outrightmental.convsim/` |
+| Windows | `%LOCALAPPDATA%\com.outrightmental.convsim\` |
+| Linux and Steam Deck | `~/.local/share/com.outrightmental.convsim/` (under `$XDG_DATA_HOME` if that is set) |
+
+Inside it:
+
+| Folder | Purpose |
+|---|---|
+| `db/` | Session database (SQLite) |
+| `data/` | General app data. Raw microphone recordings go to `data/audio/` only while **Save raw audio recordings** is turned on in Settings |
+| `logs/` | Runtime logs |
+| `models/llm/` | Downloaded model weights |
+| `packs/` | Installed scenario packs: copies of the official packs, packs you import, and the Creator Workbench's `local-dev/` packs |
+| `exports/` | Created and listed in Settings, but nothing is written here yet: the **Export** button in Settings hands you the session as a download named `session-<id>.json` |
+| `cache/` | Created and listed in Settings, but nothing is written here yet: the voice synthesis cache goes to `~/.convsim/tts_cache/` |
+| `crashes/` | Crash bundles and diagnostics bundles |
+
+**Settings → Local folders** lists all of these except `db/` (as Data, Logs,
+Models, Packs, Exports, Cache and Crash bundles), shows the exact paths and
+opens them. Override the whole tree with `CONVSIM_DATA_ROOT`, or single folders
+with `CONVSIM_DB_DIR`,
+`CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`, `CONVSIM_PACKS_DIR`,
+`CONVSIM_EXPORTS_DIR`, `CONVSIM_CACHE_DIR` and `CONVSIM_CRASH_BUNDLES_DIR`. If
+you run the services from source without the desktop shell (Path A), convsim-core
+uses `%LOCALAPPDATA%\outrightmental\convsim\` on Windows and
+`~/.local/share/convsim/` on Linux instead. Data from older builds that used
+`~/.convsim/` is copied to the new folder on first launch; model weights are not,
+so download the model again.
+
+Two things still live under `~/.convsim/`: the AI engine that a source build
+downloads on first run (`~/.convsim/bin/`; the Steam build has it bundled) and
+the voice synthesis cache (`~/.convsim/tts_cache/`).
 
 ---
 

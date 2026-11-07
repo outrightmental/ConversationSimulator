@@ -3,19 +3,20 @@ title: "Installation"
 description: "Install Conversation Simulator on Windows, macOS, or Linux — from Steam, or by building the open-source code yourself."
 sidebar:
   order: 1
-verified_against: v0.2.3
+verified_against: v0.4.0
 ---
 
 Conversation Simulator runs entirely on your computer — no cloud inference,
 no account, no telemetry. You need a local model before any conversation can
-start; the app downloads one on first run after you accept its license.
+start; the app downloads one on first run, and shows its size and license
+before you begin.
 
 There are exactly **two ways to get it**:
 
 | | [Steam](#1-steam--the-ready-to-run-build) | [Build from source](#2-build-from-source--free) |
 |---|---|---|
 | **Cost** | $9.99 | Free |
-| **You get** | A ready-to-run app: code-signed, notarized, auto-updating via Steam, Steam Deck–verified. The AI engine is bundled, so there is nothing to install separately. | The same software, built by you from the Apache-2.0 source. |
+| **You get** | A ready-to-run app for Windows, macOS (Apple Silicon), Linux and Steam Deck: code-signed, notarized, and updated through Steam. The AI engine is bundled, so there is nothing to install separately. | The same software, built by you from the Apache-2.0 source. |
 | **Best for** | Almost everyone. | Developers, and anyone who wants to inspect or modify the code. |
 
 :::caution[There are no installers to download]
@@ -34,31 +35,30 @@ free version, build it from source at a release tag (below).
 
 | Requirement | Minimum | Notes |
 |---|---|---|
-| OS | macOS 14+, Ubuntu 22.04+, Windows 10 | macOS 13 Ventura and earlier are no longer supported (app minimum is macOS 14) |
-| CPU | Any 64-bit x86 or Apple Silicon | Apple Silicon recommended for CPU inference |
+| OS | macOS 14+, Ubuntu 22.04+, Windows 10 (build 19041 or newer) | macOS 13 Ventura and earlier are not supported: the bundled AI engine needs macOS 14 |
+| CPU | Any 64-bit x86 or Apple Silicon | On macOS, Apple Silicon is recommended: the AI engine uses Metal acceleration there. The Steam build for macOS is built for Apple Silicon only, so an Intel Mac needs a source build |
 | RAM | 8 GB | 16 GB recommended for standard-tier models |
 | GPU VRAM | 0 GB (CPU fallback available) | 4 GB+ for the starter model; see [Choosing how to run the AI](/play/ai-engine/) |
-| Disk | 20 GB free | 3–15 GB for model weights plus app data |
+| Disk | 5 GB free | 20 GB recommended. Model weights take 3–15 GB depending on tier, plus app data |
 
 ---
 
 ## 1. Steam — the ready-to-run build
 
-Install **Conversation Simulator** from Steam on Windows, macOS, Linux, or Steam
-Deck. Steam handles installation and updates; there is nothing else to download
-and nothing to verify by hand.
+Install **Conversation Simulator** from Steam on Windows, macOS (Apple Silicon),
+Linux, or Steam Deck. Steam handles installation and updates; there is nothing
+else to download and nothing to verify by hand.
 
 The Steam build is code-signed on Windows, signed and notarized on macOS, and
-ships with the AI engine bundled — so your first conversation can start while the
-model is still downloading.
+ships with the AI engine bundled, so there is nothing to install separately.
 
-That is the whole procedure. Skip to [First launch](#3-first-launch).
+That is the whole procedure. Skip to [Set up your AI](#3-set-up-your-ai-first-launch).
 
 ---
 
 ## 2. Build from source — free
 
-The engine is Apache-2.0 and the four official scenario packs are CC BY 4.0, so
+The engine is Apache-2.0 and the five official scenario packs are CC BY 4.0, so
 you can always build and run the app yourself at no cost. It is the same
 software; you are supplying the build instead of paying for one.
 
@@ -68,11 +68,13 @@ and ship:
 ```bash
 git clone https://github.com/outrightmental/ConversationSimulator.git
 cd ConversationSimulator
-git checkout v0.2.3        # latest release tag
+git checkout v0.4.0        # latest release tag
 ```
 
-Then follow the [developer install](/dev/developer-install/), which covers
-prerequisites (Node, pnpm, Python, Rust) and building the desktop app.
+Then follow the [developer install](/dev/developer-install/), which covers the
+prerequisites (Python, Node.js, pnpm) and running the app from source. Building
+the desktop app itself also needs the Rust toolchain; the
+[Platform notes](/play/platform-notes/) list the build prerequisites for each OS.
 
 Note that a source build is not code-signed. macOS Gatekeeper will warn about an
 unidentified developer on first launch: right-click the app → **Open** → **Open**.
@@ -85,37 +87,51 @@ signed builds are the ones distributed through Steam.
 ## 3. Set up your AI (first launch)
 
 However you got the app, the first launch is the same. The app starts its local
-conversation engine automatically; if the home screen reports that the engine did
-not start, see [Troubleshooting](/start/troubleshooting/#engine-startup-failure).
+conversation engine automatically; if the app reports that the conversation
+engine did not start, see
+[Troubleshooting](/start/troubleshooting/#engine-startup-failure).
 
-On first launch the app shows the **welcome screen**. The **Set me up** card
-names the recommended model for your hardware and shows its download size and
-license. Click **Set me up** to begin — the download starts right away.
+On first launch the app shows the **welcome screen**. It asks how familiar you
+are with AI language models; your answer sets how technical the app's wording
+is, and you can change it later under **Settings → Wording**. The **Set me up**
+card shows the download size and license of the recommended model. Click
+**Set me up** to begin. The app first checks that it can write to its data
+folder and that the disk has room for the model; if either needs your attention
+it shows a **Getting things ready** screen, otherwise the download starts.
 
-- A progress screen shows each installation stage (engine check → model
-  download → verification → warmup).
-- While the model downloads you can click **Start now** on the **Have your
-  first conversation** card to try the simulator with scripted, non-AI
-  responses.
-- When all stages complete, click **Continue to Home** to start playing.
+- A progress screen lists each installation stage: getting the AI engine
+  (shown as skipped when the engine is already there, as in the Steam build),
+  downloading the model, verifying its SHA-256 checksum, the model's first
+  launch, and preparing scenarios.
+- While the model downloads, the same screen explains how to play and previews
+  your first scenarios.
+- When all stages complete, the app opens the **Scenario Library**. Pick a
+  scenario to start playing.
+
+The recommended model is the registry's starter entry, currently
+**Qwen3 4B Instruct Q4_K_M** (2.5 GB, Apache-2.0). It is saved in the
+`models/llm/` folder under the data folder (see [Data locations](#data-locations)).
 
 No model weights are bundled with the app. The one-time download is the only
 step that requires an internet connection — after it completes, everything works
 offline.
 
-Want to use Ollama or a custom model file instead? See
+Want to use Ollama or a custom model file instead? Expand **Advanced: use
+Ollama or a local GGUF file** on the welcome screen, or see
 [Choosing how to run the AI](/play/ai-engine/).
 
 ---
 
 ## Updates and rollback
 
-**On Steam,** Steam handles updates. Beta builds are published to the Steam
-**beta branch** — opt in from the app's Properties → Betas in your Steam library.
-To roll back, pick an earlier build from that same menu.
+**On Steam,** Steam handles updates; the Steam build has no in-app updater.
+Pre-release builds go to the Steam **beta** branch first (opt in from the app's
+Properties → Betas in your Steam library). If a release has to be withdrawn, we
+set the previous build live again and Steam delivers it; there is nothing for
+you to do.
 
-There is no in-app updater and no direct-download beta channel: the app never
-polls GitHub for a new version, because no binaries are published there.
+There is no direct-download channel: no installers or beta builds are published
+on GitHub, so the only prebuilt binaries come through Steam.
 
 **From source,** update by checking out a newer release tag and rebuilding; roll
 back by checking out an earlier one. Data created in a newer version is
@@ -126,15 +142,43 @@ forward-compatible with older versions at the same schema version (see
 
 ## Data locations
 
-| Path | Purpose |
-|---|---|
-| `~/.convsim/db/` | Session database (SQLite) |
-| `~/.convsim/data/` | Exported data and pack cache |
-| `~/.convsim/logs/` | Runtime logs |
-| `~/.convsim/models/llm/` | Downloaded model weights |
+The desktop app keeps its data under one folder in your platform's local
+app-data location:
 
-Override any of these with environment variables: `CONVSIM_DB_DIR`,
-`CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`.
+| Platform | Data folder |
+|---|---|
+| macOS | `~/Library/Application Support/com.outrightmental.convsim/` |
+| Windows | `%LOCALAPPDATA%\com.outrightmental.convsim\` |
+| Linux and Steam Deck | `~/.local/share/com.outrightmental.convsim/` (under `$XDG_DATA_HOME` if that is set) |
+
+Inside it:
+
+| Folder | Purpose |
+|---|---|
+| `db/` | Session database (SQLite) |
+| `data/` | General app data. Raw microphone recordings go to `data/audio/` only while **Save raw audio recordings** is turned on in Settings |
+| `logs/` | Runtime logs |
+| `models/llm/` | Downloaded model weights |
+| `packs/` | Installed scenario packs: copies of the official packs, packs you import, and the Creator Workbench's `local-dev/` packs |
+| `exports/` | Created and listed in Settings, but nothing is written here yet: the **Export** button in Settings hands you the session as a download named `session-<id>.json` |
+| `cache/` | Created and listed in Settings, but nothing is written here yet: the voice synthesis cache goes to `~/.convsim/tts_cache/` |
+| `crashes/` | Crash bundles and diagnostics bundles |
+
+**Settings → Local folders** lists all of these except `db/` (as Data, Logs,
+Models, Packs, Exports, Cache and Crash bundles), shows the exact paths and
+opens them. Override the whole tree with `CONVSIM_DATA_ROOT`, or single folders
+with `CONVSIM_DB_DIR`,
+`CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`, `CONVSIM_PACKS_DIR`,
+`CONVSIM_EXPORTS_DIR`, `CONVSIM_CACHE_DIR` and `CONVSIM_CRASH_BUNDLES_DIR`. If
+you run the services from source without the desktop shell, convsim-core uses
+`%LOCALAPPDATA%\outrightmental\convsim\` on Windows and `~/.local/share/convsim/`
+on Linux instead. Data from older builds that used `~/.convsim/` is copied to
+the new folder on first launch; model weights are not, so download the model
+again.
+
+Two things still live under `~/.convsim/`: the AI engine that a source build
+downloads on first run (`~/.convsim/bin/`; the Steam build has it bundled) and
+the voice synthesis cache (`~/.convsim/tts_cache/`).
 
 ---
 
