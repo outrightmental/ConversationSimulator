@@ -431,6 +431,22 @@ describe('ScenarioSetupPage', () => {
       expect(seedInput.value).toBe('');
     });
 
+    it('auto button hands focus to Randomize when it removes itself', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const randomizeBtn = screen.getByRole('button', { name: /randomize/i });
+      fireEvent.click(randomizeBtn);
+      const autoBtn = screen.getByRole('button', { name: /^auto$/i });
+      autoBtn.focus();
+      expect(document.activeElement).toBe(autoBtn);
+      fireEvent.click(autoBtn);
+      // The button is gone. The next D-pad or Tab press must continue from the
+      // seed row, not from the document body (which the gamepad hook resolves
+      // to the first focusable element on the page, the skip link).
+      expect(screen.queryByRole('button', { name: /^auto$/i })).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(randomizeBtn);
+    });
+
     it('allows manual seed entry', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));

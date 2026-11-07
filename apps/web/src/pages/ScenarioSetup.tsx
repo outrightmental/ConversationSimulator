@@ -25,7 +25,7 @@
 // Beside them an instrument panel keeps the runtime checks on screen, and a
 // launch bar pinned to the bottom of the viewport carries the one primary
 // action, what it is about to start, and whether it can.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type {
   ScenarioInfo,
   ScenarioDifficulty,
@@ -259,8 +259,14 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
     setField('seed', randomSeed());
   }, [setField]);
 
+  // The Auto button only exists while a seed is set, so it unmounts on its own
+  // click. Without a new home, focus falls back to the document body and the
+  // next D-pad press starts over from the top of the page. Hand focus to
+  // Randomize so a controller or keyboard player stays in the seed row.
+  const randomizeSeedRef = useRef<HTMLButtonElement>(null);
   const handleClearSeed = useCallback(() => {
     setField('seed', null);
+    randomizeSeedRef.current?.focus();
   }, [setField]);
 
   const validationResult =
@@ -836,7 +842,12 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                           aria-describedby={validationErrorMap['seed'] ? 'seed-error' : undefined}
                         />
                       </label>
-                      <button type="button" className="brief-btn-secondary" onClick={handleRandomizeSeed}>
+                      <button
+                        type="button"
+                        className="brief-btn-secondary"
+                        onClick={handleRandomizeSeed}
+                        ref={randomizeSeedRef}
+                      >
                         Randomize
                       </button>
                       {form.seed !== null && (
