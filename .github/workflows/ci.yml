@@ -229,6 +229,9 @@ jobs:
         run: pip install -e "packages/prompt-composer[dev]"
       - name: Install convsim-core
         run: pip install -e "services/convsim-core[dev]"
+      # For the App Icon pixel tests in tests/acceptance/test_demo_branding.py, which fail under CI without ImageMagick; the runner image does not ship it.
+      - name: Install ImageMagick
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends imagemagick
       - name: Run acceptance tests
         run: |
           echo "Local: python -m pytest tests/acceptance/ -v"
