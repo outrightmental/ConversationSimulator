@@ -93,7 +93,7 @@ launch build and are deferred to a post-launch milestone. Each deferred item
 must appear in the accepted risks table or the known-issues table in
 [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md).
 
-| Issue | Description | Platform | Deferred to milestone | Severity |
+| Issue | Description | Platform | Deferred to milestone | Priority |
 |-------|-------------|----------|----------------------|---------|
 | *(#nnn)* | | | | |
 
@@ -170,8 +170,8 @@ window defined in [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md):
 | Risk | Monitor via | Escalation if triggered |
 |------|------------|------------------------|
 | Privacy regression (any data leaving the machine) | Steam reviews, GitHub issues — privacy fast-path keywords | Immediate rollback; notify launch commander |
-| Microphone permission crash (AU-01) | GitHub issues `label:steam+platform-bug`, Steam reviews | Hotfix or patch deployment within 48 hours |
-| Steam Deck controller navigation blocking home screen (SP-02 related) | GitHub issues `label:steam+platform-bug` | Patch or rollback within 24 hours |
+| Microphone permission crash (AU-01) | GitHub issues `label:"area:steam"`, Steam reviews | Hotfix or patch deployment within 48 hours |
+| Steam Deck controller navigation blocking home screen (SP-02 related) | GitHub issues `label:"area:steam"` | Patch or rollback within 24 hours |
 | Valve review rejection risk materialising post-launch | Steamworks notices, Valve developer support email | Launch commander escalation; consult legal |
 
 ---

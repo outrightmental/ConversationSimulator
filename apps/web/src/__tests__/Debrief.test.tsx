@@ -340,6 +340,117 @@ describe('Debrief screen', () => {
     })
   })
 
+  // Issue #501 §4: one turn is the player's message plus the reply to it. The
+  // debrief's key-moment numbers were already whole turns, so labelling the
+  // transcript by position made "#3" and "Turn 3" different moments.
+  describe('whole-turn labelling', () => {
+    const threeTurnExport = {
+      session: exportData.session,
+      events: [
+        { event_id: 1, session_id: SESSION_ID, event_type: 'npc_opening', payload: { content: 'Thanks for coming in.' }, created_at: '2024-01-01T00:00:00Z' },
+        { event_id: 2, session_id: SESSION_ID, event_type: 'player_turn', payload: { content: 'Player one.' }, created_at: '2024-01-01T00:00:01Z' },
+        { event_id: 3, session_id: SESSION_ID, event_type: 'npc_turn', payload: { content: 'Npc one.', emotion: 'warm' }, created_at: '2024-01-01T00:00:02Z' },
+        { event_id: 4, session_id: SESSION_ID, event_type: 'player_turn', payload: { content: 'Player two.' }, created_at: '2024-01-01T00:00:03Z' },
+        { event_id: 5, session_id: SESSION_ID, event_type: 'npc_turn', payload: { content: 'Npc two.', emotion: 'neutral' }, created_at: '2024-01-01T00:00:04Z' },
+      ],
+    }
+
+    it('labels the opening and numbers each exchange once', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: threeTurnExport })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      const numbers = screen
+        .getAllByTestId('transcript-turn')
+        .map((el) => el.getAttribute('data-turn-number'))
+      expect(numbers).toEqual(['0', '1', '1', '2', '2'])
+      expect(screen.getByText('Opening')).toBeInTheDocument()
+      expect(screen.getAllByText('Turn 1')).toHaveLength(2)
+      expect(screen.getAllByText('Turn 2')).toHaveLength(2)
+    })
+
+    it('labels the NPC mood rather than bracketing it beside the turn number', async () => {
+      // Next to a turn number it read as one of the meters (issue #501 §3).
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: threeTurnExport })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      expect(screen.getByText('warm')).toBeInTheDocument()
+      expect(screen.queryByText('(warm)')).not.toBeInTheDocument()
+    })
+
+    it('a key moment points at the start of the turn it names', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: threeTurnExport })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      const scrolled: Element[] = []
+      for (const el of screen.getAllByTestId('transcript-turn')) {
+        el.scrollIntoView = () => { scrolled.push(el) }
+      }
+      fireEvent.click(screen.getByRole('button', { name: /go to turn 2/i }))
+      expect(scrolled).toHaveLength(1)
+      // The player's message, which is where turn 2 begins — not the second
+      // row in the list, which is the player's message of turn 1.
+      expect(scrolled[0]).toHaveTextContent('Player two.')
+    })
+  })
+
+  // Issue #501 §3: the panel the player watches during a conversation is
+  // called "Conversation meters". The debrief reviews the same bars, so it has
+  // to use the same name — a panel that is renamed between the screen it moves
+  // on and the screen that reviews it is the label/naming mismatch the report
+  // described, one screen later.
+  describe('conversation meters panel', () => {
+    const withMetrics: SessionDebriefResponse = {
+      ...fullDebriefResponse,
+      metrics: {
+        metrics_version: '1',
+        talk_ratio: 0.5,
+        words_per_turn_player: 12,
+        words_per_turn_npc: 18,
+        open_questions: 1,
+        closed_questions: 1,
+        filler_word_count: 0,
+        interruption_count: 0,
+        response_latency_p50_ms: null,
+        response_latency_p95_ms: null,
+        state_arc: [
+          { turn_number: 1, state: { engagement: 40, objective_progress: 20 } },
+          { turn_number: 2, state: { engagement: 55, objective_progress: 35 } },
+        ],
+      },
+    }
+
+    it('calls the meters what the conversation screen called them', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: withMetrics })
+      mockApi.exportSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'x' } })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('telemetry-panel')).toBeInTheDocument(),
+      )
+      expect(screen.getByText('Conversation meters across turns')).toBeInTheDocument()
+      expect(screen.queryByText(/state meters/i)).not.toBeInTheDocument()
+    })
+
+    it('names each meter in words rather than as a raw key', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: withMetrics })
+      mockApi.exportSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'x' } })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('telemetry-panel')).toBeInTheDocument(),
+      )
+      expect(screen.getByText('objective progress')).toBeInTheDocument()
+      expect(screen.queryByText('objective_progress')).not.toBeInTheDocument()
+    })
+  })
+
   describe('transcript display', () => {
     it('shows transcript turns from export when available', async () => {
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })

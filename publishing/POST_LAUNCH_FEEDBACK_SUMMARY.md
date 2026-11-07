@@ -53,16 +53,20 @@ Notable review themes (summarise in bullet points — do not quote player-privat
 -
 -
 
-### GitHub Issues (label: steam)
+### GitHub Issues (label `area:steam`)
 
-| Bucket | Issues filed (72 h) | Issues filed (2 wk) | Critical open | High open |
-|--------|--------------------|--------------------|--------------|----------|
-| `platform-bug` (crash / blocker) | | | | |
-| `model-install` (model setup) | | | | |
-| `pack-bug` (pack / content) | | | | |
-| `performance` | | | | |
-| `privacy` / `safety` | | | | |
-| `creator-workbench` | | | | |
+Buckets are the Steam issue templates, not labels — the declared label set is in
+[`.github/project-structure.yml`](../.github/project-structure.yml). "P0 open"
+and "P1 open" read the board's Priority field.
+
+| Bucket | Issues filed (72 h) | Issues filed (2 wk) | P0 open | P1 open |
+|--------|--------------------|--------------------|---------|---------|
+| Platform bug (crash / blocker) | | | | |
+| Local model install failure | | | | |
+| Pack validation or content bug | | | | |
+| Performance or frame-rate | | | | |
+| Privacy or safety (`area:safety`) | | | | |
+| Creator Workbench bug | | | | |
 | Other / unclassified | | | | |
 | **Total** | | | | |
 
@@ -98,19 +102,19 @@ Notable discussion themes:
 
 ## Triage summary
 
-### Crash / blocker (platform-bug)
+### Crash / blocker (platform bugs)
 
-List every `severity:critical` or `severity:high` platform bug, its status, and
-whether a hotfix or rollback was triggered.
+List every platform bug at Priority **P0 — blocker** or **P1 — next**, its
+status, and whether a hotfix or rollback was triggered.
 
-| Issue # | Platform | Description | Severity | Status | Action taken |
+| Issue # | Platform | Description | Priority | Status | Action taken |
 |---------|----------|-------------|----------|--------|-------------|
 | | | | | | |
 
 Rollbacks triggered: ___ (list GitHub issue numbers)
 Hotfix branches created: ___ (list branch names)
 
-### Model setup (model-install)
+### Model setup (local model install failures)
 
 Summarise the most common model download / setup failure modes.
 
@@ -118,15 +122,15 @@ Summarise the most common model download / setup failure modes.
 |---------|-------|--------------------------|-----------|
 | | | | |
 
-### Pack / content (pack-bug)
+### Pack / content (pack validation and content bugs)
 
-| Issue # | Pack | Description | Severity | Status |
+| Issue # | Pack | Description | Priority | Status |
 |---------|------|-------------|----------|--------|
 | | | | | |
 
 ### Performance
 
-| Issue # | Platform | Model | Description | Severity | Status |
+| Issue # | Platform | Model | Description | Priority | Status |
 |---------|----------|-------|-------------|----------|--------|
 | | | | | | |
 
@@ -137,7 +141,7 @@ Common performance patterns observed:
 
 ### Privacy / safety
 
-> Handle all `privacy` and `safety` issues through the fast-path described in
+> Handle all `area:safety` issues through the fast-path described in
 > [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md#privacy-fast-path-mandatory).
 > Do not include the content of privacy reports in this document — record only
 > counts, outcomes, and whether the local-first guarantee was maintained.
@@ -149,9 +153,9 @@ Common performance patterns observed:
 | Local-first guarantee maintained throughout window | yes / no |
 | Any rollback triggered by a privacy concern | yes / no |
 
-### Creator workflow (creator-workbench)
+### Creator workflow (Creator Workbench bugs)
 
-| Issue # | Description | Severity | Status |
+| Issue # | Description | Priority | Status |
 |---------|-------------|----------|--------|
 | | | | |
 

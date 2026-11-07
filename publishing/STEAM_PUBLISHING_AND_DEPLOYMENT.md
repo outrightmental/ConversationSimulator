@@ -306,8 +306,8 @@ If a critical defect is found after setting a branch live:
 
 1. In Steamworks App Admin → Builds, find the previous known-good build.
 2. Set that build live on the affected branch.
-3. Open a `severity:critical` GitHub issue with the `steam` and `platform-bug`
-   labels; link it to the rollback action.
+3. Open a GitHub issue — Type **Bug**, Priority **P0 — blocker**, label
+   `area:steam` — and link it to the rollback action.
 4. Do not re-promote the broken build until the defect is fixed and the depot
    audit passes on the fixed build.
 

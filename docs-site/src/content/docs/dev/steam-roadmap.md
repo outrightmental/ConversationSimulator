@@ -215,16 +215,16 @@ on a dependent PR.
 
 ### Milestone assignments
 
-| Milestone | Scope |
-|-----------|-------|
-| **Milestone 1** | GitHub MVP polish (screenshots, code signing groundwork, accessibility baseline) |
-| **Milestone 2** | Packaged desktop alpha (Tauri sidecar, auto-update, real-model CI, voice polish) |
-| **Milestone 3** | Steam private beta (Steam Deck verification, Steam overlay integration, beta tester program) |
-| **Milestone 4** | Public paid Steam release ($9.99) and first premium scenario-pack DLC |
-| **Milestone 5** | Post-launch (third-party creator marketplace exploration, community pack browser, analytics opt-in) |
+The "Milestone 1–5" scheme this section once described was never created on the
+tracker; the roadmap stages above are the narrative, and the GitHub milestones
+are release trains with real dates. They are declared in
+[`.github/project-structure.yml`](https://github.com/outrightmental/ConversationSimulator/blob/main/.github/project-structure.yml)
+and documented in
+[CONTRIBUTING.md → Labels, fields, and milestones](https://github.com/outrightmental/ConversationSimulator/blob/main/CONTRIBUTING.md#labels-fields-and-milestones).
 
-Assign every Steam-roadmap issue to one of these milestones. Issues without a
-milestone are considered unscoped and will be left in triage.
+Assign every Steam-roadmap issue to one of those milestones. An issue without a
+milestone is unscoped and will be left in triage —
+`python scripts/project-structure.py audit` reports it.
 
 ---
 

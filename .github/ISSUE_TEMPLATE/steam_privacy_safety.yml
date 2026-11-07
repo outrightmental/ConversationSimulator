@@ -3,6 +3,7 @@ description: >
   Report a concern about local data handling, unexpected network activity, or
   content safety in the Steam edition.
 labels: ["area:safety", "area:steam"]
+type: Bug
 body:
   - type: markdown
     attributes:

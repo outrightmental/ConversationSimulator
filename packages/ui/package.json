@@ -8,7 +8,7 @@
   },
   "main": "./src/index.ts",
   "scripts": {
-    "build": "echo 'UI package built as source — no compile step needed for Vite consumers.'",
+    "build": "echo 'UI package built as source \u2014 no compile step needed for Vite consumers.'",
     "check": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -28,6 +28,7 @@
     "jsdom": "^25.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "typescript": "~5.6.2",
     "vitest": "^2.1.9"
   }
 }

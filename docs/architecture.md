@@ -188,6 +188,27 @@ in the DB, managed client-side):
 | `safety_stop`  | Input safety precheck or NPC output triggered stop    |
 | `player_exit`  | Player called `POST /api/sessions/{id}/end`           |
 
+### What counts as a turn
+
+**One turn is one player message plus the NPC's reply to it.** The two are
+halves of a single turn, not two turns — the sense the term carries elsewhere
+in the conversational-LLM world.
+
+This is the unit everything server-side already counted, and it is now also the
+unit the transcript labels:
+
+- `turn_count` on `turn_sessions` increments once per exchange, so the turn
+  pipeline numbers a turn `turn_count + 1`.
+- `duration.max_turns` and the `max_turns` ending condition are measured in it,
+  so a scenario with `max_turns: 16` allows sixteen exchanges — not eight.
+- Debrief key moments point at it, so a debrief's "turn 3" and the transcript's
+  "Turn 3" are the same moment.
+- The NPC's opening line is part of no exchange. It is stored at turn number 0
+  and labelled rather than numbered, so it does not consume turn 1.
+
+Transcript rows are a finer grain than turns: the opening is stored at row 0,
+and whole turn *n* occupies the player row `2n-1` and the NPC row `2n`.
+
 ---
 
 ## REST API summary
@@ -199,6 +220,7 @@ Base URL: `http://127.0.0.1:7355`
 | Method | Path                              | Description                              |
 |--------|-----------------------------------|------------------------------------------|
 | POST   | `/api/sessions`                   | Create a session (`NotStarted`)          |
+| GET    | `/api/sessions`                   | List this profile's sessions, newest first |
 | GET    | `/api/sessions/{id}`              | Get current state                        |
 | POST   | `/api/sessions/{id}/start`        | Deliver NPC opening; → `PlayerTurnListening` |
 | POST   | `/api/sessions/{id}/turn`         | Submit player turn; runs full pipeline   |
@@ -211,6 +233,45 @@ Base URL: `http://127.0.0.1:7355`
 **Idempotency note.** `POST /turn` is not idempotent. Before retrying after
 a network failure, call `GET /api/sessions/{id}` to check whether the turn
 was already recorded.
+
+**Listing sessions.** `GET /api/sessions` takes two optional query parameters:
+
+| Parameter | Values | Default | Meaning |
+|-----------|--------|---------|---------|
+| `status`  | `all`, `in_progress`, `ended` | `all` | `in_progress` is the *resumable* set — started and not ended |
+| `limit`   | 1–500 | 50 | Out-of-range values are rejected with 400 |
+
+Each row carries the session's `setup` (the request it was created with), its
+`turn_count`, and its `ending_type` / `ended_at` when it has finished. `setup`
+is what lets a resumed conversation rebuild the language, meter and voice
+choices it was launched with after the UI has lost them to a navigation or a
+relaunch. `status=in_progress` deliberately excludes `NotStarted`: nothing has
+been said yet, so there is no conversation to pick back up.
+
+`status=ended` covers every state a finished session can sit in, not just
+`Ended`: generating the debrief moves the row to `DebriefGenerating` and then
+`DebriefReady`, and a debrief that fails leaves `Error`. Together with
+`in_progress` and `NotStarted` that accounts for every state, so the two
+filters partition the sessions that were ever started.
+
+The two state lists are also needed client-side — Settings lists every
+unfinished conversation with its own Resume button, picking them out of a full
+listing — so they live in `packages/shared` (`RESUMABLE_SESSION_STATES`,
+`ENDED_SESSION_STATES`) for every TypeScript consumer, with a pytest guard
+asserting they still match convsim-core's `RESUMABLE_FLOW_STATES` and
+`ENDED_FLOW_STATES`.
+
+Creator Workbench preview sessions are excluded from every `status`, including
+`all`. They are written straight into `turn_sessions` under a dynamic
+`__wbtest__<hex>` scenario id and nothing ever ends them, so one preview would
+otherwise sit at the top of the resumable set permanently, pointing at a
+scenario that was only ever registered in memory.
+
+**Reading one session back.** `GET /api/sessions/{id}` returns the same shape
+plus `visible_state`: the session's current meter values, filtered through the
+scenario's own variable visibility so a hidden variable stays hidden. Meter
+values otherwise only ever arrive with a turn, so this is what lets a resumed
+conversation draw its meters before the player sends another message.
 
 ### Other routes
 

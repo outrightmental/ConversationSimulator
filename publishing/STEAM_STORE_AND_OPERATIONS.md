@@ -239,7 +239,7 @@ During the first 72 hours after public launch, monitor the following:
 | Signal | Where to check | Escalation threshold |
 |--------|---------------|---------------------|
 | Steam review sentiment | Steamworks App Admin → Reviews | Any review mentioning unexpected network activity or privacy concern — escalate immediately |
-| GitHub Steam issue queue | GitHub → Issues, filter `label:steam` | Any `severity:critical` — 24-hour response SLA |
+| GitHub Steam issue queue | GitHub → Issues, filter `label:"area:steam"` | Any issue at Priority **P0 — blocker** — 24-hour response SLA |
 | Crash rate | Steamworks App Admin → Stats (if crash reporting is configured in future) | Baseline comparison against private beta |
 | Store refund rate | Steamworks App Admin → Financials | Steam standard refund policy applies (2 weeks / 2 hours) — monitor the base app and DLC refund rate and investigate any spike above baseline |
 
@@ -256,20 +256,24 @@ rules, privacy handling requirements, and SLA targets are in
 
 ### Issue routing at a glance
 
-| Reporter describes | Route to |
-|--------------------|----------|
-| App does not launch, Steam overlay broken, controller broken, Steam Deck crash | `steam` + `platform-bug` |
-| Model download fails, checksum mismatch, model not loading | `steam` + `model-install` |
-| NPC gives wrong response, scoring incorrect, scenario loop broken | `steam` + `pack-bug` |
-| App sent data somewhere, unexpected network activity, privacy concern | `steam` + `privacy` + `safety` — fast-path escalation to lead maintainer |
-| Creator Workbench crash, pack import fails, YAML editor broken | `steam` + `creator-workbench` |
+File through the matching Steam issue template, which sets the issue Type and
+the area labels; the declared label set is in
+[`.github/project-structure.yml`](../.github/project-structure.yml).
+
+| Reporter describes | Template | Area labels |
+|--------------------|----------|-------------|
+| App does not launch, Steam overlay broken, controller broken, Steam Deck crash | Steam — platform bug | `area:steam` |
+| Model download fails, checksum mismatch, model not loading | Steam — local model install failure | `area:steam`, `area:models` |
+| NPC gives wrong response, scoring incorrect, scenario loop broken | Steam — pack validation or content bug | `area:steam`, `area:packs` |
+| App sent data somewhere, unexpected network activity, privacy concern | Steam — privacy or safety report | `area:safety`, `area:steam` — fast-path escalation to lead maintainer |
+| Creator Workbench crash, pack import fails, YAML editor broken | Steam — Creator Workbench bug | `area:steam`, `area:packs` |
 
 ### Privacy fast-path (mandatory)
 
 Any issue containing the words "transcripts", "sent my data", "network",
 "uploaded", "privacy", or "recording" must be escalated immediately to the
 lead maintainer — outside the standard triage cadence — regardless of the
-filed severity label.
+Priority it was filed at.
 
 Never ask reporters to paste conversation transcripts in GitHub issues.
 See [`docs/steam-triage.md`](../docs/steam-triage.md#privacy-handling-for-all-stages)

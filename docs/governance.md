@@ -49,25 +49,45 @@ Work is organized into **phases** — append-only eras of the project's life:
 | 03 · Beta & signature | Jul 10 – 11 | 23 | Public-beta readiness ([#315](https://github.com/outrightmental/ConversationSimulator/issues/315)) and signature-experience ([#316](https://github.com/outrightmental/ConversationSimulator/issues/316)) programs |
 | 04 · Pivot & onboarding | Jul 11 – 13 | 24 | FOSS/$9.99 business-model pivot ([#366](https://github.com/outrightmental/ConversationSimulator/issues/366)) and the v0.3 onboarding overhaul ([#388](https://github.com/outrightmental/ConversationSimulator/issues/388)) |
 | 05 · Hardening | Jul 13 – Aug 5 | 13 | Signing chains, release dress rehearsals, post-v0.3 fixes |
-| 06 · Release polish | now | — | What remains before the Milestone-1 tag |
+| 06 · Release polish | now | — | Post-v0.3 polish and fixes; what remains before the v0.4 release train |
 | 07 · Future | — | — | Groomed post-launch backlog (see [post-alpha-issues.md](post-alpha-issues.md)) |
 
 Board automations: new issues add themselves; closing an issue moves it to **Done**;
-reopening returns it to **Todo**; a linked PR moves it to **In Progress**. The Priority
-field mirrors the `priority:*` labels.
+reopening returns it to **Todo**; a linked PR moves it to **In Progress**. Priority is a
+board field and the only place priority is recorded — there are no priority labels.
 
 ---
 
-## Labels, types, and milestones
+## Labels, fields, and milestones
 
-Three orthogonal systems, each answering one question:
+Three orthogonal systems, each answering exactly one question. A label that duplicates a
+field is a bug in the tracker, not a convenience:
 
-- **Labels** — what/where/how urgent. Four axes, 18 labels total, documented in
-  [CONTRIBUTING.md → Labels](../CONTRIBUTING.md#labels). Do not invent labels ad hoc.
-- **Native issue types** (Bug / Feature / Task) — what kind of work, machine-readable.
-  The factory prioritizes `Bug` first.
-- **Milestones** — release trains (*when*). The board's Phase field records *eras*, not
-  deadlines; milestones carry deadlines.
+- **Labels** — *where* the work lands. One `area:*` axis across the product surfaces, a
+  small set of workflow contracts, and `meta`. Their one job is the pie chart of
+  development effort by product area, which is why there are no type labels and no
+  priority labels.
+- **Fields** — *what kind* of work it is and *how urgent*. Native issue **Type**
+  (Bug / Feature / Task / Epic — the factory takes Bugs first) and the board's
+  **Priority** (P0 → P2). Both are required on every open issue.
+- **Milestones** — *when* it ships. Release trains with deadlines, so velocity is
+  readable; every open issue belongs to exactly one unless it is `meta`. The board's
+  **Phase** field records *eras* and carries no deadline, so closed work is attributed
+  there instead.
+
+The whole shape is declared in one file —
+[.github/project-structure.yml](../.github/project-structure.yml) — and
+`scripts/project-structure.py` holds the tracker to it: `validate` gates every pull
+request offline, `audit` reports live drift, `apply` converges it. So no *commit* can
+quietly reintroduce an overlapping system — CI fails if the manifest, the issue forms,
+the documented tables, the new-issue links the app and the docs hand out, or the
+`label:` searches the runbooks and the reporting scripts tell a maintainer to run stop
+agreeing. Drift made straight on GitHub instead (a label added by hand, a Type or
+Priority set to a value the manifest never declared, an issue left untriaged) is
+outside what CI can see and is what `audit`
+is for; it needs a maintainer's `project` scope. Full tables and conventions:
+[CONTRIBUTING.md → Labels, fields, and
+milestones](../CONTRIBUTING.md#labels-fields-and-milestones).
 
 ---
 
@@ -76,7 +96,8 @@ Three orthogonal systems, each answering one question:
 [yoke](https://github.com/outrightmental/yoke) turns the issue queue into a
 self-driving implementation pipeline:
 
-1. An issue is filed and triaged (type, labels, priority — see above).
+1. An issue is filed and triaged — Type, Priority, a milestone, and an area label
+   (see above).
 2. Unless it carries the **`manual`** label, yoke may pick it up — ordered by
    Type = Bug first, then earlier milestone, then age — respecting `blocked by #N` /
    sub-issue dependencies.
@@ -103,6 +124,9 @@ the factory building post-launch features prematurely.
   scope changes.
 - **Phases are append-only.** Closed eras on the board are history — do not relabel or
   rewrite them.
+- **Every open issue burns down somewhere.** It is on the board, it has a milestone, and
+  it carries a Type, a Priority, and an area — or it carries `meta` and says so. Nothing
+  sits in an untriaged limbo where it is neither scheduled nor visible.
 - **Docs describe shipped reality.** Setup docs must match the shipped UI (CI-enforced
   since v0.3). Aspirational docs live in proposals, not in `docs/`.
 - **The board stays public.** Visible momentum — 219 items and counting, seven weeks from

@@ -1,6 +1,7 @@
 name: Model compatibility report
 description: Report a model that works well, has issues, or is not yet listed in the model registry.
 labels: ["area:models"]
+type: Task
 body:
   - type: markdown
     attributes:

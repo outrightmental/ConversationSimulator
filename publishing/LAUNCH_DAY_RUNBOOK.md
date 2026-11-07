@@ -236,10 +236,10 @@ schedule below. All findings are logged in the [Launch log](#launch-log).
 | Signal | Where to check | Escalation threshold |
 |--------|---------------|---------------------|
 | Steam review sentiment | Steamworks App Admin → Reviews | Any review mentioning unexpected network activity, "sent my data", "privacy", "recording", or similar — **escalate to privacy fast-path owner immediately** |
-| GitHub Steam issue queue | GitHub Issues, filter `label:steam` | Any `severity:critical` label — 24-hour response SLA; privacy fast-path if content matches the privacy keywords |
+| GitHub Steam issue queue | GitHub Issues, filter `label:"area:steam"` | Any issue at Priority **P0 — blocker** — 24-hour response SLA; privacy fast-path if content matches the privacy keywords |
 | Steam discussion board | Community Hub → Discussions | Any thread with more than 5 upvotes or a privacy/data concern — respond within 4 hours |
 | Steamworks stats | App Admin → Stats | Abnormal install failure rate or any stat that implies connection errors during play |
-| Known issue reports | GitHub Issues | Compare against the [Known issues](#known-issues) table — triage as `wont-fix` / `tracked` / `escalate` accordingly |
+| Known issue reports | GitHub Issues | Compare against the [Known issues](#known-issues) table — triage as won't fix, tracked, or escalate accordingly |
 
 ### Privacy fast-path (mandatory)
 
@@ -268,8 +268,8 @@ routing and SLA policy.
 
 Roll back to the previous beta build if **any** of the following are true:
 
-| Trigger | Severity |
-|---------|---------|
+| Trigger | Rollback urgency |
+|---------|------------------|
 | Confirmed privacy regression: conversation data leaving the machine | **Immediate — do not wait** |
 | App crashes on launch on any required platform for >10% of reported installs | Critical |
 | Steam Deck in Gaming Mode cannot reach the home screen | Critical |
@@ -289,9 +289,9 @@ warrant a rollback unless they are the tip of a larger regression.
 4. Confirm the rollback in Steamworks.
 5. Wait 10–15 minutes for CDN propagation, then verify the previous build is
    live by installing from a fresh account.
-6. Open a `severity:critical` GitHub issue:
+6. Open a GitHub issue at Type **Bug**, Priority **P0 — blocker**:
    - Title: `[Rollback] vX.Y.Z reverted — <brief reason>`
-   - Labels: `steam`, `platform-bug`, `severity:critical`
+   - Labels: `area:steam`
    - Body: the affected platform(s), the trigger, the build ID rolled back to,
      and the build ID rolled back from.
 7. Notify all triage owners of the rollback.
@@ -310,8 +310,8 @@ the fix can be tracked and reviewed:
 1. Trigger [`.github/workflows/hotfix.yml`](../.github/workflows/hotfix.yml)
    with `release_tag` set to the version that was rolled back,
    `slug` set to a short description of the defect (e.g. `privacy-regression`),
-   `severity` set to the issue severity, and `defect_summary` as a one sentence
-   description.
+   `priority` set to **P0 — blocker** or **P1 — next**, and `defect_summary` as
+   a one sentence description.
 2. The workflow creates `hotfix/<tag>-<slug>` and prints the rollback record
    template. Copy the record block into
    [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md).
@@ -338,34 +338,37 @@ with any new issues found during the 72-hour monitoring window.
 For accepted launch risks from the private beta, see
 [`publishing/BETA_FEEDBACK_AND_LAUNCH_RISKS.md`](BETA_FEEDBACK_AND_LAUNCH_RISKS.md).
 
-| # | Issue | Affected platform | Severity | Workaround | Tracking issue | Resolution target |
+| # | Issue | Affected platform | Priority | Workaround | Tracking issue | Resolution target |
 |---|-------|------------------|----------|-----------|---------------|------------------|
 | 1 | *(document known issues here before launch)* | | | | | |
 
 ### How to classify
 
-| Label | Meaning |
-|-------|---------|
-| `known-issue-v1` | Accepted for launch; not blocking; tracked for a future patch |
-| `wont-fix` | Accepted forever; documented here for player support use |
-| `severity:critical` | Must trigger rollback if found live (see [Rollback](#rollback)) |
+| Classification | Meaning |
+|----------------|---------|
+| Known issue | Accepted for launch; not blocking; tracked for a future patch on a later release train |
+| Won't fix | Accepted forever; documented here for player support use |
+| Priority **P0 — blocker** | Must trigger rollback if found live (see [Rollback](#rollback)) |
 
 ---
 
 ## Issue routing at a glance
 
-Use these labels in GitHub Issues. The full triage flow is in
+File through the matching Steam issue template, which sets the Type and the
+area labels for you. The declared label set is in
+[`.github/project-structure.yml`](../.github/project-structure.yml) — do not
+invent labels on launch day. The full triage flow is in
 [`docs/steam-triage.md`](../docs/steam-triage.md).
 
-| Reporter describes | Labels | Owner |
-|--------------------|--------|-------|
-| App does not launch, crashes, Steam overlay broken, controller broken, Steam Deck crash | `steam` + `platform-bug` | Platform lead |
-| Model download fails, checksum mismatch, model not loading | `steam` + `model-install` | Platform lead |
-| NPC gives wrong response, scoring incorrect, scenario broken | `steam` + `pack-bug` | Content / pack owner |
-| Slow inference, high CPU/GPU, long load times, audio stutter, UI frame-rate | `steam` + `performance` | Platform lead |
-| Unexpected network activity, "sent my data", privacy concern | `steam` + `privacy` + `safety` | **Privacy fast-path — escalate immediately** |
-| Creator Workbench crash, pack import fails | `steam` + `creator-workbench` | Platform lead |
-| Compliment / general feedback | No label needed | Support communications owner — respond and thank |
+| Reporter describes | Template | Area labels | Owner |
+|--------------------|----------|-------------|-------|
+| App does not launch, crashes, Steam overlay broken, controller broken, Steam Deck crash | Steam — platform bug | `area:steam` | Platform lead |
+| Model download fails, checksum mismatch, model not loading | Steam — local model install failure | `area:steam`, `area:models` | Platform lead |
+| NPC gives wrong response, scoring incorrect, scenario broken | Steam — pack validation or content bug | `area:steam`, `area:packs` | Content / pack owner |
+| Slow inference, high CPU/GPU, long load times, audio stutter, UI frame-rate | Steam — performance or frame-rate issue | `area:steam` | Platform lead |
+| Unexpected network activity, "sent my data", privacy concern | Steam — privacy or safety report | `area:safety`, `area:steam` | **Privacy fast-path — escalate immediately** |
+| Creator Workbench crash, pack import fails | Steam — Creator Workbench bug | `area:steam`, `area:packs` | Platform lead |
+| Compliment / general feedback | None — no issue needed | — | Support communications owner — respond and thank |
 
 ---
 
