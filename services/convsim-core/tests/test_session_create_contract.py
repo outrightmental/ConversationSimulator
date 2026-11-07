@@ -11,6 +11,7 @@ default, and whatever still fails says which field and why.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 
 import pytest
 from fastapi.testclient import TestClient
@@ -168,6 +169,48 @@ def test_unknown_runtime_id_is_refused_by_name(api):
 # ── The report a stranded player can actually send ───────────────────────────
 
 
+@contextmanager
+def _real_log_files():
+    """Let create_app() wire up the real file handlers, then undo all of it.
+
+    configure_logging() is a no-op once the root logger has handlers, and
+    pytest's capture plugin has already attached its own, so stand them down
+    for the duration. (A context manager entered from the test body rather than
+    a fixture: pytest re-attaches its capture handlers between fixture setup
+    and the test call, which would make configure_logging() a no-op again.)
+
+    configure_logging() touches more than the root handler list: it sets the
+    root level, hangs the runtime.log handler on the two runtime loggers, and
+    sets the uvicorn.access level. Every one of those is put back, and the
+    handlers it added are closed, so later tests neither run at INFO nor keep
+    writing into this test's tmp_path.
+    """
+    root = logging.getLogger()
+    runtime_loggers = [logging.getLogger(name) for name in ("convsim_core.runtime", "convsim_core.runtimes")]
+    access = logging.getLogger("uvicorn.access")
+
+    # Copies: addHandler() mutates the lists in place, and the saved ones must
+    # still describe the state before configure_logging() ran.
+    saved_root_handlers, saved_root_level = root.handlers[:], root.level
+    saved_runtime = [(lg, lg.handlers[:], lg.propagate) for lg in runtime_loggers]
+    saved_access_level = access.level
+    root.handlers = []
+    try:
+        yield
+    finally:
+        added = [h for h in root.handlers if h not in saved_root_handlers]
+        for lg, handlers, propagate in saved_runtime:
+            added.extend(h for h in lg.handlers if h not in handlers)
+            lg.handlers = handlers
+            lg.propagate = propagate
+        root.handlers = saved_root_handlers
+        root.setLevel(saved_root_level)
+        access.setLevel(saved_access_level)
+        # The runtime.log handler sits on both runtime loggers; close it once.
+        for handler in {id(h): h for h in added}.values():
+            handler.close()
+
+
 def test_a_rejected_request_shows_up_in_the_diagnostics_log_excerpt(tmp_config):
     """Closes the loop the issue describes: the failure AND the copyable report.
 
@@ -176,21 +219,32 @@ def test_a_rejected_request_shows_up_in_the_diagnostics_log_excerpt(tmp_config):
     so a player who copied the report after a failed launch sent a report that
     said nothing about the launch.
     """
-    root = logging.getLogger()
-    # configure_logging() is a no-op once the root logger has handlers, and
-    # pytest's capture plugin has already attached its own — so stand them down
-    # for the duration and let create_app() wire up the real file handlers.
-    saved, root.handlers = root.handlers, []
-    try:
+    with _real_log_files():
         app = create_app(tmp_config)
         with TestClient(app) as client:
             res = client.post("/api/sessions", json={**_SETUP, "seed": 1.5})
             assert res.status_code == 422
             excerpt = client.get("/api/diag/log-excerpt").json()["excerpt"]
-    finally:
-        for handler in root.handlers:
-            handler.close()
-        root.handlers = saved
 
     assert "/api/sessions" in excerpt
     assert "seed=" in excerpt
+
+
+def test_the_diag_excerpt_test_leaves_logging_as_it_found_it(tmp_config):
+    """The stand-down above must not leak: a later test that reads caplog at
+    its default level, or runs with the root at WARNING, would otherwise see
+    this test's INFO records and runtime.log handler."""
+    root = logging.getLogger()
+    runtime = logging.getLogger("convsim_core.runtime")
+    access = logging.getLogger("uvicorn.access")
+    before = (root.handlers[:], root.level, runtime.handlers[:], access.level)
+
+    with _real_log_files():
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            assert client.post("/api/sessions", json={**_SETUP, "seed": 1.5}).status_code == 422
+        # The stand-down did its job: the real handlers were wired up.
+        assert any(isinstance(h, logging.FileHandler) for h in root.handlers)
+        assert any(isinstance(h, logging.FileHandler) for h in runtime.handlers)
+
+    assert (root.handlers, root.level, runtime.handlers, access.level) == before
