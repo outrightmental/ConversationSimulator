@@ -145,6 +145,7 @@ async def ensure_llama_sidecar_running(
     not possible (no sidecar, no executable, no model, or start failure). Never
     raises — callers decide how to surface unavailability.
     """
+    from convsim_core.runtime.launch import resolve_launch_config
     from convsim_core.runtime.sidecar import SidecarState, find_executable
 
     sidecar = getattr(app.state, "sidecar", None)
@@ -170,10 +171,15 @@ async def ensure_llama_sidecar_running(
         logger.info("llama-server autostart skipped: no engine executable found")
         return None
 
+    # Same launch configuration as the other start sites (issue #523): the
+    # registry's context size for this model, one slot, small batches.
+    launch = resolve_launch_config(path, conn)
+
     try:
         await sidecar.start(
             model_path=path,
             executable=exe,
+            launch=launch,
             startup_timeout=startup_timeout,
         )
         logger.info("llama-server autostarted with model %s", path)
