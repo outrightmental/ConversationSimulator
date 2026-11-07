@@ -177,10 +177,16 @@ conversations' prompts and replies are sent to that computer.
 
 ### How to verify it worked
 
-On the home screen, the **AI model** row of the **Status** list shows your
-Ollama model's name once it is ready. If it says **Not installed** instead,
-confirm `ollama serve` is running and the selected model name is still valid
-(`ollama list` shows what is available).
+On the home screen, the **AI model** row of the **Status** list shows the name
+of the Ollama model you selected. The row reads your saved choice and does not
+ask Ollama, so it shows the name even when Ollama is not running. It says **Not
+installed** only when no Ollama model is selected and Ollama does not answer.
+
+A real problem shows up elsewhere: as an error on the Ollama step when you
+click **Use this model**, as **Benchmark failed** on the **Model benchmark**
+step, or as an AI engine error on your first turn in a conversation. If you see
+one of those, confirm `ollama serve` is running and the model is still in
+`ollama list`.
 
 ---
 
@@ -236,9 +242,16 @@ that model, and your file is used after you quit and reopen the app.
 ### How to verify it worked
 
 On the home screen, the **AI model** row of the **Status** list shows the
-file's name once the model is loaded. If it says **Not installed** instead,
-confirm the path is correct and the file is a valid GGUF file compatible with
-the current llama.cpp version.
+name of the file you selected. The row reads your saved choice, not the
+engine, so the name appears as soon as the file is selected, whether or not the
+engine could load it. It says **Not installed** only when the selected file is
+no longer at that path.
+
+A file the engine cannot load shows up elsewhere: as an error on the GGUF step
+when the engine starts with it, as **Benchmark failed** on the **Model
+benchmark** step, or as an AI engine error on your first turn in a
+conversation. If you see one of those, confirm the path is correct and the
+file is a valid GGUF file compatible with the current llama.cpp version.
 
 ---
 
