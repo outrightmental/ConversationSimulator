@@ -572,7 +572,7 @@ interface ValidationPanelProps {
 }
 
 function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRefresh }: ValidationPanelProps) {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   function handleCopy() {
     if (!validation) return
@@ -581,10 +581,12 @@ function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRe
       ...validation.errors.map((e) => `[ERROR] ${e.file || '(pack-wide)'}${e.pointer ? ' ' + e.pointer : ''}: ${e.message} (${e.rule_id})`),
       ...validation.warnings.map((w) => `[WARNING] ${w.file || '(pack-wide)'}${w.pointer ? ' ' + w.pointer : ''}: ${w.message} (${w.rule_id})`),
     ]
+    // Report failure as well as success, as the app's other copy buttons do:
+    // in a shell where every clipboard path is refused, a label that never
+    // changes reads as a button that did nothing.
     void copyTextToClipboard(lines.join('\n')).then((ok) => {
-      if (!ok) return
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setCopyState(ok ? 'copied' : 'failed')
+      setTimeout(() => setCopyState('idle'), 2000)
     })
   }
 
@@ -723,7 +725,7 @@ function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRe
             style={{ ...BTN, fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
             aria-label="Copy validation output"
           >
-            {copied ? '✓ Copied' : 'Copy'}
+            {copyState === 'copied' ? '✓ Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
           </button>
           {onRefresh && (
             <button
