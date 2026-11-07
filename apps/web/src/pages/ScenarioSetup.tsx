@@ -390,12 +390,10 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
     <div className="brief" data-testid="setup-page">
       <header className="brief-hero">
         <div className="brief-hero-top">
-          <button
-            type="button"
-            className="brief-back"
-            onClick={onBack}
-            aria-label="Back to library"
-          >
+          {/* No aria-label: onBack is history-back, and the brief is reached
+              from Home and the Debrief as well as the Library (the demo edition
+              has no Library at all), so the visible "Back" is the honest name. */}
+          <button type="button" className="brief-back" onClick={onBack}>
             <span aria-hidden="true">←</span> Back
           </button>
           <span className="brief-eyebrow">Conversation brief</span>

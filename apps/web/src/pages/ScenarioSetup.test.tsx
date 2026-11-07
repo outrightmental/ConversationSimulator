@@ -855,8 +855,20 @@ describe('ScenarioSetupPage', () => {
       mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       const { onBack } = renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
-      fireEvent.click(screen.getByRole('button', { name: /back to library/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^back$/i }));
       expect(onBack).toHaveBeenCalled();
+    });
+
+    it('names the control "Back", not a destination it may not return to', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      // onBack is history-back. The brief is reached from Home and the Debrief
+      // as well as the Library, and the demo edition has no Library, so a
+      // screen reader must not be promised one.
+      expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /library/i })).not.toBeInTheDocument();
     });
   });
   // ── Conversation Brief design (issue #486) ─────────────────────────────────
