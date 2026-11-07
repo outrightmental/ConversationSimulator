@@ -137,3 +137,72 @@ export function clearTurnSamples(): void {
     // Nothing to do: a store we cannot clear is a store we cannot read either.
   }
 }
+
+// ---------------------------------------------------------------------------
+// When the reply will *start* (issue #539).
+//
+// Once words stream (#538) the wait the player feels ends when the first
+// sentence lands, not when the turn ends. The panel therefore estimates the
+// start of the reply, from this machine's measured speeds (#519's rolling
+// medians) and how much of the prompt the engine still has to read (the core's
+// turn.progress reports). Nothing here models the model: both inputs are
+// measurements, and with neither there is no estimate.
+// ---------------------------------------------------------------------------
+
+/** Below this expected wait no estimate is shown: a number for a 2 s pause is noise. */
+export const REPLY_START_THRESHOLD_MS = 4_000
+
+/** How long the first sentence usually is, in tokens, when the engine has not
+ *  started writing yet. A short sentence of a spoken line; deliberately modest
+ *  so the estimate errs early rather than late. */
+export const FIRST_SENTENCE_TOKENS = 24
+
+export interface ReplyStartInputs {
+  /** Prompt tokens the engine has still to read, from the latest progress report; null before the first. */
+  unreadPromptTokens: number | null
+  /** This machine's median reading speed, tokens per second, or null. */
+  readingTps: number | null
+  /** This machine's median writing speed, tokens per second, or null. */
+  writingTps: number | null
+  /** This machine's median time to first words, from recorded turns, or null. */
+  measuredFirstWordsMs: number | null
+}
+
+/**
+ * The expected milliseconds until the reply starts, or null with nothing to go on.
+ *
+ * With a progress report and both speeds: the unread prompt at the reading
+ * speed, plus one short sentence at the writing speed. Before the first
+ * progress report, the measured time to first words on this machine, when any
+ * turn has been recorded. Never a figure from the docs or a model size.
+ */
+export function estimateReplyStartMs(inputs: ReplyStartInputs): number | null {
+  const { unreadPromptTokens, readingTps, writingTps, measuredFirstWordsMs } = inputs
+  if (
+    unreadPromptTokens !== null &&
+    Number.isFinite(unreadPromptTokens) &&
+    readingTps !== null &&
+    readingTps > 0 &&
+    writingTps !== null &&
+    writingTps > 0
+  ) {
+    const readMs = (Math.max(0, unreadPromptTokens) / readingTps) * 1000
+    const writeMs = (FIRST_SENTENCE_TOKENS / writingTps) * 1000
+    return Math.round(readMs + writeMs)
+  }
+  if (measuredFirstWordsMs !== null && Number.isFinite(measuredFirstWordsMs) && measuredFirstWordsMs > 0) {
+    return Math.round(measuredFirstWordsMs)
+  }
+  return null
+}
+
+/** The range quoted to the player around a point estimate: a median is not a promise. */
+export function replyStartRange(ms: number): { lowMs: number; highMs: number } {
+  const low = roundToSecond(ms * 0.8)
+  const high = Math.max(low + 1_000, roundToSecond(ms * 1.25))
+  return { lowMs: low, highMs: high }
+}
+
+function roundToSecond(ms: number): number {
+  return Math.max(1_000, Math.round(ms / 1_000) * 1_000)
+}

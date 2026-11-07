@@ -13,7 +13,7 @@ These are the official latency budgets for the **mid-spec reference machine** (A
 | TTS first-audio chunk | < 1.5 s | Kokoro sidecar, sentence-level streaming |
 | STT round-trip | < 2 s | 10-word utterance, whisper.cpp small model |
 
-All values in the `LATENCY_BUDGETS` constant in `packages/shared/src/types/metrics.ts`. PerformanceWarning thresholds are derived from these constants.
+All values in the `LATENCY_BUDGETS` constant in `packages/shared/src/types/metrics.ts`. They are reference figures only: since issue #539 nothing in the app warns when one is exceeded.
 
 ## Hardware tiers
 
@@ -24,7 +24,7 @@ All values in the `LATENCY_BUDGETS` constant in `packages/shared/src/types/metri
 | **Slow** | Low-power CPU, 4 GB RAM | 2.5–10 s | Text-only recommended; disable VAD and TTS |
 | **Unsupported** | < 8 GB RAM total, no GPU | > 10 s or OOM | Cannot run local models reliably |
 
-> **Note:** "Slow" tier is functional but will trigger in-app performance warnings that link to Runtime Settings.
+> **Note:** the tiers and budgets above are targets, not measurements, and are being replaced by one shared, measured definition (#522). The app shows no tier label; the conversation screen states the pace it measures.
 
 ## Results table by hardware tier
 
@@ -46,14 +46,18 @@ Budget column for reference: TTFT < 2.5 s, TTS < 1.5 s, STT < 2 s, cold start < 
 
 The app tracks the following timings locally. No data leaves your machine.
 
-| Metric | Description | Warning threshold |
-|--------|-------------|-------------------|
-| Session start | Time from start request to NPC opening | > 10 s |
-| First token | Time from player turn to first streamed NPC token | > 2.5 s |
-| Full response | Time from player turn to complete NPC response | > 10 s |
-| STT final | Time for speech-to-text to return a transcript | > 2 s |
-| TTS first sentence | Time for first audio chunk to be ready | > 1.5 s |
-| Debrief generation | Time for debrief to generate | — |
+| Metric | Description |
+|--------|-------------|
+| Session start | Time from start request to NPC opening |
+| First token | Time from player turn to first streamed NPC token |
+| Full response | Time from player turn to complete NPC response |
+| STT final | Time for speech-to-text to return a transcript |
+| TTS first sentence | Time for first audio chunk to be ready |
+| Debrief generation | Time for debrief to generate |
+
+These are shown in the developer debug drawer only. The per-turn timing record
+(`turn_timing`, issue #519) is the measured account of each turn: stages, token
+counts and speeds.
 
 Conversation-screen metrics (session start, first token, full response, STT final, TTS first sentence) are visible in the **Developer debug** panel; debrief-generation latency is shown on the debrief screen. Both require dev mode (enable it in Settings).
 
@@ -61,33 +65,50 @@ The conversation screen also remembers how long recent turns took, so it can tel
 
 ## How long a turn will take
 
-A local model offers the app no progress signal while it works — no percentage, no token count to divide — so the conversation screen answers "how long will this take?" with the only honest evidence it has: how long this machine's own recent turns took.
-
-While the NPC is thinking, the screen shows a clock and a bar:
+While the character is out, the conversation screen shows one panel that says
+what the turn is doing, in the fiction and with the character's name, and —
+when it has something honest to say — when the reply will start.
 
 | What you see | What it means |
 |---|---|
-| `22s` over a hatched bar | Nothing timed yet on this model. The clock still runs, so a long wait never looks like a frozen app. |
-| `22s / ~40s` over a filling bar | A turn is expected to cost about 40 s on this machine, and the caption says roughly how much of it is left. |
-| `1m 20s / ~40s` in amber | The turn has outrun its estimate. The bar stops pretending to know, and says the reply is not lost. |
+| **Dana is getting ready…** over a hatched bar | The engine has the request but has not started reading (it is loading, or finishing other work). |
+| **Dana is thinking…** over a filling bar | The engine is reading the conversation. The bar is the one real fraction a turn has: how much of the prompt has been read, with the part it already had in its cache filled in from the start. |
+| **Reply starts in about 5–8 s.** | Only when the expected wait is over about four seconds, and never once words are arriving. The range is built from this machine's measured reading and writing speeds and how much is left to read; before the engine's first progress report it is this machine's measured time to first words. With nothing measured yet there is no number — only the stage, the bar and the clock. |
+| **Dana is replying…** | Words are arriving in the transcript, one checked sentence at a time. No estimate: the transcript is the progress. |
+| **Updating the scene…** beside the reply box | The whole line is on screen and the engine is finishing the turn's bookkeeping. The reply box already works; a message sent now is queued and goes the moment the turn is saved. |
+| **Dana is trying that again…** | The reply failed a check and is being regenerated. |
+| The clock | Runs for the whole wait, so a long turn never looks like a frozen app. After 30 s the screen reader is told the elapsed time once per half-minute, and that the reply is not lost. |
+| **Once this reply arrives, you can shorten the next ones under Reply speed, in Settings.** | Added under the bar once a wait passes about five seconds. It is text, not a link: leaving the screen mid-turn loses the pending message when the session resumes, so the setting is named and left for after the reply. The demo adds that closing other apps usually helps, which is the one thing its hardware can do. |
 
-The panel is the screen's status for as long as the NPC is out, so nothing else repeats it: its heading switches from "NPC is thinking" to "NPC is replying" once the reply starts arriving word by word, and the whole panel disappears the moment the reply is on screen. A turn is not quite over at that point — the app is still collecting the state changes that went with the reply, which it says plainly ("Finishing the turn…") while the input stays disabled — and that tail is included in the duration it files away, so the estimate it quotes next time is for the whole round trip.
+With no live connection to the engine's progress (an older core, or the socket
+unavailable), the panel falls back to the previous behaviour: the clock and
+the median of up to eight recent whole turns on this machine, with a bar that
+never fills completely and plain honesty when the turn outruns the estimate.
 
-Worth knowing about the number it quotes:
+Worth knowing about every number the panel quotes:
 
-- **It is the median of up to eight recent turns**, not the mean. One turn that stalled because the system paged the model back in should not inflate the next five.
-- **Timings are kept per model.** Switching to a smaller model — the app's own advice when turns are slow — starts the estimate over instead of quoting the old model's minutes at the new one.
-- **They never leave the machine.** The samples are bare durations in milliseconds, held in browser local storage under `convsim.turnTiming`, for one model at a time. **Clear all local data** in Settings forgets them along with everything else.
-- **A turn recovered by polling is not timed.** Past the five-minute deadline the app finds the reply by asking the session what it recorded (see [Timeout errors](#timeout-errors)), which measures when the screen noticed the turn rather than what the model spent on it.
-- **The bar never fills completely** while a reply is still out. A full bar with nothing on screen reads as a turn the app lost.
-
-Estimates appear from the second turn of a fresh install: the first one has nothing to go on, so it only shows the clock.
+- **It is measured on this machine or it is not shown.** Reading speed,
+  writing speed and time to first words are medians over this machine's
+  recent recorded turns (`GET /api/performance/rolling`); the fraction read
+  comes from the engine's own progress reports. Nothing comes from the docs
+  or a model size.
+- **Estimates are ranges**, because a median is not a promise.
+- **They never leave the machine.** The per-turn records live in the local
+  session database beside the transcript (see [privacy](privacy.md)); the
+  older whole-turn samples sit in browser local storage under
+  `convsim.turnTiming`. **Clear all local data** in Settings forgets both.
+- **Nothing nags.** The amber "first token took…" rows and the separate
+  five-second "taking longer than usual" notice are gone: they named settings
+  that did nothing and sent players out of the conversation. What stays is the
+  one sentence from that notice that did help, the reply-speed footnote above,
+  now part of the panel so that nothing repeats the panel in other words.
 
 ## What to do when the app is slow
 
-The app surfaces actionable warnings when thresholds are exceeded. Each links to **Runtime Settings**.
+The conversation screen itself no longer surfaces warnings (see above). If
+turns are slow on your hardware, these are the levers:
 
-### NPC response is slow (first token > 2.5 s)
+### NPC response is slow
 
 - **Try a smaller model.** A 4 B-parameter model runs 2–4× faster than an 8 B model on the same hardware. See the Model Manager for size-categorised options.
 - **Increase GPU layers.** If you have a GPU, set GPU Layers to `-1` (all layers to GPU) in Runtime Settings.
@@ -120,7 +141,7 @@ When Kokoro is not running, the app operates in text-only mode. No audio is play
 
 ### Timeout errors
 
-A slow turn is not a failed turn. A local model on CPU-only hardware can spend a minute or more on a single reply — mostly reading the prompt back in — and the app waits for it. The clock and bar described in [How long a turn will take](#how-long-a-turn-will-take) are on screen for the whole wait; after five seconds the app adds that the NPC is taking longer than usual, and after thirty seconds that the reply has not been thrown away.
+A slow turn is not a failed turn. A local model on CPU-only hardware can spend a minute or more on a single reply — mostly reading the prompt back in — and the app waits for it. The panel described in [How long a turn will take](#how-long-a-turn-will-take) is on screen for the whole wait; after five seconds it adds where the next replies can be made shorter, and from thirty seconds on a screen reader is told every half-minute that the reply has not been thrown away.
 
 Two separate limits can still end a turn early:
 

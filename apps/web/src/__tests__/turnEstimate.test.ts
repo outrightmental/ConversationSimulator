@@ -119,3 +119,51 @@ describe('clearTurnSamples', () => {
     expect(readTurnSamples(MODEL)).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------
+// When the reply will start (issue #539)
+// ---------------------------------------------------------------------------
+import {
+  estimateReplyStartMs,
+  FIRST_SENTENCE_TOKENS,
+  REPLY_START_THRESHOLD_MS,
+  replyStartRange,
+} from '../lib/turnEstimate'
+
+describe('estimateReplyStartMs', () => {
+  const speeds = { readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null }
+
+  it('is longer for a turn that must read 2,000 tokens than for one that reads 200', () => {
+    const cold = estimateReplyStartMs({ ...speeds, unreadPromptTokens: 2000 })
+    const warm = estimateReplyStartMs({ ...speeds, unreadPromptTokens: 200 })
+    expect(cold).not.toBeNull()
+    expect(warm).not.toBeNull()
+    expect(cold!).toBeGreaterThan(warm!)
+    // 2000 / 87 s of reading plus one short sentence at 6.5 tokens/s.
+    expect(cold).toBe(Math.round((2000 / 87) * 1000 + (FIRST_SENTENCE_TOKENS / 6.5) * 1000))
+  })
+
+  it('returns none with no speeds and no measured first words', () => {
+    expect(estimateReplyStartMs({ unreadPromptTokens: 2000, readingTps: null, writingTps: null, measuredFirstWordsMs: null })).toBeNull()
+    expect(estimateReplyStartMs({ unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null })).toBeNull()
+  })
+
+  it('uses this machine\'s measured time to first words before the engine reports progress', () => {
+    expect(estimateReplyStartMs({ unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(12_400)
+  })
+
+  it('prefers the formula once a progress report says how much is left to read', () => {
+    expect(estimateReplyStartMs({ unreadPromptTokens: 0, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(
+      Math.round((FIRST_SENTENCE_TOKENS / 6.5) * 1000),
+    )
+  })
+
+  it('quotes a range around the point estimate, never a single second', () => {
+    expect(replyStartRange(6_500)).toEqual({ lowMs: 5_000, highMs: 8_000 })
+    expect(replyStartRange(1_200)).toEqual({ lowMs: 1_000, highMs: 2_000 })
+  })
+
+  it('has a threshold under which no estimate is shown', () => {
+    expect(REPLY_START_THRESHOLD_MS).toBe(4_000)
+  })
+})
