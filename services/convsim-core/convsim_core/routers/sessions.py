@@ -50,7 +50,7 @@ from convsim_core.scenario_state import (
 from convsim_core.scenarios import resolve_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
-from convsim_core.services.model_manager_service import get_active_config
+from convsim_core.services.model_manager_service import get_active_config, recorded_model_id
 from convsim_core.services.relationship_memory import update_relationship_memory
 from convsim_core.services.session_events import SessionEventBus, SessionTurnStreamer
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
@@ -476,6 +476,25 @@ def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
     return runtime_id if runtime_id in _SESSION_PINNED_RUNTIME_IDS else None
 
 
+def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) -> str | None:
+    """The model identity to stamp on this turn's timing record, or None (issue #519).
+
+    Only a selection that served the turn is recorded. A session pinned to a
+    scripted or fake runtime ran on that runtime whatever the player has
+    selected, and so did an unpinned session when the live runtime is not the
+    selected one; in both cases the record's ``context.model_id`` already
+    names what the runtime itself reported, and the registry id stays None
+    rather than attributing the turn to a model that never ran. A file path
+    is never recorded (see ``recorded_model_id``).
+    """
+    if setup.get("runtime_id") in _SESSION_PINNED_RUNTIME_IDS:
+        return None
+    active = get_active_config(conn)
+    if active.get("runtime_id") != runtime.id:
+        return None
+    return recorded_model_id(conn, active.get("model_id"))
+
+
 def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
     """Return the runtime this session was pinned to, else the shared runtime.
 
@@ -843,7 +862,7 @@ async def _run_turn(
     timing = TurnTimingBuilder(
         clock=clock,
         runtime_id=runtime.id,
-        registry_model_id=get_active_config(conn).get("model_id"),
+        registry_model_id=_recorded_model_for(conn, runtime, setup),
     )
     # Stream the turn to whoever is listening on the session socket (#538).
     # With no socket connected the pipeline runs exactly as before.
@@ -964,11 +983,12 @@ async def _run_turn(
             first_audio_ms=None,
         )
 
-    # Persist the turn's record after the pipeline's transaction committed and
-    # after synthesis, so the total is the whole request (issue #519). An input
-    # safety stop never reached the model and has no record.
+    # Build the turn's record once, here, after the pipeline's transaction
+    # committed and after synthesis, so the total is the whole request (issue
+    # #519); the pipeline hands back the builder it filled rather than a record
+    # of its own. An input safety stop never reached the model and has none.
     if result.timing is not None:
-        record = timing.build()
+        record = result.timing.build()
         persist_turn_timing(conn, session_id, result.turn_number, record, now)
         npc_event.payload["timing"] = record.model_dump()
         npc_event.payload["salvaged"] = result.salvaged

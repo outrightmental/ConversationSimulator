@@ -253,7 +253,10 @@ class OllamaChatRuntime(ChatRuntime):
                         input_tokens = chunk.get("prompt_eval_count", 0)
                         output_tokens = chunk.get("eval_count", 0)
                         # The final chunk is the only place Ollama reports what
-                        # the request cost (issue #519): keep all of it.
+                        # the request cost (issue #519): keep its counts, its
+                        # reading, writing and load durations and done_reason.
+                        # Its total_duration is not kept; the core measures
+                        # the whole turn itself.
                         timings = _timings_from_done(chunk)
                         finish_reason = _finish_reason(chunk.get("done_reason"))
         # A failure to connect at all still means "Ollama is not running",

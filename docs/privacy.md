@@ -64,9 +64,13 @@ Beside each NPC turn the app keeps one record of what that turn cost: how long
 the engine spent reading the prompt and writing the reply, when the first
 token arrived, token counts (prompt, reused from cache, written), the engine's
 reading and writing speeds, whether a repair call was made, how long speech
-synthesis took when voice is on, and which model and runtime produced it. It
-contains **no text** — no prompt, no reply, no player input — only durations
-and counts.
+synthesis took when voice is on, and which runtime and model produced it. The
+model is named by the id the engine was asked for and, when the selected model
+served the turn, by the registry id of a model the app installed or the file
+name of a model file you supplied yourself. A file path is never stored, so
+the record does not say where on your computer a model lives. It contains
+**no text** — no prompt, no reply, no player input — only durations and
+counts.
 
 The record is stored as a `turn_timing` event in the same local database as
 the transcript, so it is deleted with the session, by **Clear all local
