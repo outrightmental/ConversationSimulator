@@ -25,6 +25,9 @@ beforeEach(() => {
   delete win.__TAURI__
   delete (navigator as unknown as { clipboard?: unknown }).clipboard
   delete (document as unknown as { execCommand?: unknown }).execCommand
+  // Each fallback is announced with console.warn. Capture it so the tests can
+  // say what was reported, and so the expected failures stay out of the output.
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -43,6 +46,7 @@ describe('copyTextToClipboard', () => {
     expect(invoke).toHaveBeenCalledWith('plugin:clipboard-manager|write_text', {
       text: 'diagnostics report',
     })
+    expect(console.warn).not.toHaveBeenCalled()
   })
 
   it('succeeds in the desktop shell with no web clipboard API at all', async () => {
@@ -71,6 +75,64 @@ describe('copyTextToClipboard', () => {
 
     expect(await copyTextToClipboard('report')).toBe(true)
     expect(writeText).toHaveBeenCalledWith('report')
+  })
+
+  it('reports the shell rejection on the console, then still falls back', async () => {
+    // The shell's reason is the only trace of a capability misconfiguration.
+    // On macOS neither web API works, so without this line the button says
+    // "Copy failed" and nothing anywhere says why.
+    stubTauri(
+      vi.fn().mockRejectedValue(new Error('Command plugin:clipboard-manager|write_text not allowed by ACL')),
+    )
+    const writeText = stubNavigatorClipboard()
+
+    expect(await copyTextToClipboard('report with a player name in it')).toBe(true)
+    expect(writeText).toHaveBeenCalledWith('report with a player name in it')
+
+    const warn = vi.mocked(console.warn)
+    expect(warn).toHaveBeenCalledTimes(1)
+    const line = String(warn.mock.calls[0][0])
+    // A stable prefix so the line can be found in a devtools session or a
+    // console capture, the shell's own message, and never the copied text.
+    expect(line).toMatch(/^\[clipboard\] /)
+    expect(line).toContain('not allowed by ACL')
+    expect(line).not.toContain('player name')
+  })
+
+  it('reports a rejection the shell raised as a plain string', async () => {
+    // An IPC call rejects with whatever the Rust side serialised, which for a
+    // refused command is a string rather than an Error.
+    stubTauri(vi.fn().mockRejectedValue('clipboard-manager.write_text not allowed'))
+    stubNavigatorClipboard()
+
+    expect(await copyTextToClipboard('report')).toBe(true)
+    expect(String(vi.mocked(console.warn).mock.calls[0][0])).toContain(
+      'clipboard-manager.write_text not allowed',
+    )
+  })
+
+  it('still reports the shell rejection when every later mechanism fails too', async () => {
+    // The packaged macOS case with a broken grant: no navigator.clipboard, no
+    // execCommand. The result is false, and the reason is on the console.
+    stubTauri(vi.fn().mockRejectedValue(new Error('not allowed')))
+
+    expect(await copyTextToClipboard('report')).toBe(false)
+    const warn = vi.mocked(console.warn)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toContain('not allowed')
+  })
+
+  it('reports a navigator.clipboard rejection before trying execCommand', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('Write permission denied.')) },
+      configurable: true,
+    })
+    ;(document as unknown as { execCommand: unknown }).execCommand = vi.fn().mockReturnValue(true)
+
+    expect(await copyTextToClipboard('report')).toBe(true)
+    const warn = vi.mocked(console.warn)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toMatch(/^\[clipboard\] navigator\.clipboard .*Write permission denied\./)
   })
 
   it('uses navigator.clipboard in a plain browser', async () => {

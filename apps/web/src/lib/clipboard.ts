@@ -30,6 +30,21 @@ function getTauriInvoke(): TauriInvoke | undefined {
   return (window as { __TAURI__?: { core?: { invoke?: TauriInvoke } } }).__TAURI__?.core?.invoke
 }
 
+// Every fallback is announced on the console. When the last resort also fails,
+// the button can only say "Copy failed", and the one informative error, the
+// shell's reason for refusing the IPC call (a permission missing from the
+// capability set, a window label the grant does not cover, a shell built
+// without the plugin), would otherwise be gone. The prefix is stable so the
+// line can be found in a devtools session or any console capture; the text
+// being copied is never logged, since a diagnostics report can carry details
+// a player would not want in a log file.
+const WARN_PREFIX = '[clipboard]'
+
+function reportFallback(mechanism: string, err: unknown): void {
+  const reason = err instanceof Error ? err.message : String(err)
+  console.warn(`${WARN_PREFIX} ${mechanism} failed, trying the next mechanism: ${reason}`)
+}
+
 /**
  * Write text to the system clipboard, preferring the desktop shell's native
  * clipboard and falling back to the two web APIs. Resolves false only when
@@ -43,9 +58,11 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
       // (`writeText`); `label` is Android-only and intentionally omitted.
       await invoke('plugin:clipboard-manager|write_text', { text })
       return true
-    } catch {
+    } catch (err) {
       // Permission missing, or an older shell without the plugin — try the web
-      // APIs rather than dead-ending.
+      // APIs rather than dead-ending, but leave the shell's reason behind: on
+      // macOS and Linux neither web API will work, and this is the only trace.
+      reportFallback('desktop shell clipboard', err)
     }
   }
   try {
@@ -53,8 +70,9 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text)
       return true
     }
-  } catch {
+  } catch (err) {
     // fall through to the legacy path
+    reportFallback('navigator.clipboard', err)
   }
   let textarea: HTMLTextAreaElement | undefined
   try {

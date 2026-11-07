@@ -317,6 +317,13 @@ log-excerpt fetch outlives. Every copy therefore goes through
 `src/lib/clipboard.ts`, which tries the plugin first and falls back to the two
 web APIs for dev mode and plain browsers (issue #508).
 
+When the plugin call is refused (the permission missing from the capability
+set, a window label the grant does not cover, a shell built without the
+plugin), `clipboard.ts` writes the shell's reason to the webview console with a
+`[clipboard]` prefix before falling back. On macOS the fallbacks cannot work,
+so that line, readable in Safari's Web Inspector or under `tauri dev`, is what
+turns a bare "Copy failed" into something a contributor can act on.
+
 ### Microphone notes
 
 - **macOS**: The OS shows a standard permission dialog on first access.
