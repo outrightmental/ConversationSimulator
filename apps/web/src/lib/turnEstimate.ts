@@ -15,6 +15,8 @@
 // use is kept: switching models starts the estimate over rather than carrying a
 // cache per model, a cheap trade for a number that is rebuilt within two turns.
 
+import { roundApproxDuration } from './formatDuration'
+
 const STORAGE_KEY = 'convsim.turnTiming'
 
 /** Identifies the samples when the runtime has not named its model (health not
@@ -209,13 +211,36 @@ function remaining(totalMs: number, passedMs: number): number {
   return Math.max(0, Math.round(totalMs - passed))
 }
 
-/** The range quoted to the player around a point estimate: a median is not a promise. */
+/**
+ * The range quoted to the player around a point estimate: a median is not a
+ * promise.
+ *
+ * Each end is rounded to a grid that suits its size, so the quote claims no
+ * more precision than a median of a few turns has: the grid
+ * `roundApproxDuration` sets under a minute (whole seconds under ten, then
+ * fives), and whole minutes from a minute on. A two-minute wait is quoted in
+ * minutes, the unit the clock beside it reads in, not as "86–135 s".
+ */
 export function replyStartRange(ms: number): { lowMs: number; highMs: number } {
-  const low = roundToSecond(ms * 0.8)
-  const high = Math.max(low + 1_000, roundToSecond(ms * 1.25))
+  let low = roundRangeEnd(ms * 0.8)
+  let high = roundRangeEnd(ms * 1.25)
+  // Whole minutes are coarse enough to carry an end past the estimate itself
+  // (0.8 × 115 s rounds to 2 min, 1.25 × 70 s to 1 min). Step that end one
+  // grain outwards, so the range always holds the figure it is a range around.
+  if (low > ms) low = Math.max(rangeGrainMs(low - 1), low - rangeGrainMs(low - 1))
+  if (high < ms) high += rangeGrainMs(high)
+  if (high <= low) high = low + rangeGrainMs(low)
   return { lowMs: low, highMs: high }
 }
 
-function roundToSecond(ms: number): number {
-  return Math.max(1_000, Math.round(ms / 1_000) * 1_000)
+const MINUTE_MS = 60_000
+
+function roundRangeEnd(ms: number): number {
+  const onSecondsGrid = roundApproxDuration(ms)
+  if (onSecondsGrid < MINUTE_MS) return onSecondsGrid
+  return Math.max(MINUTE_MS, Math.round(ms / MINUTE_MS) * MINUTE_MS)
+}
+
+function rangeGrainMs(ms: number): number {
+  return ms < 10_000 ? 1_000 : ms < MINUTE_MS ? 5_000 : MINUTE_MS
 }

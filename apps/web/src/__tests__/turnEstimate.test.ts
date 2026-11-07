@@ -183,6 +183,31 @@ describe('estimateReplyStartMs', () => {
     expect(replyStartRange(1_200)).toEqual({ lowMs: 1_000, highMs: 2_000 })
   })
 
+  it('rounds each end to a grid that suits its size: seconds under a minute, minutes from one on', () => {
+    // A median of a few turns does not know a 43 s wait to the second, and a
+    // two-minute wait read out as "96–150 s" is a sum the player has to do.
+    expect(replyStartRange(43_000)).toEqual({ lowMs: 35_000, highMs: 55_000 })
+    expect(replyStartRange(27_000)).toEqual({ lowMs: 20_000, highMs: 35_000 })
+    expect(replyStartRange(108_000)).toEqual({ lowMs: 60_000, highMs: 120_000 })
+    expect(replyStartRange(120_000)).toEqual({ lowMs: 120_000, highMs: 180_000 })
+    expect(replyStartRange(185_000)).toEqual({ lowMs: 120_000, highMs: 240_000 })
+    // Where the range crosses the minute, each end keeps its own grid.
+    expect(replyStartRange(60_000)).toEqual({ lowMs: 50_000, highMs: 60_000 })
+  })
+
+  it('never rounds an end past the estimate, or the range down to a single figure', () => {
+    // 1.25 × 70 s is 87.5 s, which is 1 min to the nearest minute: below the
+    // 70 s the range is meant to hold. 0.8 × 115 s rounds up to 2 min.
+    expect(replyStartRange(70_000)).toEqual({ lowMs: 55_000, highMs: 120_000 })
+    expect(replyStartRange(115_000)).toEqual({ lowMs: 60_000, highMs: 120_000 })
+    for (let ms = REPLY_START_THRESHOLD_MS; ms <= 600_000; ms += 500) {
+      const { lowMs, highMs } = replyStartRange(ms)
+      expect(lowMs).toBeLessThanOrEqual(ms)
+      expect(highMs).toBeGreaterThanOrEqual(ms)
+      expect(highMs).toBeGreaterThan(lowMs)
+    }
+  })
+
   it('has a threshold under which no estimate is shown', () => {
     expect(REPLY_START_THRESHOLD_MS).toBe(4_000)
   })

@@ -97,7 +97,10 @@ Worth knowing about every number the panel quotes:
   recent recorded turns (`GET /api/performance/rolling`); the fraction read
   comes from the engine's own progress reports. Nothing comes from the docs
   or a model size.
-- **Estimates are ranges**, because a median is not a promise.
+- **Estimates are ranges**, because a median is not a promise, and each
+  end is rounded no finer than a median deserves: to the second under ten
+  seconds, to five seconds under a minute, and to the whole minute beyond
+  ("Reply starts in about 1–2 min.").
 - **They never leave the machine.** The per-turn records live in the local
   session database beside the transcript (see [privacy](privacy.md)); the
   older whole-turn samples sit in browser local storage under

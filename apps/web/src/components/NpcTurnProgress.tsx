@@ -128,6 +128,15 @@ export default function NpcTurnProgress({
   }, [active])
 
   const name = npcName?.trim() || null
+  // Seconds under a minute and minutes from a minute on, the grid
+  // replyStartRange rounds to: "about 1–2 min", never "about 86–135 s".
+  const replyStartCopy = ({ lowMs, highMs }: { lowMs: number; highMs: number }): string => {
+    const seconds = (ms: number) => Math.round(ms / 1000)
+    const minutes = (ms: number) => Math.max(1, Math.round(ms / 60_000))
+    if (highMs < 60_000) return t('turnProgress.replyStartsInSeconds', { low: seconds(lowMs), high: seconds(highMs) })
+    if (lowMs >= 60_000) return t('turnProgress.replyStartsInMinutes', { low: minutes(lowMs), high: minutes(highMs) })
+    return t('turnProgress.replyStartsInSecondsToMinutes', { low: seconds(lowMs), high: minutes(highMs) })
+  }
   const phraseFor = (s: TurnStage): string =>
     name ? t(`turnProgress.named.${s}`, { name }) : t(`turnProgress.unnamed.${s}`)
 
@@ -164,12 +173,7 @@ export default function NpcTurnProgress({
   const estimateText = hasEstimate ? formatDuration(quotedEstimateMs) : ''
 
   // ── Captions ───────────────────────────────────────────────────────────
-  const replyStartText = replyStart
-    ? t('turnProgress.replyStartsIn', {
-        low: Math.round(replyStart.lowMs / 1000),
-        high: Math.round(replyStart.highMs / 1000),
-      })
-    : ''
+  const replyStartText = replyStart ? replyStartCopy(replyStart) : ''
   const detail = hasStages
     ? replyStartText
     : !hasEstimate

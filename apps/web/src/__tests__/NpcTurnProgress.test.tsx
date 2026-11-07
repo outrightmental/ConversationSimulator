@@ -315,6 +315,16 @@ describe('NpcTurnProgress', () => {
       )
     })
 
+    it('quotes a wait of a minute or more in minutes, the way the clock beside it reads', () => {
+      const { unmount } = renderStage({ stage: 'reading', prompt: { processed: 200, total: 2200, cached: 0 }, replyStart: { lowMs: 60_000, highMs: 120_000 } })
+      expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 1–2 min.')
+      expect(screen.getByTestId('npc-turn-progress-detail')).not.toHaveTextContent(/\d{3}/)
+      unmount()
+      // A range that crosses the minute gives each end its own unit.
+      renderStage({ stage: 'reading', prompt: { processed: 200, total: 2200, cached: 0 }, replyStart: { lowMs: 55_000, highMs: 120_000 } })
+      expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 55 s–2 min.')
+    })
+
     it('shows no estimate when none was given: writing, or under the threshold', () => {
       renderStage({ stage: 'writing', streaming: true, replyStart: null })
       expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument()

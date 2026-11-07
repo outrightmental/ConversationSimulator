@@ -1475,13 +1475,27 @@ describe('Conversation screen', () => {
       await submitFirst()
       // Before any progress report: the measured time to first words, as a range.
       fire(progress('waiting', null, 1))
-      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about 22–34 s\./))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about 20–35 s\./))
       // 1,527 unread tokens at 87 tokens/s plus one short sentence at 6.5 tokens/s ≈ 21 s.
       fire(progress('reading', { processed: 509, total: 2036, cached: 0 }, 2))
-      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about 17–27 s\./))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about 15–25 s\./))
       // Words arriving: no estimate.
       fire({ type: 'npc.token', seq: 3, session_id: SESSION_ID, ts: 't', payload: { text: 'Well.' } })
       await waitFor(() => expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument())
+    })
+
+    it('quotes a CPU-speed read in minutes, not in three-digit seconds', async () => {
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 20, writing_tps: 3, first_token_ms: 90000, first_words_ms: 100000, total_ms: 180000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      // 2,000 unread tokens at 20 tokens/s plus one short sentence at 3: 108 s.
+      fire(progress('reading', { processed: 200, total: 2200, cached: 0 }, 1))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 1–2 min.'))
     })
 
     it('counts the measured time to first words down with the clock, and withdraws it once it has passed', async () => {
@@ -1502,9 +1516,9 @@ describe('Conversation screen', () => {
         await submitFirst()
         const detail = () => screen.queryByTestId('npc-turn-progress-detail')
         fire(progress('waiting', null, 1))
-        await waitFor(() => expect(detail()).toHaveTextContent('Reply starts in about 22–34 s.'))
+        await waitFor(() => expect(detail()).toHaveTextContent('Reply starts in about 20–35 s.'))
         await vi.advanceTimersByTimeAsync(10_000)
-        expect(detail()).toHaveTextContent('Reply starts in about 14–21 s.')
+        expect(detail()).toHaveTextContent('Reply starts in about 15–20 s.')
         await vi.advanceTimersByTimeAsync(10_000)
         expect(detail()).toHaveTextContent('Reply starts in about 6–9 s.')
         // Past the median there is nothing honest left to quote: the stage and
