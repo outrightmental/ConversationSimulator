@@ -221,7 +221,10 @@ class LlamaCppSidecar(SidecarProcess):
         with ``resolve_launch_config()`` so every start site launches the same
         way for the same model; when omitted the defaults apply (one slot,
         8192-token context, 256-token batches, 1 GiB cache). An explicit
-        ``context_length`` wins over ``launch.context_length``.
+        ``context_length`` is a statement for this start alone: it goes on
+        the command line as ``--ctx-size`` and wins over both
+        ``launch.context_length`` and a ``LLAMA_ARG_CTX_SIZE`` pinned in the
+        environment, which otherwise keeps the flag off the command line.
 
         Raises RuntimeError on port conflict, missing executable, or startup
         failure. Raises TimeoutError if startup_timeout elapses before /health
