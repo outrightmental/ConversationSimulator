@@ -315,6 +315,55 @@ describe('NpcTurnProgress', () => {
       )
     })
 
+    it('announces each stage once, not once per progress report', () => {
+      // llama-server reports once per batch of prompt it reads, and every
+      // report moves the estimate. The caption may follow it; the status
+      // region is read out whole on every change, so it must not.
+      const { rerender } = render(
+        <NpcTurnProgress active elapsedMs={0} estimateMs={null} npcName="Dana" stage="waiting" replyStart={{ lowMs: 20_000, highMs: 35_000 }} />,
+      )
+      const status = screen.getByTestId('npc-turn-progress-status')
+      const heard = new Set([status.textContent])
+      const reports: Array<[number, number, number]> = [
+        [200, 60_000, 120_000],
+        [328, 55_000, 120_000],
+        [456, 50_000, 60_000],
+        [584, 45_000, 70_000],
+        [712, 40_000, 55_000],
+      ]
+      for (const [processed, lowMs, highMs] of reports) {
+        rerender(
+          <NpcTurnProgress active elapsedMs={2_000} estimateMs={null} npcName="Dana" stage="reading" prompt={{ processed, total: 2200, cached: 0 }} replyStart={{ lowMs, highMs }} />,
+        )
+        heard.add(status.textContent)
+      }
+      // The caption is current …
+      expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 40–55 s.')
+      // … and the status changed once per stage, carrying the estimate the
+      // stage began with.
+      expect([...heard]).toEqual([
+        'Dana is getting ready… Reply starts in about 20–35 s.',
+        'Dana is thinking… Reply starts in about 1–2 min.',
+      ])
+    })
+
+    it('carries the current estimate in the half-minute announcement, on the same grid', () => {
+      const at = (elapsedMs: number, lowMs: number, highMs: number) => (
+        <NpcTurnProgress active elapsedMs={elapsedMs} estimateMs={null} npcName="Dana" stage="reading" prompt={{ processed: 400, total: 2200, cached: 0 }} replyStart={{ lowMs, highMs }} />
+      )
+      const { rerender } = render(at(29_000, 60_000, 120_000))
+      const announcement = screen.getByTestId('npc-turn-progress-announcement')
+      expect(announcement).toHaveTextContent('')
+      rerender(at(31_000, 40_000, 55_000))
+      expect(announcement).toHaveTextContent('Still waiting on Dana — 30s so far. The reply is not lost. Reply starts in about 40–55 s.')
+      // A report between grid points moves the caption, not the announcement.
+      rerender(at(45_000, 30_000, 45_000))
+      expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 30–45 s.')
+      expect(announcement).toHaveTextContent('Still waiting on Dana — 30s so far. The reply is not lost. Reply starts in about 40–55 s.')
+      rerender(at(61_000, 10_000, 15_000))
+      expect(announcement).toHaveTextContent('Still waiting on Dana — 1m 00s so far. The reply is not lost. Reply starts in about 10–15 s.')
+    })
+
     it('quotes a wait of a minute or more in minutes, the way the clock beside it reads', () => {
       const { unmount } = renderStage({ stage: 'reading', prompt: { processed: 200, total: 2200, cached: 0 }, replyStart: { lowMs: 60_000, highMs: 120_000 } })
       expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 1–2 min.')

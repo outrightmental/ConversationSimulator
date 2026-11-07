@@ -1484,6 +1484,38 @@ describe('Conversation screen', () => {
       await waitFor(() => expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument())
     })
 
+    it('announces each stage once, however many progress reports the read takes', async () => {
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 6.5, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      const status = () => screen.getByTestId('npc-turn-progress-status').textContent
+      const detail = () => screen.queryByTestId('npc-turn-progress-detail')?.textContent ?? ''
+      fire(progress('waiting', null, 1))
+      await waitFor(() => expect(status()).toMatch(/getting ready… Reply starts/))
+      const heard = new Set([status()])
+      const captions = new Set<string>()
+      // A 2,036-token prompt reported in 509-token batches, the way
+      // llama-server reports it.
+      for (const [i, processed] of [509, 1018, 1527].entries()) {
+        fire(progress('reading', { processed, total: 2036, cached: 0 }, i + 2))
+        heard.add(status())
+        captions.add(detail())
+      }
+      // The caption followed the read …
+      expect(captions.size).toBe(3)
+      // … and the status region spoke once for getting ready and once for
+      // thinking, not once per batch.
+      expect([...heard]).toEqual([
+        'Dana Whitfield is getting ready… Reply starts in about 20–35 s.',
+        'Dana Whitfield is thinking… Reply starts in about 15–25 s.',
+      ])
+    })
+
     it('quotes a CPU-speed read in minutes, not in three-digit seconds', async () => {
       mockApi.getRollingSpeeds.mockResolvedValue({
         ok: true,

@@ -77,7 +77,7 @@ when it has something honest to say — when the reply will start.
 | **Dana is replying…** | Words are arriving in the transcript, one checked sentence at a time. No estimate: the transcript is the progress. |
 | **Updating the scene…** beside the reply box | The whole line is on screen and the engine is finishing the turn's bookkeeping. The reply box already works; a message sent now is queued and goes the moment the turn is saved. |
 | **Dana is trying that again…** | The reply failed a check and is being regenerated. No estimate: this second attempt is not streamed, and nothing measured says how long it takes. |
-| The clock | Runs for the whole wait, so a long turn never looks like a frozen app. After 30 s the screen reader is told the elapsed time once per half-minute, and that the reply is not lost. |
+| The clock | Runs for the whole wait, so a long turn never looks like a frozen app. A screen reader hears each stage once, with the estimate as that stage began, and never a new figure per progress report. After 30 s it is told the elapsed time once per half-minute, with the current estimate when there is one, and that the reply is not lost. |
 | **Once this reply arrives, you can shorten the next ones under Reply speed, in Settings.** | Added under the bar once a wait passes about five seconds. It is text, not a link: leaving the screen mid-turn loses the pending message when the session resumes, so the setting is named and left for after the reply. The demo adds that closing other apps usually helps, which is the one thing its hardware can do. |
 
 With no live connection to the engine's progress (an older core, or the socket

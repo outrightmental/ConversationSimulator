@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { TurnStage } from '@convsim/shared'
 import { formatApproxDuration, formatDuration, roundApproxDuration } from '../lib/formatDuration'
 import { useTranslation } from '../i18n'
@@ -94,9 +94,10 @@ export interface NpcTurnProgressProps {
  *
  * Accessibility: everything the panel draws changes every second, so all of it
  * is hidden from assistive tech and two sr-only live regions carry the news
- * instead — one with the stage phrase and the estimate (announced once per
- * wait: it changes only when the stage or the estimate does), one with the
- * elapsed time on a 30 s grid. Nothing is announced while the reply streams —
+ * instead — one with the stage phrase and the estimate as that stage began
+ * (it changes when the stage does, never with a progress report), one with
+ * the elapsed time and the current estimate on a 30 s grid. Nothing is
+ * announced while the reply streams —
  * the transcript's live region is already reading it — and "Your turn." is
  * announced at commit. Both regions are rendered whether or not a turn is out,
  * with empty text between turns: a live region created in the same breath as
@@ -173,7 +174,7 @@ export default function NpcTurnProgress({
   const estimateText = hasEstimate ? formatDuration(quotedEstimateMs) : ''
 
   // ── Captions ───────────────────────────────────────────────────────────
-  const replyStartText = replyStart ? replyStartCopy(replyStart) : ''
+  const replyStartText = hasStages && replyStart ? replyStartCopy(replyStart) : ''
   const detail = hasStages
     ? replyStartText
     : !hasEstimate
@@ -182,11 +183,34 @@ export default function NpcTurnProgress({
         ? t('turnProgress.longerThanUsual', { estimate: estimateText })
         : t('turnProgress.toGo', { remaining: formatApproxDuration(remainingMs), estimate: estimateText })
 
-  // The announced status: the stage and the estimate, once per wait (it only
-  // changes when one of them does), and "Your turn." when the turn lands.
+  // The caption above follows every progress report and every tick of the
+  // clock, and it is hidden from assistive tech. A live region that did the
+  // same would read the whole phrase out again on every batch of prompt the
+  // engine reports, several times a wait. So what is announced is sampled:
+  // the status takes the estimate as it stood when the stage began (or when
+  // one first existed in that stage) and keeps it until the stage changes,
+  // and the half-minute announcement takes it as it stands on that grid.
+  const stageKey: TurnStage | null = active && hasStages ? liveStage : null
+  const [heardInStage, setHeardInStage] = useState<{ stage: TurnStage | null; text: string }>({ stage: null, text: '' })
+  const stageHasChanged = heardInStage.stage !== stageKey
+  const stageEstimateText = stageHasChanged || heardInStage.text === '' ? replyStartText : heardInStage.text
+  // Updating state during render is React's pattern for keeping a value from
+  // an earlier render: the render is redone before anything is committed, so
+  // the live region never shows the unsampled text.
+  if (stageHasChanged || heardInStage.text !== stageEstimateText) {
+    setHeardInStage({ stage: stageKey, text: stageEstimateText })
+  }
+  const announceSlot = active ? Math.floor(elapsedMs / ANNOUNCE_INTERVAL_MS) : -1
+  const [heardInSlot, setHeardInSlot] = useState<{ slot: number; text: string }>({ slot: -1, text: '' })
+  const slotEstimateText = heardInSlot.slot === announceSlot ? heardInSlot.text : replyStartText
+  if (heardInSlot.slot !== announceSlot) setHeardInSlot({ slot: announceSlot, text: replyStartText })
+
+  // The announced status: the stage and the estimate as the stage began, and
+  // "Your turn." when the turn lands. It changes when the stage does, never
+  // with a progress report.
   const statusText = active
     ? hasStages
-      ? [phrase, replyStartText].filter(Boolean).join(' ')
+      ? [phrase, stageEstimateText].filter(Boolean).join(' ')
       : hasEstimate
         ? t('turnProgress.statusWithEstimate', { phrase, estimate: estimateText })
         : t('turnProgress.statusNoEstimate', { phrase })
@@ -200,7 +224,7 @@ export default function NpcTurnProgress({
   const announcedOverrun = hasEstimate && announcedElapsedMs > quotedEstimateMs
   const announcedElapsedText = formatDuration(announcedElapsedMs)
   const suffix = name ? 'Named' : 'Unnamed'
-  const announcementText =
+  const elapsedAnnouncement =
     !active || streaming || liveStage === 'writing' || elapsedMs < FIRST_ANNOUNCE_MS
       ? ''
       : announcedOverrun
@@ -208,6 +232,11 @@ export default function NpcTurnProgress({
         : hasEstimate
           ? t(`turnProgress.stillWaitingOf${suffix}`, { name: name ?? '', elapsed: announcedElapsedText, estimate: estimateText })
           : t(`turnProgress.stillWaiting${suffix}`, { name: name ?? '', elapsed: announcedElapsedText })
+  // The estimate rides along on the same half-minute grid, so a long wait
+  // hears an up-to-date figure without hearing one per progress report.
+  const announcementText = elapsedAnnouncement
+    ? [elapsedAnnouncement, slotEstimateText].filter(Boolean).join(' ')
+    : ''
 
   const indeterminate = !hasReadingBar && !hasEstimate
   const barValue = hasReadingBar ? readPercent : fillPercent
