@@ -234,10 +234,11 @@ them starts anyway: an unknown flag is fatal, an unknown variable is ignored.
 Every variable is applied with `setdefault`, so a value already in the app's
 environment is an operator override that wins — start the app with
 `LLAMA_ARG_N_PARALLEL=2` and the engine runs two slots. `LLAMA_ARG_CTX_SIZE`
-is honoured the same way: when it is set, `--ctx-size` is left off the command
-line so the flag cannot silently beat the variable. An explicit
-`context_length` in the `POST /api/sidecar/start` body also wins over the
-registry value.
+is honoured the same way: when it is set and nothing states a context size
+for this start, `--ctx-size` is left off the command line so the flag cannot
+silently beat the variable. An explicit `context_length` in the
+`POST /api/sidecar/start` body is such a statement: it goes on the command
+line as `--ctx-size` and wins over both the registry value and the variable.
 
 None of this changes sampling: the adapter sends the same request body as
 before. It applies only to an engine the app launches; a `llama-server` the

@@ -520,16 +520,25 @@ _FAKE_LLAMA_SERVER = textwrap.dedent("""\
     Handles:
       GET  /health                    → 200 {"status":"ok"}
       GET  /v1/models                 → 200 {"data":[{"id":"fake-model"}]}
-      GET  /props                     → 200 slot count and per-slot context, derived
-                                        from --ctx-size and the LLAMA_ARG_* variables
-                                        the way llama-server derives them; the engine
-                                        defaults (issue #489) when they are absent
+      GET  /props                     → 200 slot count and per-slot context: the
+                                        context from --ctx-size, else LLAMA_ARG_CTX_SIZE;
+                                        the slot count from --parallel, else
+                                        LLAMA_ARG_N_PARALLEL (a flag beats its variable,
+                                        as on llama-server); the engine defaults
+                                        (issue #489) when neither is given. The batch
+                                        and cache settings are accepted, not reported.
       GET  /__launch                  → 200 {"argv": [...], "env": {LLAMA_ARG_*}}
                                         (test-only: what the engine was launched with)
       POST /v1/chat/completions       → SSE stream with one token then [DONE]
 
+    Like the real engine, the fake refuses a flag it does not know ("error:
+    invalid argument") and exits non-zero before it listens.
+
     HONOUR_LAUNCH_ENV=False models an engine build that predates the
-    LLAMA_ARG_* variables: it starts all the same and keeps its defaults.
+    LLAMA_ARG_* variables and the flags behind them: it ignores the variables,
+    keeps its defaults, and refuses --parallel, --batch-size and --cache-ram on
+    the command line. It starts all the same when those settings travel as
+    variables, which is why they do.
     \"\"\"
     import http.server
     import json
@@ -538,26 +547,33 @@ _FAKE_LLAMA_SERVER = textwrap.dedent("""\
 
     HONOUR_LAUNCH_ENV = __HONOUR_LAUNCH_ENV__
 
-    # Engine defaults, as the log in issue #489 showed them.
-    port = 7356
-    ctx_size = 40960  # the model's trained length when no --ctx-size is given
-    model_path = None
+    # Flags every llama-server build has: the ones build_command() may emit.
+    BASE_FLAGS = {"--model", "--host", "--port", "--ctx-size", "--threads", "--n-gpu-layers"}
+    # Flags only a build that knows the LLAMA_ARG_* variables has.
+    LAUNCH_FLAGS = {"--parallel", "-np", "--batch-size", "-b", "--cache-ram"}
+    KNOWN_FLAGS = BASE_FLAGS | (LAUNCH_FLAGS if HONOUR_LAUNCH_ENV else set())
+
     args = sys.argv[1:]
-    for i, arg in enumerate(args):
-        if i + 1 >= len(args):
-            break
-        if arg == "--port":
-            port = int(args[i + 1])
-        elif arg == "--ctx-size":
-            ctx_size = int(args[i + 1])
-        elif arg == "--model":
-            model_path = args[i + 1]
+    flags = {}
+    for i in range(0, len(args), 2):
+        flag = args[i]
+        if flag not in KNOWN_FLAGS or i + 1 >= len(args):
+            print("error: invalid argument: " + flag, file=sys.stderr)
+            sys.exit(1)
+        flags[flag] = args[i + 1]
 
     def _env_int(name, default):
         raw = os.environ.get(name) if HONOUR_LAUNCH_ENV else None
         return int(raw) if raw else default
 
-    n_parallel = _env_int("LLAMA_ARG_N_PARALLEL", 4)
+    # Engine defaults, as the log in issue #489 showed them: four slots, and
+    # the model's trained length (40960) when nothing states a context.
+    port = int(flags.get("--port", 7356))
+    model_path = flags.get("--model")
+    ctx_size = int(flags.get("--ctx-size") or _env_int("LLAMA_ARG_CTX_SIZE", 40960))
+    n_parallel = int(
+        flags.get("--parallel") or flags.get("-np") or _env_int("LLAMA_ARG_N_PARALLEL", 4)
+    )
     launch_env = {k: v for k, v in os.environ.items() if k.startswith("LLAMA_ARG_")}
 
     _PROPS = json.dumps({
@@ -638,7 +654,8 @@ def _write_fake_server(tmp_path: Path, *, honour_launch_env: bool = True) -> str
     """Write the fake llama-server script and return its path.
 
     ``honour_launch_env=False`` writes a build that ignores the ``LLAMA_ARG_*``
-    variables, standing in for an engine that predates them.
+    variables and refuses the flags behind them, standing in for an engine
+    that predates both.
     """
     exe = tmp_path / "fake-llama-server"
     exe.write_text(
@@ -1180,12 +1197,14 @@ async def test_start_applies_launch_config_to_command_line_and_env(
 ):
     """The context size goes on the command line; slots, batch and cache go in
     the environment, where an engine build lacking the flag ignores them
-    instead of refusing to start. No slot id is sent anywhere."""
+    instead of refusing to start. Whether a request pins a slot is decided by
+    the adapter's request body, not by the launch, so that guarantee lives in
+    test_llama_cpp_runtime.py (test_chat_stream_never_pins_a_slot)."""
     captured = await _capture_launch(tmp_path, monkeypatch, launch=LaunchConfig(context_length=6144))
 
     argv = captured["argv"]
     assert argv[argv.index("--ctx-size") + 1] == "6144"
-    for flag in ("--parallel", "-np", "--batch-size", "-b", "--cache-ram", "--id-slot"):
+    for flag in ("--parallel", "-np", "--batch-size", "-b", "--cache-ram"):
         assert flag not in argv
 
     env = captured["env"]
@@ -1206,6 +1225,24 @@ async def test_start_without_launch_config_uses_the_defaults(tmp_path, monkeypat
     assert captured["env"]["LLAMA_ARG_N_PARALLEL"] == "1"
     assert captured["env"]["LLAMA_ARG_BATCH"] == "256"
     assert captured["env"]["LLAMA_ARG_CACHE_RAM"] == "1024"
+
+
+@pytest.mark.asyncio
+async def test_start_forwards_a_non_default_launch_config(tmp_path, monkeypatch, clean_launch_env):
+    """start() passes on the caller's values rather than re-deriving the
+    defaults: when #529 hands it a player's launch profile, the engine must
+    run on that profile. The defaults test above cannot tell the two apart."""
+    captured = await _capture_launch(
+        tmp_path, monkeypatch,
+        launch=LaunchConfig(context_length=6144, parallel=2, batch_size=512, cache_ram_mib=0),
+    )
+
+    argv = captured["argv"]
+    assert argv[argv.index("--ctx-size") + 1] == "6144"
+    env = captured["env"]
+    assert env["LLAMA_ARG_N_PARALLEL"] == "2"
+    assert env["LLAMA_ARG_BATCH"] == "512"
+    assert env["LLAMA_ARG_CACHE_RAM"] == "0"
 
 
 @pytest.mark.asyncio
@@ -1233,6 +1270,25 @@ async def test_start_respects_operator_launch_env_overrides(tmp_path, monkeypatc
     assert captured["env"]["LLAMA_ARG_CTX_SIZE"] == "4096"
     assert "--ctx-size" not in captured["argv"]
     assert captured["env"]["LLAMA_ARG_BATCH"] == "256"  # not overridden → still applied
+
+
+@pytest.mark.asyncio
+async def test_start_explicit_context_length_beats_a_pinned_context_variable(
+    tmp_path, monkeypatch, clean_launch_env
+):
+    """A context_length stated for this one start (the POST /api/sidecar/start
+    body) is the most specific statement there is: it goes on the command line
+    as --ctx-size and wins over both the registry value and a pinned
+    LLAMA_ARG_CTX_SIZE. Only the registry value steps aside for the variable."""
+    monkeypatch.setenv("LLAMA_ARG_CTX_SIZE", "4096")
+
+    captured = await _capture_launch(
+        tmp_path, monkeypatch, context_length=2048, launch=LaunchConfig(context_length=6144)
+    )
+
+    argv = captured["argv"]
+    assert argv[argv.index("--ctx-size") + 1] == "2048"
+    assert captured["env"]["LLAMA_ARG_CTX_SIZE"] == "4096"
 
 
 @pytest.mark.asyncio
@@ -1324,9 +1380,37 @@ async def test_fake_engine_gives_a_player_supplied_model_8192_and_one_slot(
 
 
 @pytest.mark.asyncio
+async def test_fake_engine_runs_on_a_pinned_context_variable(tmp_path, monkeypatch, clean_launch_env):
+    """End to end for the operator override: with LLAMA_ARG_CTX_SIZE pinned,
+    --ctx-size stays off the command line and the engine loads the pinned
+    context, not the registry's."""
+    monkeypatch.setenv("LLAMA_ARG_CTX_SIZE", "4096")
+    exe = _write_fake_server(tmp_path)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start(
+        "fake-model.gguf", executable=exe, port=port, startup_timeout=15.0,
+        launch=LaunchConfig(context_length=6144),
+    )
+    try:
+        props, seen = await _props_and_launch(port)
+    finally:
+        await sidecar.stop()
+
+    assert "--ctx-size" not in seen["argv"]
+    assert seen["env"]["LLAMA_ARG_CTX_SIZE"] == "4096"
+    assert props["default_generation_settings"]["n_ctx"] == 4096
+
+
+@pytest.mark.asyncio
 async def test_engine_that_ignores_the_launch_variables_still_starts(tmp_path, clean_launch_env):
     """An engine build that does not recognise LLAMA_ARG_* must start all the
-    same — the reason these settings are variables and not flags."""
+    same: that is why these settings are variables and not flags. The old
+    build refuses --parallel, --batch-size and --cache-ram the way the real
+    engine refuses a flag it does not know, so start() fails here ("exited
+    early", with the engine's error in runtime.log) if a launch setting is
+    ever moved onto the command line."""
     exe = _write_fake_server(tmp_path, honour_launch_env=False)
     port = _free_port()
     sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
@@ -1344,6 +1428,8 @@ async def test_engine_that_ignores_the_launch_variables_still_starts(tmp_path, c
     # The variables reached the process but were ignored: the engine kept its
     # own slot count, while --ctx-size (a flag every build has) still applied.
     assert seen["env"]["LLAMA_ARG_N_PARALLEL"] == "1"
+    assert seen["env"]["LLAMA_ARG_BATCH"] == "256"
+    assert seen["env"]["LLAMA_ARG_CACHE_RAM"] == "1024"
     assert props["total_slots"] == 4
     assert props["default_generation_settings"]["n_ctx"] == 8192 // 4
 

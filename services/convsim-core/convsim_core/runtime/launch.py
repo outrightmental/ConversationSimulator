@@ -12,8 +12,9 @@ This module is the one place that decides how the app launches the engine:
 
 * :class:`LaunchConfig` — the frozen set of launch settings.
 * :func:`resolve_launch_config` — the settings for a given model file, with
-  the context size read from the model registry (``DEFAULT_CONTEXT_LENGTH``
-  when the model has no registry row, e.g. a player-supplied GGUF).
+  the context size read from the model registry; a player-supplied GGUF uses
+  the context the player stated when registering it, or
+  ``DEFAULT_CONTEXT_LENGTH`` when they stated none.
 * :func:`launch_env` — the ``LLAMA_ARG_*`` environment the engine is spawned
   with.
 * :func:`context_length_for_command` — the ``--ctx-size`` to put on the
@@ -145,6 +146,9 @@ def context_length_for_command(config: LaunchConfig, env: Mapping[str, str]) -> 
     has it). To keep the override rule uniform — "a ``LLAMA_ARG_*`` already in
     the environment wins" — the flag is omitted when the operator pinned
     ``LLAMA_ARG_CTX_SIZE``, because a flag would silently beat the variable.
+    This decides only the registry-derived context. A context size stated for
+    one start (``LlamaCppSidecar.start(context_length=...)``) does not come
+    through here and goes on the command line regardless.
     """
     if env.get(ENV_CTX_SIZE):
         return None

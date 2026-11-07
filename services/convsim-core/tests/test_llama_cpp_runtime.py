@@ -659,3 +659,22 @@ async def test_chat_stream_sends_top_p_and_repeat_penalty_from_config():
     sent_payload = client.stream.call_args.kwargs["json"]
     assert sent_payload["top_p"] == 0.7
     assert sent_payload["repeat_penalty"] == 1.3
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_never_pins_a_slot(runtime):
+    """The app launches the engine with one slot (issue #523) and leaves slot
+    choice to the engine: no request names a slot, so a player who runs their
+    own multi-slot engine is not funnelled onto one slot either."""
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert "id_slot" not in sent_payload
+    assert "slot_id" not in sent_payload
