@@ -5,6 +5,20 @@ import { CopyDiagnosticsButton } from '../components/CopyDiagnosticsButton'
 import { fetchLogExcerpt, EXCERPT_UNAVAILABLE_NOTE } from '../api/diag'
 import type { ApiError } from '../api/errors'
 
+// Lets one test make report assembly blow up outright. Everything else in
+// api/diag stays real, including fetchLogExcerpt, which is tested below.
+const reportAssembly = vi.hoisted(() => ({ throws: false }))
+vi.mock('../api/diag', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/diag')>()
+  return {
+    ...actual,
+    buildDiagnosticsReport: (header: string, context?: string) =>
+      reportAssembly.throws
+        ? Promise.reject(new Error('log excerpt assembly failed'))
+        : actual.buildDiagnosticsReport(header, context),
+  }
+})
+
 const EXCERPT_PAYLOAD = {
   excerpt: 'ConversationSimulator log excerpt\n── runtime.log ──\nllama-server exited early (code 137)',
   sources: ['runtime.log'],
@@ -43,10 +57,12 @@ const SAMPLE_ERROR: ApiError = {
 
 beforeEach(() => {
   vi.unstubAllGlobals()
+  reportAssembly.throws = false
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  reportAssembly.throws = false
   // Remove the per-test clipboard stub so tests stay independent.
   delete (navigator as unknown as { clipboard?: unknown }).clipboard
 })
@@ -119,6 +135,78 @@ describe('CopyDiagnosticsButton', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }))
     expect(await screen.findByText('Copy failed')).toBeInTheDocument()
+  })
+
+  it('copies through the desktop shell when the web clipboard APIs are absent', async () => {
+    // The packaged macOS build (issue #508): the webview is served from
+    // tauri://localhost, which WKWebView does not treat as a secure context,
+    // so navigator.clipboard is undefined — and execCommand('copy') is refused
+    // because the user gesture did not survive the log-excerpt fetch above.
+    // Only the shell's own clipboard is left, and it has to be enough.
+    mockFetchOk()
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    const win = window as unknown as { __TAURI__?: unknown }
+    win.__TAURI__ = { core: { invoke } }
+    try {
+      expect(navigator.clipboard).toBeUndefined()
+      render(<CopyDiagnosticsButton error={SAMPLE_ERROR} context="ScenarioSetup-Submit" />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }))
+      expect(await screen.findByText('Copied!')).toBeInTheDocument()
+
+      const [command, args] = invoke.mock.calls[0]
+      expect(command).toBe('plugin:clipboard-manager|write_text')
+      const copied = String((args as { text: string }).text)
+      expect(copied).toContain('context: ScenarioSetup-Submit')
+      expect(copied).toContain('llama-server exited early (code 137)')
+    } finally {
+      delete win.__TAURI__
+    }
+  })
+
+  it('still copies the error header when report assembly throws', async () => {
+    // The button must always reach a verdict rather than sit disabled on
+    // "busy" — it is the one affordance a stranded user has left (issue #508).
+    reportAssembly.throws = true
+    const writeText = mockClipboard()
+    render(<CopyDiagnosticsButton error={SAMPLE_ERROR} context="ScenarioSetup-Submit" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }))
+    expect(await screen.findByText('Copied!')).toBeInTheDocument()
+
+    const copied = String(writeText.mock.calls[0][0])
+    expect(copied).toContain('kind: http-error')
+    expect(copied).toContain('context: ScenarioSetup-Submit')
+  })
+
+  it('reports failure rather than staying busy when nothing at all works', async () => {
+    reportAssembly.throws = true
+    // No clipboard mechanism either, so both the report and the fallback fail.
+    render(<CopyDiagnosticsButton error={SAMPLE_ERROR} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }))
+    expect(await screen.findByText('Copy failed')).toBeInTheDocument()
+    expect(screen.getByTestId('copy-diagnostics')).not.toBeDisabled()
+  })
+
+  it('does not submit the form it is rendered inside', async () => {
+    // ScenarioSetup renders the submit-error card — and this button — inside
+    // the brief's launch form. An untyped <button> defaults to type=submit,
+    // so pressing it re-fired the request that had just failed and unmounted
+    // the card mid-copy, which is why it never said "Copied!" (issue #508).
+    mockFetchOk()
+    const writeText = mockClipboard()
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault())
+    render(
+      <form onSubmit={onSubmit}>
+        <CopyDiagnosticsButton error={SAMPLE_ERROR} />
+      </form>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }))
+    expect(await screen.findByText('Copied!')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(writeText).toHaveBeenCalled()
   })
 
   it('supports a custom label', () => {
