@@ -36,7 +36,6 @@ from convsim_prompt import (
     compose_turn_prompt,
     parse_turn_output,
 )
-from convsim_prompt.turn_output import _REPAIR_PROMPT
 from convsim_prompt.types import ScenarioData
 from convsim_prompt.types import ResponseStyleOverrides, ScenarioData
 
@@ -64,9 +63,9 @@ from convsim_core.services.reply_speed import (
     scaled_max_words,
 )
 from convsim_core.services.turn_timing import (
+    ExtraCallKind,
     StreamObservation,
     TurnClock,
-    TurnTiming,
     TurnTimingBuilder,
 )
 from convsim_core.storage.repositories.relationship_repo import get_relationship_recap
@@ -164,9 +163,32 @@ class _SyncRuntimeBridge:
     parse_turn_output's except clause, which logs it and falls back gracefully.
     """
 
-    def __init__(self, runtime: ChatRuntime, timing: Optional[TurnTimingBuilder] = None) -> None:
+    def __init__(
+        self,
+        runtime: ChatRuntime,
+        timing: Optional[TurnTimingBuilder] = None,
+        parse_events: Optional[List[TurnEvent]] = None,
+    ) -> None:
         self._runtime = runtime
         self._timing = timing
+        # The same list the parser appends its events to, read at call time to
+        # tell the two kinds of extra call apart (see _call_kind).
+        self._parse_events = parse_events if parse_events is not None else []
+
+    def _call_kind(self) -> ExtraCallKind:
+        """Which of the parser's two follow-up calls is being made.
+
+        Every extra model call is counted in the turn's record (issue #519).
+        The parser makes at most one structural repair and at most one
+        content-safety retry, in that order, and reports an
+        ``output_violation_detected`` event before the retry and never before
+        the repair. So the events it has emitted by the time it calls say which
+        call this is, without the core reading the prompt text, which belongs
+        to the parser.
+        """
+        if any(e.event_type == "output_violation_detected" for e in self._parse_events):
+            return "safety_retry"
+        return "repair"
 
     def call_llm(self, prompt: str) -> str:
         final_holder: List[ChatFinal] = []
@@ -180,10 +202,7 @@ class _SyncRuntimeBridge:
                 final_holder.append(final)
             return text
 
-        # Every extra model call is counted in the turn's record (issue #519):
-        # the parser's one structural repair and its one content-safety retry
-        # are the two kinds, told apart by the prompt the parser sends.
-        kind = "repair" if prompt == _REPAIR_PROMPT else "safety_retry"
+        kind = self._call_kind()
         started = time.perf_counter()
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
@@ -231,9 +250,11 @@ class TurnPipelineResult:
     new_flow_state: str
     turn_number: int
     used_fallback: bool
-    # What the turn cost (issue #519). None only for turns that never reached
-    # the model: an input safety stop answers from a canned line.
-    timing: Optional[TurnTiming] = None
+    # What the turn cost so far (issue #519): the builder the pipeline filled,
+    # for the caller to add what it alone can see (voice, the whole request)
+    # and build the record once. None only for turns that never reached the
+    # model: an input safety stop answers from a canned line.
+    timing: Optional[TurnTimingBuilder] = None
 
 
 def _normalize_text(text: str) -> str:
@@ -575,9 +596,12 @@ async def process_turn(
     timing.compose_ms = (time.perf_counter() - compose_started) * 1000.0
     observation = StreamObservation(sent_at=time.perf_counter())
     timing.observation = observation
-    raw_text, native_structured, _final = await _collect_runtime_output_timed(
+    raw_text, native_structured, final = await _collect_runtime_output_timed(
         runtime, request, observation
     )
+    # A reply the token budget cut off, or one the caller cancelled, is
+    # recorded as stopped so the rolling medians leave it out (issue #519).
+    timing.mark_finish(final.finish_reason if final is not None else None)
     parse_started = time.perf_counter()
 
     # 8. Validate / repair / fallback.
@@ -589,8 +613,8 @@ async def process_turn(
 
     # Wrap the runtime so parse_turn_output can make synchronous repair calls.
     # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
-    runtime_bridge = _SyncRuntimeBridge(runtime, timing)
     turn_parse_events: List[TurnEvent] = []
+    runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events)
     turn_output = parse_turn_output(
         parse_input,
         runtime=runtime_bridge,
@@ -843,5 +867,5 @@ async def process_turn(
         new_flow_state=new_flow_state,
         turn_number=turn_number,
         used_fallback=used_fallback,
-        timing=timing.build(),
+        timing=timing,
     )

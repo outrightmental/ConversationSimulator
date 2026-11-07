@@ -10,11 +10,21 @@ from fastapi.testclient import TestClient
 from convsim_core.app import create_app
 from convsim_core.runtime.fake import FAKE_READING_TPS, FAKE_WRITING_TPS, FakeChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatRequest, ChatToken
-from convsim_core.services.model_manager_service import set_active_config
+from convsim_core.services.model_manager_service import (
+    create_install_record,
+    recorded_model_id,
+    register_user_gguf,
+    set_active_config,
+)
 from convsim_core.services.turn_timing import (
     TURN_STAGES,
     TURN_TIMING_EVENT_TYPE,
+    TurnClock,
+    TurnContext,
+    TurnRates,
     TurnTiming,
+    TurnTimingBuilder,
+    persist_turn_timing,
     rolling_speeds,
 )
 
@@ -90,6 +100,8 @@ class TestRecordOnTheTurnResponse:
         assert record.tokens.spoken is None
         assert record.context.runtime_id == "fake"
         assert record.context.model_id == "fake-small"
+        # Pinned to the fake runtime: no installed model served this turn.
+        assert record.context.registry_model_id is None
         assert record.context.cold is True  # nothing came from cache
         assert record.other_ms >= 0
 
@@ -195,15 +207,76 @@ class _GarbageRuntime(FakeChatRuntime):
         yield ChatFinal(text="not json {{{{", model_id="fake-small", input_tokens=5, output_tokens=5)
 
 
-def _session_on(app, client: TestClient, runtime) -> str:
-    """Start a fake-pinned session, then swap the shared runtime underneath it.
+_CLEAN_REPLY = {
+    "npc_utterance": "Tell me about a time you led a team.",
+    "npc_emotion": "curious",
+    "state_delta": {},
+    "event_flags": [],
+    "rubric_observations": [],
+    "safety": {"status": "ok"},
+    "session_control": {"continue_session": True},
+}
+
+
+class _CutOffRuntime(FakeChatRuntime):
+    """An engine whose reply parses fine but was cut by the token budget."""
+
+    def chat_stream(self, request: ChatRequest):
+        return self._cut_off(request)
+
+    async def _cut_off(self, request: ChatRequest):
+        text = json.dumps(_CLEAN_REPLY)
+        yield ChatToken(text=text)
+        yield ChatFinal(
+            text=text,
+            model_id="fake-small",
+            input_tokens=7,
+            output_tokens=9,
+            structured=_CLEAN_REPLY,
+            finish_reason="length",
+        )
+
+
+class _LeakThenCleanRuntime(FakeChatRuntime):
+    """An engine whose first reply trips a recoverable content violation.
+
+    The parser then asks once more with its content-safety prompt; every later
+    call answers cleanly, so the turn completes without falling back.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat_stream(self, request: ChatRequest):
+        return self._reply(request)
+
+    async def _reply(self, request: ChatRequest):
+        self.calls += 1
+        if self.calls == 1:
+            reply = dict(_CLEAN_REPLY, npc_utterance="My instructions say I must ask about your experience.")
+        else:
+            reply = _CLEAN_REPLY
+        text = json.dumps(reply)
+        yield ChatFinal(text=text, model_id="fake-small", input_tokens=5, output_tokens=5, structured=reply)
+
+
+class _LlamaLikeRuntime(FakeChatRuntime):
+    """A fake that calls itself llama_cpp, so the active selection matches it."""
+
+    @property
+    def id(self) -> str:
+        return "llama_cpp"
+
+
+def _session_on(app, client: TestClient, runtime, model_id: str = "some-model") -> str:
+    """Start an unpinned session with the shared runtime swapped for ``runtime``.
 
     Sessions pinned to ``fake`` resolve through build_runtime, so the swap has
     to happen on an unpinned session: activate llama_cpp as the selection (the
     shared runtime object is what tests replace) and point app.state.runtime at
     the test double.
     """
-    set_active_config(app.state.db.connection(), "llama_cpp", "some-model")
+    set_active_config(app.state.db.connection(), "llama_cpp", model_id)
     app.state.runtime = runtime
     setup = {k: v for k, v in _SETUP.items() if k != "runtime_id"}
     return _start(client, setup)
@@ -230,8 +303,9 @@ class TestRecordWithOtherEngines:
         assert record.context.model_id == "silent"
         # The runtime names itself; the test double is a fake-runtime subclass.
         assert record.context.runtime_id == "fake"
-        # The registry id comes from the active selection at the time.
-        assert record.context.registry_model_id == "some-model"
+        # The selection names llama_cpp but this double served the turn, so no
+        # installed model is credited with it.
+        assert record.context.registry_model_id is None
 
     def test_a_fallback_turn_counts_its_repair_call(self, tmp_config):
         app = create_app(tmp_config)
@@ -242,9 +316,125 @@ class TestRecordWithOtherEngines:
             record = TurnTiming.model_validate(npc["payload"]["timing"])
 
         assert record.fallback is True
+        assert record.stopped is False
         assert [c.kind for c in record.extra_calls] == ["repair"]
         assert record.extra_calls[0].ms >= 0
         assert record.extra_calls[0].tokens == 5
+
+    def test_a_content_safety_retry_is_counted_as_one(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            session_id = _session_on(app, client, _LeakThenCleanRuntime())
+            body = _turn(client, session_id)
+            npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+            record = TurnTiming.model_validate(npc["payload"]["timing"])
+
+        assert npc["payload"]["content"] == _CLEAN_REPLY["npc_utterance"]
+        assert record.fallback is False
+        assert [c.kind for c in record.extra_calls] == ["safety_retry"]
+
+    def test_a_reply_the_token_budget_cut_off_is_recorded_stopped(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            session_id = _session_on(app, client, _CutOffRuntime())
+            body = _turn(client, session_id)
+            npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+            record = TurnTiming.model_validate(npc["payload"]["timing"])
+            persisted = _timing_events(client, session_id)
+
+        assert record.finish_reason == "length"
+        assert record.stopped is True
+        assert record.fallback is False  # the reply itself parsed fine
+        assert record.salvaged is False  # nothing is salvaged on the plain turn route
+        assert len(persisted) == 1 and persisted[0]["stopped"] is True
+
+
+def test_the_builder_marks_a_turn_stopped_from_the_finish_reason():
+    builder = TurnTimingBuilder(clock=TurnClock(), runtime_id="fake")
+    for reason, stopped in (("stop", False), (None, False), ("length", True), ("cancelled", True)):
+        builder.mark_finish(reason)
+        assert builder.stopped is stopped, reason
+    # salvaged is the streaming route's to set; the builder carries it through.
+    builder.salvaged = True
+    assert builder.build().salvaged is True
+
+
+class TestWhichModelTheRecordNames:
+    """``context.registry_model_id`` names the installed model that served the turn."""
+
+    def test_the_selected_model_when_its_runtime_served_the_turn(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            session_id = _session_on(app, client, _LlamaLikeRuntime(), model_id="some-model")
+            body = _turn(client, session_id)
+            npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+            record = TurnTiming.model_validate(npc["payload"]["timing"])
+        assert record.context.runtime_id == "llama_cpp"
+        assert record.context.registry_model_id == "some-model"
+
+    def test_nothing_for_a_session_pinned_to_the_scripted_runtime(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            set_active_config(app.state.db.connection(), "llama_cpp", "some-model")
+            session_id = _start(client, dict(_SETUP, runtime_id="scripted"))
+            body = _turn(client, session_id)
+            npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+            record = TurnTiming.model_validate(npc["payload"]["timing"])
+            # The selection's model must not be credited with a scripted turn.
+            by_model = client.get("/api/performance/rolling?model_id=some-model").json()
+        assert record.context.runtime_id == "scripted"
+        assert record.context.model_id == "first-words-tutorial"
+        assert record.context.registry_model_id is None
+        assert by_model["samples"] == 0
+
+    def test_a_model_file_is_named_by_its_registry_id_never_its_path(self, tmp_config):
+        path = "/Users/alice/Library/Application Support/convsim/models/llm/curated.gguf"
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            conn = app.state.db.connection()
+            # installed_models.registry_id points into the registry table.
+            with conn:
+                conn.execute(
+                    "INSERT INTO model_registry (id, name, provider) VALUES ('curated-model', 'A curated model', 'test')"
+                )
+            create_install_record(conn, registry_id="curated-model", filename="curated.gguf", file_path=path)
+            session_id = _session_on(app, client, _LlamaLikeRuntime(), model_id=path)
+            body = _turn(client, session_id)
+            npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+            record = TurnTiming.model_validate(npc["payload"]["timing"])
+            export = client.get(f"/api/sessions/{session_id}/export")
+            # The endpoint's default path matches the active model the way the
+            # record stores it.
+            rolling = client.get("/api/performance/rolling").json()
+        assert record.context.registry_model_id == "curated-model"
+        assert "/Users/alice" not in export.text
+        assert rolling["model_id"] == "curated-model"
+        assert rolling["samples"] == 1
+
+    def test_a_user_supplied_file_is_named_by_its_file_name(self, tmp_config):
+        path = "/Users/alice/models/my own model.gguf"
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            register_user_gguf(app.state.db.connection(), path=path)
+            session_id = _session_on(app, client, _LlamaLikeRuntime(), model_id=path)
+            body = _turn(client, session_id)
+            npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
+            record = TurnTiming.model_validate(npc["payload"]["timing"])
+            export = client.get(f"/api/sessions/{session_id}/export")
+        assert record.context.registry_model_id == "my own model.gguf"
+        assert "/Users/alice" not in export.text
+
+    def test_recorded_model_id_never_returns_a_path(self, client):
+        conn = client.app.state.db.connection()
+        assert recorded_model_id(conn, None) is None
+        assert recorded_model_id(conn, "") is None
+        # A registry id or an Ollama tag is already an identifier.
+        assert recorded_model_id(conn, "some-model") == "some-model"
+        assert recorded_model_id(conn, "library/some-model:latest") == "library/some-model:latest"
+        # A model file with no install row still loses its folder.
+        assert recorded_model_id(conn, "/Users/alice/models/foo.gguf") == "foo.gguf"
+        assert recorded_model_id(conn, "C:\\Users\\alice\\models\\foo.GGUF") == "foo.GGUF"
+        assert recorded_model_id(conn, "~/models/foo.gguf") == "foo.gguf"
 
 
 class TestRollingSpeeds:
@@ -282,14 +472,42 @@ class TestRollingSpeeds:
         assert client.get("/api/performance/rolling?runtime_id=llama_cpp").json()["samples"] == 0
         assert client.get("/api/performance/rolling?runtime_id=fake&model_id=other").json()["samples"] == 0
 
-    def test_fallback_and_stopped_turns_are_left_out(self, tmp_config):
+    def test_a_fallback_turn_is_left_out(self, tmp_config):
         app = create_app(tmp_config)
         with TestClient(app) as client:
+            conn = app.state.db.connection()
             session_id = _session_on(app, client, _GarbageRuntime())
             _turn(client, session_id)
-            conn = app.state.db.connection()
-            speeds = rolling_speeds(conn, runtime_id="llama_cpp", model_id=None)
-        assert speeds.samples == 0
+            assert _timing_events(client, session_id)[0]["fallback"] is True
+            # The record names the fake runtime (the double inherits its id),
+            # so these are the filters that would count it if nothing hid it.
+            assert rolling_speeds(conn, runtime_id="fake", model_id=None).samples == 0
+            assert rolling_speeds(conn, runtime_id=None, model_id=None).samples == 0
+
+            # Positive control: the same filters count an ordinary turn.
+            app.state.runtime = FakeChatRuntime()
+            other = _start(client, {k: v for k, v in _SETUP.items() if k != "runtime_id"})
+            _turn(client, other)
+            assert rolling_speeds(conn, runtime_id="fake", model_id=None).samples == 1
+            assert rolling_speeds(conn, runtime_id=None, model_id=None).samples == 1
+
+    def test_a_stopped_turn_is_left_out_of_the_endpoint(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            session_id = _session_on(app, client, _CutOffRuntime())
+            _turn(client, session_id)
+            persisted = _timing_events(client, session_id)
+            assert len(persisted) == 1 and persisted[0]["stopped"] is True
+            assert client.get("/api/performance/rolling?runtime_id=fake").json()["samples"] == 0
+
+            # Positive control: an ordinary turn on the same runtime is counted,
+            # and the stopped one still is not.
+            app.state.runtime = FakeChatRuntime()
+            other = _start(client, {k: v for k, v in _SETUP.items() if k != "runtime_id"})
+            _turn(client, other)
+            body = client.get("/api/performance/rolling?runtime_id=fake").json()
+        assert body["samples"] == 1
+        assert body["writing_tps"] == FAKE_WRITING_TPS
 
     def test_window_is_the_most_recent_records(self, client):
         session_id = _start(client)
@@ -298,3 +516,96 @@ class TestRollingSpeeds:
         conn = client.app.state.db.connection()
         speeds = rolling_speeds(conn, runtime_id="fake", model_id=None, window=2)
         assert speeds.samples == 2
+
+
+def _record(
+    *,
+    runtime_id: str = "fake",
+    model_id: str = "fake-small",
+    registry_model_id: str | None = None,
+    writing_tps: float = 100.0,
+    stopped: bool = False,
+    fallback: bool = False,
+) -> TurnTiming:
+    return TurnTiming(
+        total_ms=1000.0,
+        stopped=stopped,
+        fallback=fallback,
+        rates=TurnRates(writing_tps=writing_tps),
+        context=TurnContext(model_id=model_id, registry_model_id=registry_model_id, runtime_id=runtime_id),
+    )
+
+
+class TestRollingSpeedsOverPersistedRecords:
+    """The query itself, fed records directly, so the window rules are pinned."""
+
+    @staticmethod
+    def _persist(client: TestClient, session_id: str, records: list[TurnTiming]) -> None:
+        conn = client.app.state.db.connection()
+        for i, record in enumerate(records, start=1):
+            persist_turn_timing(conn, session_id, i, record, "2026-01-01T00:00:00+00:00")
+
+    def test_a_busy_other_configuration_does_not_crowd_out_the_requested_one(self, client):
+        session_id = _start(client)
+        self._persist(
+            client,
+            session_id,
+            [_record(registry_model_id="model-a", writing_tps=10.0) for _ in range(20)]
+            + [_record(registry_model_id="model-b", writing_tps=99.0) for _ in range(250)],
+        )
+        conn = client.app.state.db.connection()
+        speeds = rolling_speeds(conn, runtime_id="fake", model_id="model-a")
+        assert speeds.samples == 20
+        assert speeds.writing_tps == 10.0
+        assert rolling_speeds(conn, runtime_id="fake", model_id="model-b").samples == 20
+
+    def test_the_window_is_the_newest_matching_records(self, client):
+        session_id = _start(client)
+        self._persist(
+            client,
+            session_id,
+            [_record(writing_tps=1.0) for _ in range(5)] + [_record(writing_tps=50.0) for _ in range(20)],
+        )
+        speeds = rolling_speeds(client.app.state.db.connection(), runtime_id="fake", model_id=None)
+        assert speeds.samples == 20
+        assert speeds.writing_tps == 50.0
+
+    def test_stopped_and_fallback_records_are_skipped_in_the_query(self, client):
+        session_id = _start(client)
+        self._persist(
+            client,
+            session_id,
+            [
+                _record(writing_tps=10.0),
+                _record(writing_tps=500.0, stopped=True),
+                _record(writing_tps=900.0, fallback=True),
+            ],
+        )
+        speeds = rolling_speeds(client.app.state.db.connection(), runtime_id=None, model_id=None)
+        assert speeds.samples == 1
+        assert speeds.writing_tps == 10.0
+
+    def test_model_filter_prefers_the_registry_id_over_the_adapter_name(self, client):
+        session_id = _start(client)
+        self._persist(
+            client,
+            session_id,
+            [_record(model_id="default", registry_model_id="curated-model"), _record(model_id="default")],
+        )
+        conn = client.app.state.db.connection()
+        assert rolling_speeds(conn, runtime_id=None, model_id="curated-model").samples == 1
+        # The adapter's name counts only for the record without a registry id.
+        assert rolling_speeds(conn, runtime_id=None, model_id="default").samples == 1
+        assert rolling_speeds(conn, runtime_id="llama_cpp", model_id=None).samples == 0
+
+    def test_a_corrupt_row_does_not_break_the_query(self, client):
+        session_id = _start(client)
+        self._persist(client, session_id, [_record()])
+        conn = client.app.state.db.connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO turn_session_events (session_id, turn_number, event_type, payload_json, occurred_at) "
+                "VALUES (?, 2, ?, 'not json', '2026-01-01T00:00:00+00:00')",
+                (session_id, TURN_TIMING_EVENT_TYPE),
+            )
+        assert rolling_speeds(conn, runtime_id="fake", model_id=None).samples == 1
