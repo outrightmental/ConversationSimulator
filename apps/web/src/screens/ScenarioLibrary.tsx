@@ -8,6 +8,7 @@ import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { CopyDiagnosticsButton } from '../components/CopyDiagnosticsButton'
+import { copyTextToClipboard } from '../lib/clipboard'
 import { useSteamStatus } from '../hooks/useSteamStatus'
 import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
 
@@ -794,7 +795,7 @@ export default function ScenarioLibrary() {
                   {indexedPack.pack_root}
                 </code>
                 <button
-                  onClick={() => void navigator.clipboard.writeText(indexedPack.pack_root ?? '')}
+                  onClick={() => void copyTextToClipboard(indexedPack.pack_root ?? '')}
                   aria-label="Copy pack folder path"
                   data-testid={`copy-folder-${pack.pack_id}`}
                   style={{

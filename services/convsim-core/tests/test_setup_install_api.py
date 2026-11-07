@@ -337,31 +337,37 @@ def test_get_active_job_returns_none_when_all_terminal():
 # ── Checksum mismatch: one silent retry, then surface ─────────────────────────
 
 
-def _insert_downloadable_model(conn: Any, registry_id: str = "cm") -> None:
+def _insert_downloadable_model(
+    conn: Any, registry_id: str = "cm", context_length: int | None = None
+) -> None:
     """Insert a registry row the pipeline treats as downloadable (verified sha,
     URL present, size_gb 0 so the disk pre-flight is skipped)."""
     conn.execute(
         "INSERT INTO model_registry (id, name, provider, sha256, download_url, "
-        "source_type, license_spdx, size_gb) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "source_type, license_spdx, size_gb, context_length) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (registry_id, "Checksum Model", "test", "a" * 64,
-         "http://example.test/model.gguf", "huggingface", "mit", 0.0),
+         "http://example.test/model.gguf", "huggingface", "mit", 0.0, context_length),
     )
     conn.commit()
 
 
-async def _drive_pipeline(db, tmp_path, download_side_effect, cancel_event=None, sidecar=None):
+async def _drive_pipeline(
+    db, tmp_path, download_side_effect, cancel_event=None, sidecar=None, context_length=None
+):
     """Run _run_pipeline with the engine + warmup + packs stages stubbed out so
     only the model/verify download behaviour under test executes.
 
     Pass an explicit *sidecar* to exercise the warmup stage; by default a
-    RUNNING sidecar is supplied so the warmup start is skipped.
+    RUNNING sidecar is supplied so the warmup start is skipped. *context_length*
+    is written to the registry row so the warmup's launch configuration can be
+    checked against it.
     """
     import types
     from convsim_core.routers import setup_install
     from convsim_core.runtime.sidecar import SidecarState
 
     conn = db.connection()
-    _insert_downloadable_model(conn)
+    _insert_downloadable_model(conn, context_length=context_length)
     job_id = create_job(conn, registry_id="cm", model_label="Downloading Checksum Model")
 
     config = types.SimpleNamespace(models_dir=str(tmp_path / "models"))
@@ -549,5 +555,61 @@ async def test_warmup_failure_fails_job_and_does_not_register_active_model(tmp_p
         # The load-bearing guarantee: a model that fails warmup is never left as
         # the active selection, so relaunch won't crash-loop on it.
         assert get_active_config(conn)["model_id"] is None
+    finally:
+        db.close()
+
+
+def _closed_port() -> int:
+    """A loopback port nothing listens on, so the warmup probe is refused at once."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.mark.asyncio
+async def test_warmup_launches_with_the_registry_launch_config(tmp_path):
+    """The warmup start — one of the three engine start sites — uses the same
+    launch configuration as the autostart and POST /api/sidecar/start (issue
+    #523): the registry's context size for the model just installed, one slot,
+    small batches."""
+    from convsim_core.routers import setup_install
+    from convsim_core.runtime.launch import LaunchConfig, resolve_launch_config
+    from convsim_core.runtime.sidecar import SidecarState
+    from convsim_core.services.model_manager_service import get_active_config
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            models_dir.mkdir(parents=True, exist_ok=True)
+            (models_dir / filename).write_bytes(b"gguf")
+            conn.execute(
+                "UPDATE installed_models SET install_status = 'ready', "
+                "file_path = ?, size_bytes = 4 WHERE id = ?",
+                (str(models_dir / filename), install_id))
+            conn.commit()
+
+        sidecar = MagicMock()
+        sidecar.state = SidecarState.STOPPED
+        sidecar.start = AsyncMock()
+
+        # The 1-token probe after start is non-fatal; point it at a closed port
+        # so it is refused immediately instead of reaching a real engine.
+        with patch.object(setup_install, "_WARMUP_PORT", _closed_port()), \
+             patch.object(setup_install, "_WARMUP_TIMEOUT", 2.0):
+            job_id = await _drive_pipeline(db, tmp_path, _dl, sidecar=sidecar, context_length=6144)
+
+        conn = db.connection()
+        job = get_job(conn, job_id)
+        assert job["status"] == "complete", job
+        model_path = get_active_config(conn)["model_id"]
+        assert model_path and model_path.endswith("cm.gguf")
+
+        sidecar.start.assert_awaited_once()
+        kwargs = sidecar.start.await_args.kwargs
+        assert kwargs["model_path"] == model_path
+        assert kwargs["launch"] == resolve_launch_config(model_path, conn)
+        assert kwargs["launch"] == LaunchConfig(context_length=6144)
     finally:
         db.close()
