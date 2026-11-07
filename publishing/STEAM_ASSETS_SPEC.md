@@ -179,12 +179,13 @@ into a scratch directory is how you check the two editions still line up after
 changing the mark.
 
 `tests/acceptance/test_demo_branding.py` enforces the result: the overlay
-overrides every icon, the plates stay far apart in colour, the silhouettes
-match, the ribbon is on the large frames only, the two Steamworks icons are at
-the sizes Valve's spec names, the Shortcut Icon is byte-identical to the frame
-the app installs, the App Icon is opaque and carries the ribbon, and the
-`.icns` carries every representation the full app's does — including the
-1× 16 pt and 32 pt ones macOS draws in Finder's list view.
+overrides every icon, the plates stay far apart in colour, the silhouettes and
+the white mark match, the ribbon is on the large frames only, the two
+Steamworks icons are at the sizes Valve's spec names, the Shortcut Icon is
+byte-identical to the frame the app installs, the App Icon is opaque and
+carries the ribbon, and the `.icns` carries every representation the full
+app's does — including the 1× 16 pt and 32 pt ones macOS draws in Finder's
+list view.
 
 ---
 

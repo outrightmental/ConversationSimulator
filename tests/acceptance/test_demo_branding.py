@@ -64,6 +64,7 @@ _BASE_PLATE = (0x14, 0x7A, 0x84)
 _DEMO_PLATE = (0x6D, 0x28, 0xD9)
 _RIBBON_BG = (0x0D, 0x0D, 0x15)
 _RIBBON_FG = (0xF4, 0xF4, 0xF5)
+_WHITE = (0xFF, 0xFF, 0xFF)
 
 # The ribbon band, as gen_icons.py places it: distance along the lower-right
 # diagonal, u(x, y) = (x + y) / sqrt(2), in the 256-unit viewBox the mark is
@@ -249,6 +250,43 @@ def _plate_colour(path: Path) -> tuple[int, int, int]:
 
 def _distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
     return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+def _mark_mask(path: Path) -> set[tuple[int, int]]:
+    """``{(x, y)}`` of the opaque near-white pixels outside the ribbon band.
+
+    White is the mark: the speech bubble and its tail, with the three
+    plate-coloured dots as holes in it. The ribbon's lettering is white as
+    well, so the band is cut out of every frame alike, whichever edition it
+    is; the base has no ribbon, and its absence must not read as a missing
+    mark.
+    """
+    width, _, pixels = _read_png(path)
+    inner = _RIBBON_U_INNER * 2 ** 0.5 * (width / _VIEW)
+    mask: set[tuple[int, int]] = set()
+    for index, (r, g, b, a) in enumerate(pixels):
+        y, x = divmod(index, width)
+        if (x + 0.5) + (y + 0.5) >= inner:
+            continue
+        if a > 128 and _distance((r, g, b), _WHITE) <= 60:
+            mask.add((x, y))
+    return mask
+
+
+def _unmatched(mask: set[tuple[int, int]], other: set[tuple[int, int]]) -> int:
+    """How many pixels of ``mask`` have no pixel of ``other`` within one step.
+
+    The one-pixel neighbourhood is what lets two anti-aliasers disagree about
+    an edge without the masks disagreeing about the mark. A mark that is
+    missing, moved or resized by more than a pixel still shows up in full.
+    """
+    return sum(
+        1 for x, y in mask
+        if not any(
+            (x + dx, y + dy) in other
+            for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+        )
+    )
 
 
 def _count_near(path: Path, colour: tuple[int, int, int], tolerance: int = 24) -> int:
@@ -519,14 +557,22 @@ class TestDemoIconIsVisuallyDistinct:
 
     @pytest.mark.parametrize("name", ["32x32.png", "128x128.png", "128x128@2x.png"])
     def test_silhouette_is_unchanged(self, name):
-        """The demo is the same product: the plate shape must not move.
+        """The demo is the same product: neither the plate's outline nor the
+        mark on it may move.
 
-        Compared as coverage rather than raw alpha, so that the two renderers
-        disagreeing by a fraction of a pixel along the rounded edge does not
-        read as a different shape.
+        Two comparisons, because the plate is opaque under the bubble, so
+        alpha alone cannot tell a frame with the bubble painted out from the
+        real one. Coverage is compared rather than raw alpha, so that the two
+        renderers disagreeing by a fraction of a pixel along the rounded edge
+        does not read as a different shape; the white mark is compared as a
+        mask with a one-pixel neighbourhood for the same reason, with the
+        ribbon band cut out of both editions because its lettering is white
+        too and the base has no ribbon.
         """
-        _, _, base = _read_png(_SRC_TAURI / "icons" / name)
-        _, _, demo = _read_png(_SRC_TAURI / "icons-demo" / name)
+        base_path = _SRC_TAURI / "icons" / name
+        demo_path = _SRC_TAURI / "icons-demo" / name
+        _, _, base = _read_png(base_path)
+        _, _, demo = _read_png(demo_path)
         assert len(base) == len(demo)
         differing = sum(
             1 for (_, _, _, a), (_, _, _, b) in zip(base, demo) if (a > 128) != (b > 128)
@@ -534,6 +580,20 @@ class TestDemoIconIsVisuallyDistinct:
         assert differing <= len(base) * 0.01, (
             f"{name}: {differing}/{len(base)} covered pixels differ — the demo "
             "mark should share the base silhouette"
+        )
+
+        base_mark = _mark_mask(base_path)
+        demo_mark = _mark_mask(demo_path)
+        assert base_mark, f"{name}: no white mark found on the base icon"
+        stray = _unmatched(demo_mark, base_mark) + _unmatched(base_mark, demo_mark)
+        # Zero on the committed set at every size: the edge pixels the two
+        # renderers classify differently all have a matching neighbour. A
+        # painted-out bubble puts the whole base mark here; dropped dots put
+        # their interiors here at 128 px and up.
+        assert stray <= len(base_mark) * 0.01, (
+            f"{name}: {stray} pixels of the white mark are in one edition and "
+            f"not within a pixel of it in the other (base mark {len(base_mark)}, "
+            f"demo mark {len(demo_mark)}): the demo should carry the base mark"
         )
 
     def test_png_dimensions(self):
