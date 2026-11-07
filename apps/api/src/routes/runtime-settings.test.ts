@@ -29,6 +29,7 @@ describe('GET /api/runtime/settings', () => {
     expect(body.settings.temperature).toBeNull();
     expect(body.settings.top_p).toBeNull();
     expect(body.settings.repeat_penalty).toBeNull();
+    expect(body.settings.reply_speed).toBeNull();
   });
 
   it('returns requires_restart: false on initial GET', async () => {
@@ -47,6 +48,7 @@ describe('GET /api/runtime/settings', () => {
       temperature: null,
       top_p: null,
       repeat_penalty: null,
+      reply_speed: null,
     });
   });
 });
@@ -311,6 +313,79 @@ describe('POST /api/runtime/settings/reset', () => {
     const body = res.json<RuntimeSettingsResponse>();
     expect(body.settings.threads).toBeNull();
     expect(body.settings.top_p).toBeNull();
+  });
+});
+
+// ── Reply speed (issue #501) ─────────────────────────────────────────────────
+
+describe('runtime settings — reply_speed', () => {
+  it('persists a chosen speed', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/runtime/settings',
+      payload: { reply_speed: 'fast' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<RuntimeSettingsResponse>().settings.reply_speed).toBe('fast');
+
+    const get = await app.inject({ method: 'GET', url: '/api/runtime/settings' });
+    expect(get.json<RuntimeSettingsResponse>().settings.reply_speed).toBe('fast');
+  });
+
+  it('returns requires_restart: false — it is read per turn', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/runtime/settings',
+      payload: { reply_speed: 'detailed' },
+    });
+    expect(res.json<RuntimeSettingsResponse>().requires_restart).toBe(false);
+  });
+
+  it('returns 422 for a speed the UI cannot render', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/runtime/settings',
+      payload: { reply_speed: 'ludicrous' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json<{ message: string }>().message).toMatch(/Reply speed/);
+  });
+
+  it('survives a partial update of the numeric settings', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/runtime/settings',
+      payload: { reply_speed: 'fast' },
+    });
+    await app.inject({
+      method: 'PUT',
+      url: '/api/runtime/settings',
+      payload: { threads: 4 },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/runtime/settings' });
+    const body = res.json<RuntimeSettingsResponse>();
+    expect(body.settings.reply_speed).toBe('fast');
+    expect(body.settings.threads).toBe(4);
+  });
+
+  it('is cleared by reset', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/runtime/settings',
+      payload: { reply_speed: 'fast' },
+    });
+    const res = await app.inject({ method: 'POST', url: '/api/runtime/settings/reset' });
+    expect(res.json<RuntimeSettingsResponse>().settings.reply_speed).toBeNull();
+  });
+
+  it('reads a stored value it does not recognise back as unset', async () => {
+    // A value a newer build wrote, or one hand-edited into the database, must
+    // not surface as an option the UI cannot render.
+    getDb()
+      .prepare('INSERT OR REPLACE INTO model_config (key, value) VALUES (?, ?)')
+      .run('setting.reply_speed', 'hypersonic');
+    const res = await app.inject({ method: 'GET', url: '/api/runtime/settings' });
+    expect(res.json<RuntimeSettingsResponse>().settings.reply_speed).toBeNull();
   });
 });
 

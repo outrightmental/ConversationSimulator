@@ -259,7 +259,7 @@ rubric:
   ref: ../rubrics/interview_rubric.yaml   # The file you edited in place in Step 6
 
 duration:
-  max_turns: 16
+  max_turns: 16            # 16 exchanges — see "Counting turns" below
   soft_time_limit_minutes: 12
 
 opening:
@@ -376,7 +376,7 @@ difficulty:
 
 | Visibility | Who can see it | When to use |
 |------------|---------------|-------------|
-| `visible` | Player (shown as a state meter during the session) | Variables that correspond to something the player can infer from the NPC's responses |
+| `visible` | Player (shown as a conversation meter above the transcript) | Variables that correspond to something the player can infer from the NPC's responses |
 | `hidden` | System prompt only | NPC internal state the player has to discover through experimentation |
 
 **Event trigger types:**
@@ -385,8 +385,33 @@ difficulty:
 |------|--------|--------------|
 | `variable_above` | `variable`, `threshold` | When variable > threshold |
 | `variable_below` | `variable`, `threshold` | When variable < threshold |
-| `max_turns` | `value` | When turn count reaches value |
+| `max_turns` | `value` | When the whole-turn count reaches value |
 | `flag` | `flag_id` | When a named flag is set |
+
+### Counting turns
+
+**One turn is one player message plus the NPC's reply to it.** Both halves
+belong to the same turn, and `duration.max_turns` counts those whole turns —
+so `max_turns: 16` gives the player sixteen messages and the NPC sixteen
+replies, not eight each. A `max_turns` event trigger counts the same way.
+
+The limit is evaluated *after* a turn is processed, so the last turn plays out
+in full: with `max_turns: 16` the player's sixteenth message gets its reply,
+and the session then ends as `timeout` if nothing else has ended it first.
+
+Two consequences worth keeping in mind while you pick a number:
+
+- **The NPC's opening line is free.** It precedes the first exchange and does
+  not consume a turn, so `max_turns: 16` means sixteen exchanges *after* the
+  opening.
+- **Budget for questions.** A player who asks the NPC about something instead
+  of advancing spends a whole turn doing it. A tightly budgeted scenario can
+  time out before it reaches its own ending, so leave headroom above the
+  number of beats you have actually scripted.
+
+The player sees this same unit: the transcript labels each exchange `Turn N`
+on both rows and labels the opening `Opening`, and the debrief's key moments
+use the same numbers, so "turn 3" means one thing everywhere.
 
 ---
 

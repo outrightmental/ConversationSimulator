@@ -23,7 +23,7 @@ interface ErrorCopy {
 
 export const ERROR_COPY: Record<ErrorKind, ErrorCopy> = {
   'runtime-unreachable': {
-    title: 'Local runtime is unavailable',
+    title: 'The AI engine is unavailable',
     description:
       'The local service is not responding. Make sure the application started correctly, then try again.',
     action: 'Try again',

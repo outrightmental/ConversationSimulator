@@ -116,7 +116,7 @@ export default function Logbook() {
       <div>
         <h1>Logbook</h1>
         <p role="alert" style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <span>Could not load logbook data. Check that the local runtime is running.</span>
+          <span>Could not load logbook data. Check that the AI engine is running.</span>
           <CopyDiagnosticsButton context="logbook:load" compact />
         </p>
       </div>

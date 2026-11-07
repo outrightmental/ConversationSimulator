@@ -131,6 +131,17 @@ export interface BenchmarkResponse {
   benchmarked_at: string;
 }
 
+/** Plain-language reply pacing (issue #501). Scales the NPC's word budget and
+ *  the runtime's token budget for a turn; read per turn, so no restart.
+ *  Ordered fastest-first, which is the order the Settings panel offers them. */
+export const REPLY_SPEEDS = ['fast', 'balanced', 'detailed'] as const;
+
+export type ReplySpeed = (typeof REPLY_SPEEDS)[number];
+
+export function isReplySpeed(value: unknown): value is ReplySpeed {
+  return typeof value === 'string' && (REPLY_SPEEDS as readonly string[]).includes(value);
+}
+
 export interface RuntimeSettings {
   context_length: number | null;
   gpu_layers: number | null;
@@ -138,6 +149,8 @@ export interface RuntimeSettings {
   temperature: number | null;
   top_p: number | null;
   repeat_penalty: number | null;
+  /** null means "never chosen"; the backend then applies 'balanced'. */
+  reply_speed: ReplySpeed | null;
 }
 
 export interface RuntimeSettingsResponse {

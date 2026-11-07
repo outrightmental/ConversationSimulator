@@ -13,7 +13,7 @@ export const de: LocaleMessages = {
     modelNotLoaded:
       'Kein KI-Modell geladen. Öffnen Sie die Einstellungen, um ein Modell zu installieren.',
     runtimeUnavailable:
-      'Die lokale Laufzeitumgebung ist nicht verfügbar. Prüfen Sie die Protokolle.',
+      'Die KI-Engine ist nicht verfügbar. Prüfen Sie die Protokolle.',
     safetyViolation: 'Der Inhalt wurde durch die Sicherheitsrichtlinie blockiert.',
     turnLimitExceeded: 'Das Zuglimit für dieses Szenario wurde erreicht.',
     turnTimeout: 'Der Zug hat das Zeitlimit überschritten. Bitte versuchen Sie es erneut.',
@@ -101,11 +101,59 @@ export const de: LocaleMessages = {
       },
     },
   },
+  // "Gespräch läuft" (Issue #501 §1).
+  resume: {
+    label: 'Gespräch läuft.',
+    withTurns_one: '{{title}} — bisher 1 Zug.',
+    withTurns_other: '{{title}} — bisher {{count}} Züge.',
+    withoutTurns: '{{title}} — noch nicht begonnen.',
+    action: 'Fortsetzen',
+    dismiss: 'Beenden',
+  },
+  familiarity: {
+    question: 'Wie gut kennen Sie KI-Sprachmodelle?',
+    reaskQuestion: 'Jetzt, da Sie ein Gespräch gespielt haben — welche Wortwahl passt?',
+    reaskHint: 'Sie können das jederzeit in den Einstellungen ändern.',
+    skip: 'Überspringen',
+    keep: 'So lassen',
+    new: {
+      label: 'Neu für mich',
+      detail: 'Einfache Wortwahl',
+    },
+    some: {
+      label: 'Ich habe KI-Chat-Apps genutzt',
+      detail: 'Einfache Wortwahl',
+    },
+    expert: {
+      label: 'Ich arbeite damit',
+      detail: 'Technische Details anzeigen',
+    },
+    appliedPlain: 'Einfache Wortwahl ist aktiv.',
+    appliedTechnical: 'Technische Details sind aktiv.',
+  },
+  sessionStates: {
+    NotStarted: 'Noch nicht begonnen',
+    LoadingModel: 'Wird vorbereitet',
+    LoadingScenario: 'Wird vorbereitet',
+    Briefing: 'Einweisung',
+    NpcOpening: 'Eröffnet das Gespräch',
+    PlayerTurnListening: 'Sie sind dran',
+    PlayerTurnReview: 'Nachricht prüfen',
+    NpcThinking: 'Schreibt eine Antwort',
+    NpcSpeaking: 'Spricht',
+    ScenarioEvent: 'Etwas verändert sich',
+    DebriefGenerating: 'Nachbesprechung wird erstellt',
+    DebriefReady: 'Nachbesprechung bereit',
+    Ended: 'Beendet',
+    Error: 'Etwas ist schiefgelaufen',
+    unknown: 'Läuft',
+  },
   home: {
     title: 'Gesprächssimulator',
     tagline:
       'Üben Sie Vorstellungsgespräche, Verhandlungen, Sprachen und schwierige Gespräche.',
     primaryActions: 'Hauptaktionen',
+    resumeScenario: 'Gespräch fortsetzen',
     yourTraining: 'Ihr Training',
     training: {
       loading: 'Wird geladen…',
@@ -137,10 +185,10 @@ export const de: LocaleMessages = {
     readDocs: 'Dokumentation lesen',
     status: {
       heading: 'Status',
-      localRuntime: 'Lokale Laufzeitumgebung',
-      llm: 'LLM',
-      stt: 'STT',
-      tts: 'TTS',
+      localRuntime: 'KI-Engine',
+      llm: 'KI-Modell',
+      stt: 'Spracheingabe',
+      tts: 'Sprachausgabe',
       networkRequired: 'Netzwerk zum Spielen erforderlich',
       packs: 'Pakete',
       checking: 'Überprüfe…',
@@ -236,10 +284,47 @@ export const de: LocaleMessages = {
       notSavedWarning:
         'Nicht gespeichert – das Transkript geht verloren, wenn diese Sitzung endet.',
     },
-    runtime: {
-      heading: 'Laufzeitumgebung',
+    replySpeed: {
+      heading: 'Antwortgeschwindigkeit',
       description:
-        'Wählen Sie den aktiven KI-Anbieter und das Modell. Erweiterte Einstellungen sind standardmäßig ausgeblendet.',
+        'Wie viel die andere Person pro Zug schreibt. Kürzere Antworten kommen schneller, weil Ihr Computer sie Wort für Wort erzeugt.',
+      label: 'Antwortgeschwindigkeit',
+      saving: 'Wird gespeichert…',
+      saved: 'Gespeichert. Ihre nächste Nachricht nutzt die neue Geschwindigkeit.',
+      noRestart: 'Gilt ab Ihrer nächsten Nachricht — kein Neustart nötig.',
+      biggerWin:
+        'Immer noch langsam? Ein kleineres Modell bringt die größte Verbesserung.',
+      biggerWinLink: 'Modell auswählen →',
+      fast: {
+        label: 'Kurze Antworten',
+        detail: 'Kürzeste Antworten, kürzeste Wartezeit',
+      },
+      balanced: {
+        label: 'Ausgewogen',
+        detail: 'Das Tempo des Szenarios',
+      },
+      detailed: {
+        label: 'Ausführliche Antworten',
+        detail: 'Längere Antworten, längere Wartezeit',
+      },
+    },
+    wording: {
+      heading: 'Wortwahl',
+      description:
+        'Wie viel Technik die App zeigt. Einfache Wortwahl verbirgt Sitzungs-IDs, interne Zustandsnamen und Ereignis-Flags; technische Wortwahl zeigt sie.',
+      plain: {
+        label: 'Einfache Wortwahl',
+        detail: 'Nur Alltagssprache',
+      },
+      technical: {
+        label: 'Technische Wortwahl',
+        detail: 'IDs, Zustände und Flags anzeigen',
+      },
+    },
+    runtime: {
+      heading: 'KI-Modul',
+      description:
+        'Welches KI-Modell als die andere Person antwortet. Technische Einstellungen sind standardmäßig ausgeblendet.',
       openModelManagerLink: 'Modellverwaltung öffnen →',
       openModelManagerLabel: 'Modellverwaltung öffnen',
     },
@@ -317,12 +402,15 @@ export const de: LocaleMessages = {
     },
     sessions: {
       heading: 'Ihre Sitzungen',
-      description: 'Sitzung als JSON exportieren oder dauerhaft löschen.',
+      description:
+        'Ein unvollendetes Gespräch fortsetzen, eine Sitzung als JSON exportieren oder dauerhaft löschen.',
       loadError: 'Sitzungen konnten nicht geladen werden.',
       deleteError: 'Sitzung konnte nicht gelöscht werden.',
       exportError: 'Sitzung konnte nicht exportiert werden.',
       loading: 'Lade…',
       noSessions: 'Noch keine Sitzungen.',
+      resume: 'Fortsetzen',
+      resumeLabel: 'Sitzung {{id}} fortsetzen',
       export: 'Exportieren',
       exportLabel: 'Sitzung {{id}} exportieren',
       delete: 'Löschen',
@@ -473,6 +561,8 @@ export const de: LocaleMessages = {
       transcriptOnlyNotice:
         'Nachbesprechungserstellung fehlgeschlagen. Zeige nur Transkript.',
       turn: 'Zug {{number}}',
+      opening: 'Eröffnung',
+      moodLabel: 'Stimmung:',
       you: 'Sie',
       npc: 'NPC',
       goToTurn: 'Zu Zug {{number}} gehen',
