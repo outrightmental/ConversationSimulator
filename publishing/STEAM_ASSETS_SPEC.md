@@ -141,9 +141,9 @@ their library, and it carries one job — telling two entries apart at a glance.
 
 `publishing/assets/source/gen_icons.py` is the source of truth. It draws the
 mark as plain polygons and circles — no fonts, no `clip-path`, no group
-transforms — and pins ImageMagick's own SVG rasteriser, so it reproduces
-byte-for-byte on any machine with the same ImageMagick build, and emits both
-the Steamworks icons and the Tauri `bundle.icon` set:
+transforms — and pins ImageMagick's own SVG rasteriser, so that nothing on
+the machine but ImageMagick itself shapes the output, and emits both the
+Steamworks icons and the Tauri `bundle.icon` set:
 
 ```bash
 python3 publishing/assets/source/gen_icons.py                     # demo, into the repo
@@ -168,10 +168,23 @@ assembled by the script, with PNG payloads — that is what `tauri icon`
 produced for the base app, and it is what stops the 256 px frame costing
 256 KB.
 
-The App Icon is the one output that is **not** byte-reproducible: it is a JPG,
-and quantisation and Huffman tables differ between libjpeg builds. The encoder
-settings are pinned (quality 95, 4:4:4, stripped, optimised coding), but judge
-a regenerated `.jpg` by looking at it rather than by `git diff`.
+Regeneration is deterministic on one machine and not across machines. The
+output depends on the ImageMagick build: its rasteriser and Lanczos resize
+anti-alias differently from one version to the next, so running the script on
+a different build changes the bytes of every raster (the three PNGs, the ICO,
+the ICNS and the JPG) without changing the drawing. On Ubuntu's ImageMagick
+6.9.12 every raster differs from the committed set by edge pixels only, with
+the same silhouette coverage and the same plate colour, and the acceptance
+suite passes on either set. The JPG drifts the most, because quantisation and
+Huffman tables also differ between libjpeg builds; its encoder settings are
+pinned (quality 95, 4:4:4, stripped, optimised coding) all the same. The build
+that produced the committed set is not recorded anywhere in the history, so
+there is no version to install that gives the committed bytes back.
+
+Judge a regeneration by `tests/acceptance/test_demo_branding.py` and by eye,
+not by `git diff`, and do not commit the churn unless the mark itself changed.
+When you do commit regenerated icons, name the ImageMagick build that made
+them (`magick -version` or `convert -version`) in the commit message.
 
 The base app's set in `apps/desktop/src-tauri/icons/` is the original
 `tauri icon` output; the script never writes there. Rendering `--edition base`

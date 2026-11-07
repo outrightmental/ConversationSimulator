@@ -50,18 +50,32 @@ case — silently ignores ``clip-path`` and ``transform`` and cannot resolve a
 font at all; gen_capsules.py's reliance on an installed Carlito is exactly the
 sort of thing that makes a generator irreproducible.  Nothing here needs more
 than ImageMagick's own rasteriser, which ``render_png`` asks for by name
-(``MSVG:``) so that an installed librsvg cannot quietly re-render the set:
-the committed PNGs rebuild byte-for-byte on any machine with the same
-ImageMagick build, with no font to install.  The ICO and ICNS are assembled
-from those same bytes here, so they inherit it.
+(``MSVG:``) so that an installed librsvg cannot quietly re-render the set,
+with no font to install.
 
-The one output that does **not** carry that promise is the App Icon, because
-Steamworks wants it as a JPG.  Its encoder settings are pinned below, but
-quantisation and Huffman tables still differ between libjpeg and
-libjpeg-turbo and across their versions, so a machine that reproduces every
-PNG exactly can still emit a byte-different .jpg.  That is why the suite
-checks it by content — size, opacity, plate colour, ribbon — and not by
-comparing it to a regenerated copy.
+Reproducibility, stated carefully: the output is deterministic for a given
+ImageMagick build (two runs on one machine give identical bytes), and the
+ICO and ICNS are assembled here from the PNG bytes, so they inherit that.
+It is not reproducible across builds.  MSVG's rasteriser and the Lanczos
+resize anti-alias differently from one ImageMagick version to the next, so
+a run on another build changes the bytes of every raster (the three PNGs,
+the ICO, the ICNS and the JPG) while leaving the drawing the same to the
+eye: on Ubuntu's ImageMagick 6.9.12 every raster differs from the committed
+set by edge pixels only, with the same silhouette coverage and the same
+plate colour, and the acceptance suite passes on either set.  The JPG
+drifts the most, because quantisation and Huffman tables also differ
+between libjpeg and libjpeg-turbo builds; its encoder settings are pinned
+below all the same.  The build that produced the committed set was not
+recorded, so there is no version to install that gives those bytes back.
+
+So judge a regeneration by the acceptance suite
+(tests/acceptance/test_demo_branding.py) and by eye, not by ``git diff``,
+and do not commit the churn unless the mark itself changed.  When you do
+commit regenerated icons, name the ImageMagick build that made them
+(``magick -version`` or ``convert -version``) in the commit message, so the
+next person knows what produced the bytes they are looking at.  The suite
+checks every output by content (size, opacity, plate colour, ribbon, shared
+mark) rather than against a regenerated copy for the same reason.
 
 Usage:
     python3 publishing/assets/source/gen_icons.py            # write into the repo
@@ -82,6 +96,7 @@ from __future__ import annotations
 import argparse
 import functools
 import math
+import re
 import struct
 import subprocess
 import sys
@@ -302,14 +317,40 @@ def icon_svg(edition: str, ribbon: bool) -> str:
 # ── Rasterisation ──────────────────────────────────────────────────────────
 @functools.lru_cache(maxsize=1)
 def _magick() -> str:
-    """The ImageMagick entry point: `magick` on v7, `convert` on v6."""
+    """The ImageMagick entry point: `magick` on v7, `convert` on v6.
+
+    `convert` is also the name of Windows' NTFS volume converter, which is why
+    the probe reads `-version` rather than trusting the name.  The format list
+    is checked for the MSVG coder as well: Debian and Ubuntu split
+    ImageMagick's SVG support out of the `imagemagick` package into
+    `libmagickcore-*-extra`, and without it `render_png` would die on a raw
+    CalledProcessError pointing at a temp file instead of at the missing coder.
+    """
     for candidate in ("magick", "convert"):
         try:
-            subprocess.run([candidate, "-version"], check=True, capture_output=True)
-            return candidate
+            version = subprocess.run(
+                [candidate, "-version"], check=True, capture_output=True, text=True,
+            ).stdout
         except (OSError, subprocess.CalledProcessError):
             continue
-    sys.exit("gen_icons.py needs ImageMagick on PATH (`brew install imagemagick`).")
+        if "ImageMagick" not in version:
+            continue
+        formats = subprocess.run(
+            [candidate, "-list", "format"], check=True, capture_output=True, text=True,
+        ).stdout
+        if not re.search(r"^\s*MSVG\b", formats, re.MULTILINE):
+            sys.exit(
+                f"{candidate} has no MSVG coder (ImageMagick's own SVG renderer, "
+                "which render_png pins); on Debian and Ubuntu it is in the "
+                "libmagickcore-*-extra package (libmagickcore-6.q16-7-extra on "
+                "Ubuntu 24.04), so install that and re-run."
+            )
+        return candidate
+    sys.exit(
+        "gen_icons.py needs ImageMagick on PATH (`brew install imagemagick` on "
+        "macOS; `apt-get install imagemagick libmagickcore-6.q16-7-extra` on "
+        "Ubuntu 24.04, the -extra package being the SVG coder)."
+    )
 
 
 def render_png(edition: str, size: int, dest: Path) -> Path:

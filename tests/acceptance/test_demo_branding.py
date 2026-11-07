@@ -927,7 +927,9 @@ class TestGeneratedArtworkIsCurrent:
         assert _DEMO_SVG.read_text().strip() == gen.icon_svg("demo", ribbon=True), (
             "publishing/assets/icons/demo_icon.svg is out of date — it is "
             "generated output: re-run publishing/assets/source/gen_icons.py "
-            "(which also rewrites the bundle icon set and the Steam uploads)"
+            "(which also rewrites the bundle icon set and the Steam uploads; "
+            "expect every raster's bytes to change with it, and name your "
+            "ImageMagick build in the commit message, see the script's docstring)"
         )
 
     def test_the_vector_carries_the_ribbon(self):

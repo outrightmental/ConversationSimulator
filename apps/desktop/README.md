@@ -123,6 +123,15 @@ Steamworks App Icon and Shortcut Icon under `publishing/assets/icons/` — with:
 python3 publishing/assets/source/gen_icons.py
 ```
 
+Re-run it only when the mark or the plate colours change. The output is
+deterministic per ImageMagick build and not across builds: on a different
+build every raster (the PNGs, the ICO, the ICNS and the JPG) comes back with
+new bytes and the same drawing, because the anti-aliasing differs, and the
+build that made the committed set is not recorded. Judge the result by
+`tests/acceptance/test_demo_branding.py` and by eye, do not commit the churn
+unless the mark changed, and when you do commit, name your ImageMagick build
+(`convert -version` or `magick -version`) in the commit message.
+
 The demo set is **not** derived from `src-tauri/icons/` at build time: it is
 redrawn from the geometry and the `PLATE` colours in `gen_icons.py`, which
 were measured off the icons above. Replacing the base set therefore means
