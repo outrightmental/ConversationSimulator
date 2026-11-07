@@ -1,4 +1,156 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.0 — Release Notes
+
+> **Minor release (2026-11-07)** — the first public demo. The character's
+> reply arrives on screen as the model writes it, the wait says what it is
+> doing and when the reply will start, the first session explains itself, and
+> the engine launches tuned for one conversation at a time. This is also the
+> first tag since v0.2.9, so everything merged since then ships here. The
+> v0.3.0 notes further down were written in July and never tagged; that work
+> reached players through the v0.2.x patch releases.
+
+## What's new in v0.4.0
+
+### The reply arrives as it is written (#538)
+
+The NPC's words used to land all at once, after the whole turn had been
+generated and checked. They now reach the screen sentence by sentence while
+the model is still writing, over a WebSocket (`/ws/session/{id}`) served by
+convsim-core itself.
+
+- A sentence is released only once the safety check has passed on everything
+  released so far. Released text is committed text: a turn that is cut off
+  after the first sentence keeps what the player has read, fills in the
+  bookkeeping with defaults and is marked `salvaged`. There is no second model
+  call and no reply that vanishes after being read. Regeneration happens only
+  when nothing was released.
+- One turn at a time per session. A second submission while a turn is running
+  answers `409 TURN_IN_PROGRESS`; a message typed while the reply is finishing
+  is queued on screen and sent when the turn commits.
+- The socket accepts only the desktop webview's origin and the two local
+  development origins. It carries no replay; the transcript stays the record.
+
+### The wait says what it is doing (#539, #519)
+
+Waiting on a local model meant staring at a spinner. The panel under the
+transcript now narrates the turn in the character's voice through six stages:
+waiting, reading, writing, finishing, checking, voice.
+
+- While the engine reads the prompt, a bar fills from the engine's own
+  progress figures, with the share it already had cached pre-filled.
+- A reply-start estimate ("Alex will start replying in about 6–9 s") is
+  computed from this machine's measured reading and writing speeds over the
+  last twenty turns, and shown only when it is worth showing (over four
+  seconds, never while text is already streaming).
+- "Your turn." is announced to assistive technology when the reply lands, and
+  focus rests on the panel while the turn runs. Reduced-motion preferences are
+  honoured. The performance warning banner is gone; the panel is the answer.
+- Every turn now records what it cost: prompt tokens read and cached, output
+  tokens, reading and writing speed, the time at each stage boundary, extra
+  model calls (repair, safety retry) and voice synthesis time. The record rides
+  on each transcript turn and in the debug drawer, and
+  `GET /api/performance/rolling` reports rolling speeds per engine and model.
+  llama-server supplies its timings and prompt progress; Ollama its done-chunk
+  figures; the built-in fake runtimes report deterministic values. The figures
+  are stored with the session and leave the machine only in an export the
+  player asks for (`docs/privacy.md`).
+
+### The engine launches for one conversation (#523)
+
+llama-server used to start with its defaults, which are sized for serving many
+clients at once. It now starts with one slot, an explicit context size from
+the model registry (8192 tokens unless the registry says otherwise), a batch
+of 256 tokens and a prompt cache bounded at 1 GiB, so a single conversation
+gets the whole machine and a long one does not grow without limit. Each
+setting is an environment default the operator can still override.
+
+### The first session explains itself (#501)
+
+Playtest feedback said the first few sessions felt "both too sparse and too
+technical". Four things changed.
+
+- **Resume.** `GET /api/sessions` lists a profile's sessions, and a
+  *Conversation in progress* strip on every screen, a *Resume your
+  conversation* action on Home and a *Resume* button per session in Settings
+  lead back to the one left open. Reload and relaunch resume too.
+- **Reply speed.** One named setting (*Quick replies / Balanced / Fuller
+  replies*) scales how much the character says per turn, which is the
+  dominant cost of a turn. It applies to the next message without a restart.
+- **Plain language.** A familiarity question on first run chooses between
+  `plain` and `technical` wording. At `plain`, session ids, flow states and
+  raw flag names leave the conversation screen; the character is called by
+  name. The tutorial drops "scenario event", "hidden prompt" and "rubric
+  dimensions", and answers questions about the meters, its mood, whether it is
+  an AI, how conversations end and what the debrief is, instead of carrying on
+  with the next canned line.
+- **Meters and turns.** The two meters sit above the transcript in a labelled
+  *Conversation meters* panel, draw the tick they moved this turn, and are
+  separated from the character's *Mood*. A turn is the player's message plus
+  the reply, so the transcript and the debrief count the same thing.
+
+### The demo has its own face (#499)
+
+The Steam demo and the full app showed the same icon in the Steam client. The
+demo edition now bundles its own icon set: the same speech-bubble mark on a
+deep purple plate with a "DEMO" ribbon at 128 px and above, generated by
+`publishing/assets/source/gen_icons.py` and checked by 39 acceptance cases,
+with the Steamworks App Icon, Shortcut Icon and Mac Icon produced from the
+same source.
+
+### Copy diagnostics works on macOS, and a rejected request says why (#508)
+
+The web clipboard APIs are unusable in the packaged macOS and Linux webviews,
+so *Copy diagnostics* dead-ended at "Copy failed". It now copies through the
+desktop shell first and falls back to the web APIs elsewhere. A request that
+convsim-core rejects (`422`) names the field and the rule it broke instead of
+"Request validation failed", is written to the log the diagnostics report
+collects, and never echoes the rejected value. An explicit `null` for an
+optional setting means "use the default".
+
+### Also since v0.2.9
+
+- Slow turns are no longer failed at 60 seconds. A stalled engine answers
+  `504 TURN_TIMEOUT`, an unreachable one `503 RUNTIME_UNAVAILABLE`, and the
+  conversation screen waits out a long turn and reconciles with the saved
+  transcript instead of rolling back a reply the server already has.
+- The Conversation Brief is a briefing: a hero that says what you are about to
+  do, numbered setting cards, difficulty rows with the character's traits as
+  meters, and a launch bar pinned to the bottom of the screen (#486).
+- convsim-core runs as a supervised desktop sidecar: readiness is a real health
+  exchange rather than an open port, a crashed engine is restarted with
+  backoff, and quitting shuts down the whole process tree, including
+  llama-server and the voice sidecar (#456, #485).
+- A per-model clock showed how long a turn would take while the model was
+  thinking (#488); the staged panel above replaces it.
+- Diagnostics report the release version instead of the package version
+  (#490).
+- The README and docs carry screenshots and a demo recording from a real
+  local-model session (#455). They predate the v0.4 conversation screen and
+  are being recaptured (#554).
+- The issue tracker's labels, fields and milestones are declared in one file
+  and validated in CI (#491).
+
+## Upgrade notes
+
+No data migration. Two new settings, *Reply speed* and *Wording*, take their
+defaults (Balanced, plain) until changed. Turn timing records are stored as
+events in the session database and appear in transcript exports. The
+WebSocket at `/ws/session/{id}` is served by convsim-core on the same port as
+the API; the interim TypeScript backend no longer serves one.
+
+## Known gaps
+
+- The screenshots and demo recording show the pre-v0.4 conversation screen
+  (#554).
+- Model names are still shown as the registry writes them, for example
+  "Qwen3 4B Instruct Q4_K_M" (#555).
+- The reply-start estimate needs measured turns on a real model before it can
+  appear; the first turn on a fresh machine shows the stages without one.
+- The First Words tutorial is defined twice, as a pack and as a catalog entry,
+  with cross-copy guards keeping them in step (#553).
+
+---
+
 # Conversation Simulator v0.2.8 — Release Notes
 
 > **Patch release (2026-09-16)** — Steam overlay on Windows, and the
