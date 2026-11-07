@@ -125,49 +125,74 @@ def _http_status_error(status: int) -> httpx.HTTPStatusError:
     return httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
 
 
-def _transport_error_classes() -> list[type[httpx.TransportError]]:
-    """Every concrete transport error class the installed httpx defines."""
+# Every httpx transport error. The classifier counts each one as a network
+# failure: a connection, DNS, timeout or protocol failure between the engine
+# and the download server.
+_NETWORK_ERRORS = [
+    httpx.ConnectError("All connection attempts failed"),   # refused connection
+    httpx.ConnectError("[Errno -2] Name or service not known"),  # DNS failure
+    httpx.ConnectTimeout(""),
+    httpx.ReadTimeout(""),
+    httpx.WriteTimeout(""),
+    httpx.PoolTimeout(""),
+    httpx.ReadError(""),
+    httpx.WriteError(""),
+    httpx.CloseError(""),
+    httpx.RemoteProtocolError("peer closed connection without sending complete message body"),
+    httpx.LocalProtocolError(""),
+    httpx.ProxyError(""),
+    httpx.UnsupportedProtocol(""),
+]
+
+# Every other httpx exception. None of them is a lost connection, so each is
+# UNKNOWN and keeps httpx's own text. The first three reach execute_download:
+# a redirect loop, a body that does not decode as its Content-Encoding says,
+# and a registry URL httpx cannot parse. The rest mean the code misused the
+# httpx API, which is a bug.
+_UNKNOWN_HTTPX_ERRORS = [
+    httpx.TooManyRedirects("Exceeded maximum allowed redirects."),
+    httpx.DecodingError("Error -3 while decompressing data: incorrect header check"),
+    httpx.InvalidURL("Invalid port: ':1'"),
+    httpx.CookieConflict("Multiple cookies exist with name=session"),
+    httpx.StreamConsumed(),
+    httpx.StreamClosed(),
+    httpx.ResponseNotRead(),
+    httpx.RequestNotRead(),
+]
+
+_HTTP_STATUSES = [403, 404, 429, 500, 503]
+
+
+def _concrete_httpx_exception_classes() -> set[type[BaseException]]:
+    """Every exception class the installed httpx exports that has no subclass there."""
     classes = {
         obj
         for obj in vars(httpx).values()
-        if isinstance(obj, type) and issubclass(obj, httpx.TransportError)
+        if isinstance(obj, type) and issubclass(obj, BaseException)
     }
-    # Keep the leaves: an abstract parent (NetworkError, TimeoutException,
-    # ProtocolError, TransportError itself) is never raised on its own.
-    return sorted(
-        (c for c in classes if not any(o is not c and issubclass(o, c) for o in classes)),
-        key=lambda c: c.__name__,
-    )
+    return {c for c in classes if not any(o is not c and issubclass(o, c) for o in classes)}
 
 
-def test_every_httpx_transport_error_class_is_covered_below():
-    # The parametrized list that follows names each class the download path can
-    # raise. If httpx adds one, this fails so the list (and the classifier) is
-    # looked at again rather than silently passing.
-    assert {c.__name__ for c in _transport_error_classes()} == {
-        "CloseError", "ConnectError", "ConnectTimeout", "LocalProtocolError",
-        "PoolTimeout", "ProxyError", "ReadError", "ReadTimeout",
-        "RemoteProtocolError", "UnsupportedProtocol", "WriteError", "WriteTimeout",
+def test_every_concrete_httpx_exception_class_has_a_case_below():
+    # Each exception class httpx exports, under httpx.HTTPError or not, must
+    # appear in one of the case lists above, so its classification is asserted.
+    # If httpx adds a class, or a case is dropped from a list, this fails.
+    #
+    # Parent classes (HTTPError, RequestError, TransportError, NetworkError,
+    # TimeoutException, ProtocolError, StreamError) are left out because httpx
+    # raises their subclasses. The one exception is ProtocolError, which httpx
+    # raises itself only from digest authentication, and the download sends no
+    # credentials.
+    covered = {type(e) for e in _NETWORK_ERRORS + _UNKNOWN_HTTPX_ERRORS}
+    covered |= {type(_http_status_error(status)) for status in _HTTP_STATUSES}
+    assert {c.__name__ for c in _concrete_httpx_exception_classes()} == {
+        c.__name__ for c in covered
     }
 
 
 @pytest.mark.parametrize(
     "exc",
-    [
-        httpx.ConnectError("All connection attempts failed"),   # refused connection
-        httpx.ConnectError("[Errno -2] Name or service not known"),  # DNS failure
-        httpx.ConnectTimeout(""),
-        httpx.ReadTimeout(""),
-        httpx.WriteTimeout(""),
-        httpx.PoolTimeout(""),
-        httpx.ReadError(""),
-        httpx.WriteError(""),
-        httpx.CloseError(""),
-        httpx.RemoteProtocolError("peer closed connection without sending complete message body"),
-        httpx.LocalProtocolError(""),
-        httpx.ProxyError(""),
-        httpx.UnsupportedProtocol(""),
-    ],
+    _NETWORK_ERRORS,
     ids=lambda e: type(e).__name__ + (f":{e}" if str(e) else ""),
 )
 def test_classify_transport_errors_as_network(exc):
@@ -194,7 +219,7 @@ def test_classify_names_the_failure_and_keeps_httpx_detail():
     )
 
 
-@pytest.mark.parametrize("status", [403, 404, 429, 500, 503])
+@pytest.mark.parametrize("status", _HTTP_STATUSES)
 def test_classify_http_status_errors_are_not_network(status):
     code, message = classify_download_error(_http_status_error(status))
     assert code == ERROR_CODE_HTTP
@@ -236,6 +261,21 @@ def test_classify_other_exceptions_are_unknown_with_a_message():
     code, message = classify_download_error(RuntimeError(""))
     assert code == ERROR_CODE_UNKNOWN
     assert message == "Download failed (RuntimeError)."
+
+
+@pytest.mark.parametrize("exc", _UNKNOWN_HTTPX_ERRORS, ids=lambda e: type(e).__name__)
+def test_classify_other_httpx_errors_are_unknown_and_keep_their_text(exc):
+    code, message = classify_download_error(exc)
+    assert code == ERROR_CODE_UNKNOWN
+    assert message.strip()
+    assert message == str(exc)
+
+
+@pytest.mark.parametrize("cls", [httpx.DecodingError, httpx.TooManyRedirects])
+def test_classify_unknown_httpx_error_without_text_names_its_class(cls):
+    code, message = classify_download_error(cls(""))
+    assert code == ERROR_CODE_UNKNOWN
+    assert message == f"Download failed ({cls.__name__})."
 
 
 def _make_failing_client(exc: BaseException) -> httpx.AsyncClient:
@@ -393,7 +433,10 @@ async def _serve(handler):
 
 async def _download_from(conn, install_id, url, tmp_path, timeout=2.0):
     # trust_env=False: the test talks to 127.0.0.1 directly, never via a proxy.
-    async with httpx.AsyncClient(trust_env=False, timeout=timeout) as client:
+    # follow_redirects=True: as the client execute_download makes for itself.
+    async with httpx.AsyncClient(
+        trust_env=False, follow_redirects=True, timeout=timeout
+    ) as client:
         await execute_download(
             conn, install_id, url, "a" * 64, tmp_path / "models", "test.gguf",
             _client=client,
@@ -476,6 +519,58 @@ async def test_real_http_error_status_is_recorded_as_http(db, tmp_path, status_l
     assert record["install_status"] == "failed"
     assert record["error_code"] == ERROR_CODE_HTTP
     assert f"HTTP {status_line.split()[0].decode()}" in record["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_real_redirect_loop_is_recorded_as_unknown_with_httpx_text(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    # Answer every request with a redirect to the same path, on as many
+    # requests as the client sends over the connection.
+    async def _loop(reader, writer):
+        with contextlib.suppress(asyncio.IncompleteReadError, ConnectionError):
+            while True:
+                await reader.readuntil(b"\r\n\r\n")
+                writer.write(
+                    b"HTTP/1.1 302 Found\r\nLocation: /model.gguf\r\n"
+                    b"Content-Length: 0\r\n\r\n"
+                )
+                await writer.drain()
+        writer.close()
+
+    async with _serve(_loop) as base:
+        record = await _download_from(conn, install_id, f"{base}/model.gguf", tmp_path)
+
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_UNKNOWN
+    assert record["error_message"] == "Exceeded maximum allowed redirects."
+
+
+@pytest.mark.asyncio
+async def test_real_undecodable_body_is_recorded_as_unknown_with_httpx_text(db, tmp_path):
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    # Claim a gzip body and send bytes that are not gzip: httpx raises
+    # DecodingError while the body streams to the .part file.
+    async def _not_gzip(reader, writer):
+        await reader.readuntil(b"\r\n\r\n")
+        body = b"these bytes are not gzip"
+        writer.write(
+            b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n"
+            b"Content-Length: %d\r\n\r\n" % len(body) + body
+        )
+        await writer.drain()
+        writer.close()
+
+    async with _serve(_not_gzip) as base:
+        record = await _download_from(conn, install_id, f"{base}/model.gguf", tmp_path)
+
+    assert record["install_status"] == "failed"
+    assert record["error_code"] == ERROR_CODE_UNKNOWN
+    assert record["error_message"].startswith("Error -3 while decompressing data")
+    assert not (tmp_path / "models" / "test.gguf.part").exists()
 
 
 # ── execute_download: mocked HTTP download ────────────────────────────────────
