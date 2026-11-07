@@ -3,7 +3,7 @@
 
 Conversation Simulator requires a local language model to run NPC dialogue. No model weights are bundled with the application. You download exactly what you need, after the app has shown you the model's size and license.
 
-All inference happens on your computer. No prompts, transcripts, or model outputs are sent to any external server during play, unless you point `CONVSIM_OLLAMA_BASE_URL` at an Ollama server on another computer yourself. See [privacy.md](privacy.md) for the full data-handling policy and [network-security.md](network-security.md) for how the local-only guarantee is enforced.
+Inference happens on your computer, and no prompts, transcripts, or model outputs are sent to any external server during play, unless you point the app at an AI server on another computer yourself: `CONVSIM_OLLAMA_BASE_URL` for Ollama, or `CONVSIM_LLAMA_CPP_BASE_URL` for a llama.cpp server (see [Runtime environment variables](#runtime-environment-variables)). See [privacy.md](privacy.md) for the full data-handling policy and [network-security.md](network-security.md) for how the local-only guarantee is enforced.
 
 ---
 

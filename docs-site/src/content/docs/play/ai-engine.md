@@ -7,7 +7,7 @@ verified_against: v0.4.0
 ---
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 
-Conversation Simulator runs AI inference entirely on your computer. All three options work offline after the one-time setup, and no prompts or responses are sent to an external server, unless you point the app at an Ollama server on another computer yourself. See [Privacy](/trust/privacy/) for the full data-handling policy.
+Conversation Simulator runs AI inference on your computer. All three options work offline after the one-time setup, and no prompts or responses are sent to an external server, unless you point the app at an AI server on another computer yourself, with `CONVSIM_OLLAMA_BASE_URL` or `CONVSIM_LLAMA_CPP_BASE_URL` (see [Runtime environment variables](#runtime-environment-variables)). See [Privacy](/trust/privacy/) for the full data-handling policy.
 
 ---
 
