@@ -76,6 +76,9 @@ WARN = "warn"
 SEVERITIES = (HARD, WARN)
 
 AGENDA_RUN_WORDS = 5
+# (b) exempts an offer the agenda scripts together with this many words just
+# before it ("tires at 14,200", "can do 15,000"), and nothing else of the run.
+OFFER_LEAD_WORDS = 2
 # Agenda numbers from this value (3+ digits) are secrets: a price floor, a
 # budget. Smaller ones ("two offers") are ordinary talk.
 SECRET_NUMBER_MIN = 100
@@ -372,21 +375,59 @@ def secret_numbers(hidden_agenda: Sequence[str]) -> Dict[int, Tuple[int, str]]:
     return secrets
 
 
+def _offer_values(item: str) -> List[Tuple[int, List[str]]]:
+    """``(value, its words)`` for each number ``spoken_offers`` returns."""
+    if _KEEP_BACK.search(item):
+        return []
+    return [
+        (value, words(written)) for value, written in numbers_in(item)
+        if value >= SECRET_NUMBER_MIN
+    ]
+
+
 def spoken_offers(item: str) -> List[List[str]]:
     """The words of each 3+ digit number an agenda item gives the character to say.
 
-    Empty for an item that keeps its numbers back (``_KEEP_BACK``). A run of
-    agenda words that carries one of these is the character making an offer
-    its agenda scripts ("four new tires at 14,200"), not a leak.
+    Empty for an item that keeps its numbers back (``_KEEP_BACK``). The words
+    of one of these, with the few words just before them, are the character
+    making an offer its agenda scripts ("four new tires at 14,200"), not a
+    leak (``_says_more_than_an_offer``).
     """
-    if _KEEP_BACK.search(item):
-        return []
-    return [words(written) for value, written in numbers_in(item) if value >= SECRET_NUMBER_MIN]
+    return [offer for _, offer in _offer_values(item)]
 
 
-def _has_sequence(run: Sequence[str], seq: Sequence[str]) -> bool:
-    n = len(seq)
-    return n > 0 and any(list(run[i:i + n]) == list(seq) for i in range(len(run) - n + 1))
+def _says_more_than_an_offer(
+    run: Sequence[str],
+    offers: Sequence[Tuple[int, Sequence[str]]],
+    min_run: int,
+) -> bool:
+    """Whether a run shared with an agenda item leaks more than the offer it makes.
+
+    Every occurrence of an offer's words is set aside together with up to
+    ``OFFER_LEAD_WORDS`` words just before it ("tires at 14,200"). The run
+    leaks if any piece left is still ``min_run``+ words, or if it holds two or
+    more different offer values, which is the item's ladder being recited
+    ("15,000, then 14,600, then 14,200"). A run with no offer in it is left
+    whole, so it leaks.
+    """
+    run = list(run)
+    set_aside = [False] * len(run)
+    values = set()
+    for value, offer in offers:
+        offer, n = list(offer), len(offer)
+        for start in range(len(run) - n + 1):
+            if n and run[start:start + n] == offer:
+                values.add(value)
+                for k in range(max(0, start - OFFER_LEAD_WORDS), start + n):
+                    set_aside[k] = True
+    if len(values) >= 2:
+        return True
+    piece = 0
+    for aside in set_aside:
+        piece = 0 if aside else piece + 1
+        if piece >= min_run:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -508,12 +549,14 @@ def find_agenda_leaks(
     Two ways: a run of ``min_run``+ agenda words, or a number of 3+ digits
     from the agenda (a price floor, a budget) in any form ``numbers_in``
     reads, so "$13,800", "13800", "thirteen thousand eight hundred" and
-    "thirteen-eight" are all Ray's floor. A run that carries a number the
-    agenda gives the character to say (``spoken_offers``) is that offer being
-    made, and does not count.
+    "thirteen-eight" are all Ray's floor. A number the agenda gives the
+    character to say (``spoken_offers``), with up to ``OFFER_LEAD_WORDS``
+    words before it, is that offer being made and is set aside; the run
+    counts if what is left still holds ``min_run``+ agenda words in a row, or
+    if it carries two or more different offers of the item (its ladder, recited).
     """
     agenda_words = [
-        (i, words(item), spoken_offers(item)) for i, item in enumerate(hidden_agenda, start=1)
+        (i, words(item), _offer_values(item)) for i, item in enumerate(hidden_agenda, start=1)
     ]
     secrets = secret_numbers(hidden_agenda)
     findings: List[Finding] = []
@@ -524,7 +567,7 @@ def find_agenda_leaks(
         for index, item_words, offers in agenda_words:
             runs = [
                 r for r in shared_runs(line_words, item_words, min_run)
-                if not any(_has_sequence(r, offer) for offer in offers)
+                if _says_more_than_an_offer(r, offers, min_run)
             ]
             if runs:
                 findings.append(Finding(

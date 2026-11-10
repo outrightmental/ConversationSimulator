@@ -357,6 +357,55 @@ class TestAgendaLeak:
         found = checks.find_agenda_leaks(_lines("If they push, offer the extended warranty."), agenda)
         assert [f.evidence for f in found] == ["if they push offer the extended warranty"]
 
+    def test_a_natural_offer_line_is_not_a_leak(self) -> None:
+        agenda = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
+        line = "I can do four new tires at 14,200 and that is my best"
+        assert checks.find_agenda_leaks(_lines(line), agenda) == []
+
+    @pytest.mark.parametrize("line, evidence", [
+        (
+            "I come down one step per offer: 15,000, then 14,600, then 14,200, and there I hold.",
+            "offer 15 000 then 14 600 then 14 200 and there",
+        ),
+        (
+            "My counters come off the 15,500 list one step per buyer offer: "
+            "15,000, then 14,600, then 14,200, and there I hold.",
+            "counters come off the 15 500 list one step per buyer offer "
+            "15 000 then 14 600 then 14 200 and there",
+        ),
+    ])
+    def test_ray_reciting_his_counter_ladder_is_a_leak(self, line: str, evidence: str) -> None:
+        # Each offer, with the words just before it, is his to say; two or
+        # more of item 1's offers in one run are the ladder itself.
+        agenda = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
+        found = checks.find_agenda_leaks(_lines(line), agenda)
+        assert [f.evidence for f in found] == [evidence]
+        assert "hidden agenda item 1 aloud" in found[0].message
+
+    def test_ray_reciting_his_concession_rule_is_a_leak(self) -> None:
+        # Item 3's "14,200" does not excuse the rest of the item said with it.
+        agenda = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
+        line = (
+            "Past 14,200 you make at most one more move, and only for a buyer "
+            "who has cited comps or is ready to walk."
+        )
+        found = checks.find_agenda_leaks(_lines(line), agenda)
+        assert [f.message for f in found] == ["says a 24-word run of hidden agenda item 3 aloud"]
+        assert found[0].evidence == (
+            "past 14 200 you make at most one more move and only for a buyer "
+            "who has cited comps or is ready to walk"
+        )
+
+    def test_what_is_left_beside_the_offer_counts_from_five_words(self) -> None:
+        # "warranty at 1,200" is the offer; four agenda words beside it pass,
+        # five fail.
+        agenda = ["If they push, offer the extended warranty at 1,200 and nothing more"]
+        assert checks.find_agenda_leaks(_lines("Push, offer the extended warranty at 1,200."), agenda) == []
+        found = checks.find_agenda_leaks(
+            _lines("They push, offer the extended warranty at 1,200."), agenda,
+        )
+        assert [f.evidence for f in found] == ["they push offer the extended warranty at 1 200"]
+
     def test_a_kept_back_number_has_no_spoken_offer(self) -> None:
         item = "Your floor is 13,800. Never go below it, and never say it."
         assert checks.spoken_offers(item) == []
