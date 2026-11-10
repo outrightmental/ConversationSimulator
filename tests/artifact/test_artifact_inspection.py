@@ -30,6 +30,21 @@ import pytest
 # Semver pattern — matches 0.1.0, 1.0.0-alpha.1, etc.
 _SEMVER = re.compile(r"\d+\.\d+\.\d+")
 
+# The macOS floor download-runtime.sh enforces on the bundled llama-server
+# (issue #469). The .app must not declare a lower LSMinimumSystemVersion, or
+# macOS opens it on a version where its engine cannot start.
+_DOWNLOAD_RUNTIME = (
+    Path(__file__).resolve().parents[2] / "runtimes" / "llama_cpp" / "download-runtime.sh"
+)
+_MINOS_FLOOR_RE = re.compile(
+    r'^MACOS_MINOS_FLOOR="\$\{CONVSIM_MACOS_MINOS_FLOOR:-([0-9.]+)\}"', re.M
+)
+
+
+def _os_version(text: str) -> tuple[int, ...]:
+    """'14.0' -> (14, 0), for comparing macOS versions numerically."""
+    return tuple(int(part) for part in text.split("."))
+
 # Extensions that must never appear in a release artifact.
 _WEIGHT_EXTENSIONS = frozenset({".gguf", ".safetensors", ".pt", ".pth", ".ckpt"})
 
@@ -385,6 +400,47 @@ class TestVersionStamping:
             pytest.skip(
                 "No .app bundle contained a Contents/Info.plist — "
                 "skipping macOS version stamp check"
+            )
+
+    def test_macos_app_minimum_os_covers_the_engine(
+        self, artifact_dir: Path
+    ) -> None:
+        """A macOS .app must not declare a minimum below the engine's floor.
+
+        Tauri writes bundle.macOS.minimumSystemVersion to LSMinimumSystemVersion.
+        The bundled llama-server targets the floor download-runtime.sh enforces
+        (macOS 14.0); a bundle that declares less opens on a macOS where its
+        engine is killed at launch. tests/acceptance/ checks the config; this
+        checks what the build actually wrote.
+        """
+        app_bundles = _main_app_bundles(artifact_dir)
+        if not app_bundles:
+            pytest.skip("No .app bundle in artifact — skipping macOS minimum check")
+        match = _MINOS_FLOOR_RE.search(_DOWNLOAD_RUNTIME.read_text(encoding="utf-8"))
+        assert match, "download-runtime.sh no longer sets MACOS_MINOS_FLOOR"
+        floor = match.group(1)
+        checked = 0
+        for bundle in app_bundles:
+            plist_path = bundle / "Contents" / "Info.plist"
+            if not plist_path.is_file():
+                continue
+            with plist_path.open("rb") as fh:
+                info = plistlib.load(fh)
+            declared = info.get("LSMinimumSystemVersion")
+            assert declared, (
+                f"{bundle.name}/Contents/Info.plist has no LSMinimumSystemVersion, "
+                f"so macOS would open it below the engine's macOS {floor}."
+            )
+            assert _os_version(declared) >= _os_version(floor), (
+                f"{bundle.name} declares LSMinimumSystemVersion {declared}, but the "
+                f"bundled llama-server needs macOS {floor}. Raise "
+                "bundle.macOS.minimumSystemVersion in tauri.conf.json."
+            )
+            checked += 1
+        if checked == 0:
+            pytest.skip(
+                "No .app bundle contained a Contents/Info.plist — "
+                "skipping macOS minimum check"
             )
 
 
