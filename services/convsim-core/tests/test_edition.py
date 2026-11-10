@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from convsim_core import edition
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
+from convsim_core.runtime.fake import FakeChatRuntime
 from convsim_core.services.model_registry_service import load_and_persist_registry
 from tests.helpers import make_pack_zip
 
@@ -965,3 +966,116 @@ def test_which_selections_the_demo_install_replaces(tmp_path, runtime_id, model_
         assert _install_saves_selection(conn, _config(tmp_path)) is True
     finally:
         db.close()
+
+
+class _RecordingLlamaRuntime(FakeChatRuntime):
+    """The fake engine under the llama.cpp id, keeping every request it is sent."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list = []
+
+    @property
+    def id(self) -> str:
+        return "llama_cpp"
+
+    def chat_stream(self, request):
+        self.requests.append(request)
+        return super().chat_stream(request)
+
+
+def _unpinned_session_body(scenario_id: str = "behavioral_interview") -> dict:
+    body = _session_body(scenario_id)
+    body.pop("runtime_id")
+    return body
+
+
+def _play_turn_and_debrief(client: TestClient) -> dict:
+    """Play one unpinned turn and the debrief; return the turn's timing record."""
+    created = client.post("/api/sessions", json=_unpinned_session_body())
+    assert created.status_code == 201, created.text
+    session_id = created.json()["session_id"]
+    assert client.post(f"/api/sessions/{session_id}/start").status_code == 200
+    turn = client.post(f"/api/sessions/{session_id}/turn", json={"content": "I shipped it on time."})
+    assert turn.status_code == 200, turn.text
+    npc = next(e for e in turn.json()["events"] if e["event_type"] == "npc_turn")
+    assert client.post(f"/api/sessions/{session_id}/end").status_code == 200
+    debrief = client.post(f"/api/sessions/{session_id}/debrief")
+    assert debrief.status_code == 200, debrief.text
+    return npc["payload"]["timing"]
+
+
+def _declared_sampling(registry_id: str) -> tuple[float, float]:
+    data = yaml.safe_load(_REGISTRY_PATH.read_text(encoding="utf-8"))
+    block = next(m for m in data["models"] if m["id"] == registry_id)["runtime"]["llama_cpp"]
+    return block["temperature_default"], block["top_p_default"]
+
+
+def test_demo_samples_and_records_its_own_model_not_the_full_apps_selection(shared_root):
+    """The full app selected the player's own GGUF, which has no registry
+    sampling. The demo's engine runs the demo model, so every turn and the
+    debrief are sent with the demo model's registry values, and the turn's
+    timing record names the demo model."""
+    from convsim_core.runtime.types import SamplingDefaults
+    from convsim_core.services.model_registry_service import active_model_sampling
+
+    temperature, top_p = _declared_sampling(_STARTER_MODEL_ID)
+    root = shared_root(_select_own_gguf)
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        conn = demo.state.db.connection()
+        _install_demo_model_file(conn, root.models_dir)
+        assert active_model_sampling(conn, "llama_cpp", demo.state.service_config) == (
+            SamplingDefaults(temperature=temperature, top_p=top_p)
+        )
+        # Without the config the full edition's rule applies: the selection.
+        assert active_model_sampling(conn, "llama_cpp") == SamplingDefaults()
+
+        runtime = _RecordingLlamaRuntime()
+        demo.state.runtime = runtime
+        timing = _play_turn_and_debrief(client)
+    assert len(runtime.requests) >= 2, "a turn and the debrief"
+    assert {(r.temperature, r.top_p) for r in runtime.requests} == {(temperature, top_p)}
+    assert timing["context"]["registry_model_id"] == _STARTER_MODEL_ID
+
+
+def test_full_edition_samples_and_records_its_selection(shared_root):
+    """The full app keeps sampling and recording the model its player selected."""
+    root = shared_root(_select_own_gguf)
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        _install_demo_model_file(full.state.db.connection(), root.models_dir)
+        runtime = _RecordingLlamaRuntime()
+        full.state.runtime = runtime
+        timing = _play_turn_and_debrief(client)
+    assert len(runtime.requests) >= 2
+    assert all(r.top_p is None for r in runtime.requests)
+    assert timing["context"]["registry_model_id"] == "my-own-model.gguf"
+
+
+def _llm_present(client: TestClient) -> dict:
+    checks = client.get("/api/preflight").json()["checks"]
+    return next(c for c in checks if c["id"] == "llm-present")
+
+
+@pytest.mark.parametrize(
+    "select",
+    [_select_earlier_starter, _select_own_gguf, _select_ollama],
+    ids=["earlier-starter", "own-gguf", "ollama"],
+)
+def test_demo_preflight_counts_only_the_demo_models_install(shared_root, select):
+    """Support's AI-model check agrees with Home and the setup status: the full
+    app's other installs and its selection are not the demo's model."""
+    root = shared_root(select)
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        assert "llm-present" in client.get("/api/setup/status").json()["missing"]
+        assert _llm_present(client)["status"] == "fail"
+        _install_demo_model_file(demo.state.db.connection(), root.models_dir)
+        check = _llm_present(client)
+        assert check["status"] == "pass"
+        assert check["message"] == "1 AI model installed and ready."
+
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        assert _llm_present(client)["status"] == "pass"

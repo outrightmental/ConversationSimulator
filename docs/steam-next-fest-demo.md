@@ -182,7 +182,10 @@ one from before v0.4 has the earlier starter (`qwen3-4b-instruct-q4_k_m`)
 installed and selected. In the demo only the demo model's own files count: the
 engine autostart (`runtime/active.py`) starts the engine only on the demo
 model's install, never on the full app's selection or its other installs, and
-the setup status and the Home screen count only that install. A player who
+the setup status, the Home screen and Support's AI-model check count only that
+install. Every turn and the debrief are sent with the demo model's registry
+sampling (its `temperature_default` and `top_p_default`), and the turn timing
+records name the demo model, whatever the full app has selected. A player who
 does not have it is offered the demo's one download, as a new player is.
 
 The full app's selection is left as it is. When the demo's one-click install

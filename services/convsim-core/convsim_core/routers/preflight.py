@@ -22,12 +22,13 @@ import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core import __version__
+from convsim_core.edition import is_demo, resolve_demo_model_id
 from convsim_core.runtime.sidecar import find_executable
 from convsim_core.services.model_manager_service import get_active_config
 
@@ -206,13 +207,30 @@ def _check_llama_cpp_binary() -> CheckResult:
     )
 
 
-def _check_llm_present(conn, active_model_id: Optional[str]) -> CheckResult:
-    """Check 5: At least one AI model is installed. Auto-fixable by the setup pipeline."""
+def _check_llm_present(conn, active_model_id: Optional[str], config: Any = None) -> CheckResult:
+    """Check 5: At least one AI model is installed. Auto-fixable by the setup pipeline.
+
+    In the demo edition (*config* says so) only the demo model's own ready
+    install counts, as in ``/api/setup/status``: the demo shares the full
+    app's data root (D-06), and neither another model the full app installed
+    nor the full app's saved selection is the model the demo plays.
+    """
     severity, autofix = CHECK_TRIAGE["llm-present"]
-    row = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM installed_models "
-        "WHERE install_status IN ('ready', 'complete')"
-    ).fetchone()
+    demo = is_demo(config)
+    if demo:
+        demo_id = resolve_demo_model_id(conn, config)
+        row = None
+        if demo_id is not None:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM installed_models "
+                "WHERE install_status IN ('ready', 'complete') AND registry_id = ?",
+                (demo_id,),
+            ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM installed_models "
+            "WHERE install_status IN ('ready', 'complete')"
+        ).fetchone()
     count = row["cnt"] if row else 0
 
     if count > 0:
@@ -226,7 +244,8 @@ def _check_llm_present(conn, active_model_id: Optional[str]) -> CheckResult:
         )
 
     # An active_model_id without an install record means Ollama or a user-supplied path.
-    if active_model_id:
+    # In the demo it is the full app's selection, which the demo does not play.
+    if active_model_id and not demo:
         return CheckResult(
             id="llm-present",
             name="AI model",
@@ -391,7 +410,7 @@ async def run_preflight(request: Request) -> PreflightResponse:
         _check_data_dir(config.data_dir),
         _check_disk_space(config.models_dir, required_gb),
         _check_llama_cpp_binary(),
-        _check_llm_present(conn, active_model_id),
+        _check_llm_present(conn, active_model_id, config),
         _check_packs_seeded(conn),
         voice_check,
     ]

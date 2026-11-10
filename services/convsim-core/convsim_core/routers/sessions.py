@@ -40,6 +40,7 @@ from convsim_core.errors import ConvsimError
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.active import (
     MODEL_FREE_RUNTIME_IDS,
+    find_ready_model_path,
     unpinned_session_runtime_is_model_free,
 )
 from convsim_core.runtime.base import ChatRuntime
@@ -523,7 +524,9 @@ def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
     return runtime_id if runtime_id in _SESSION_PINNED_RUNTIME_IDS else None
 
 
-def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) -> str | None:
+def _recorded_model_for(
+    conn: Any, runtime: ChatRuntime, setup: Dict[str, Any], config: Any = None
+) -> str | None:
     """The model identity to stamp on this turn's timing record, or None (issue #519).
 
     Only a selection that served the turn is recorded. A session pinned to a
@@ -533,9 +536,19 @@ def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) 
     names what the runtime itself reported, and the registry id stays None
     rather than attributing the turn to a model that never ran. A file path
     is never recorded (see ``recorded_model_id``).
+
+    In the demo edition the saved selection is the full app's on the shared
+    data root (D-06), so it does not say what served the turn. The demo's
+    engine runs the demo model's install, the file ``find_ready_model_path``
+    picks for it and the turn's sampling is read for, so a llama.cpp turn is
+    recorded as that file's model.
     """
     if setup.get("runtime_id") in _SESSION_PINNED_RUNTIME_IDS:
         return None
+    if is_demo(config):
+        if runtime.id != "llama_cpp":
+            return None
+        return recorded_model_id(conn, find_ready_model_path(conn, config))
     active = get_active_config(conn)
     if active.get("runtime_id") != runtime.id:
         return None
@@ -934,10 +947,11 @@ async def _run_turn(
     runtime = _resolve_runtime(request, setup)
     save_transcript = setup.get("save_transcript", True)
     source_mode = setup.get("input_mode", "text-only")
+    config = request.app.state.service_config
     timing = TurnTimingBuilder(
         clock=clock,
         runtime_id=runtime.id,
-        registry_model_id=_recorded_model_for(conn, runtime, setup),
+        registry_model_id=_recorded_model_for(conn, runtime, setup, config),
     )
     # Stream the turn to whoever is listening on the session socket (#538).
     # With no socket connected the pipeline runs exactly as before.
@@ -964,6 +978,7 @@ async def _run_turn(
             ending_conditions=info.ending_conditions,
             timing=timing,
             streamer=streamer,
+            config=config,
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1273,6 +1288,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
             scenario_data=scenario_data,
             state_variable_overrides=info.state_variable_overrides,
             played_variables=info.played_variables(),
+            config=request.app.state.service_config,
         )
     except Exception as exc:
         logger.error("Debrief generation failed for session %s: %s", session_id, exc)

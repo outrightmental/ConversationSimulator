@@ -199,7 +199,9 @@ def registry_sampling_defaults(conn: sqlite3.Connection, registry_id: str | None
         return SamplingDefaults()
 
 
-def active_model_sampling(conn: sqlite3.Connection, runtime_id: str | None) -> SamplingDefaults:
+def active_model_sampling(
+    conn: sqlite3.Connection, runtime_id: str | None, config: Any = None
+) -> SamplingDefaults:
     """The registry sampling for the model serving a request on ``runtime_id`` (issue #580).
 
     Only the llama.cpp runtime has registry sampling defaults: the registry
@@ -217,6 +219,12 @@ def active_model_sampling(conn: sqlite3.Connection, runtime_id: str | None) -> S
     started with ``CONVSIM_RUNTIME_ID=llama_cpp`` and nothing saved, whose
     engine the app starts on the newest ready install.
 
+    *config* is the service config, passed to ``find_ready_model_path`` as the
+    engine start passes it: in the demo edition only the demo model's own
+    install counts there, so a demo turn is sampled for the demo model its
+    engine runs, not for the full app's selection on the shared data root
+    (D-06). Without it the full edition's rule applies.
+
     An engine the app neither started nor holds an install record for, such
     as the external llama-server that ``scripts/nightly-model-smoke.py`` runs
     against a fresh data directory, gets empty defaults: nothing in the app's
@@ -226,7 +234,7 @@ def active_model_sampling(conn: sqlite3.Connection, runtime_id: str | None) -> S
     if runtime_id != "llama_cpp":
         return SamplingDefaults()
     try:
-        model_path = find_ready_model_path(conn)
+        model_path = find_ready_model_path(conn, config)
     except (sqlite3.Error, OSError, ValueError) as exc:
         logger.warning("Model file lookup failed (%s); using the request defaults", exc)
         return SamplingDefaults()

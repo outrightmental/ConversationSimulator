@@ -1022,6 +1022,7 @@ async def process_turn(
     ending_conditions: Optional[Dict[str, Any]] = None,
     timing: Optional[TurnTimingBuilder] = None,
     streamer: Optional[TurnStreamer] = None,
+    config: Any = None,
 ) -> TurnPipelineResult:
     """Execute the full player-turn pipeline and persist results.
 
@@ -1045,6 +1046,11 @@ async def process_turn(
     repetition guard may still retry the turn (issue #580). A repeat after the
     first sentence streams and is noted. With no streamer the turn behaves as
     before.
+
+    ``config`` is the service config. It decides which installed model the
+    turn's registry sampling is read for (``active_model_sampling``): in the
+    demo edition that is the demo model's own install, the file its engine
+    runs. Without it the full edition's rule applies.
 
     Raises TurnInputError if the player text fails validation.
     Never raises for model errors — uses safe fallback instead.
@@ -1157,7 +1163,7 @@ async def process_turn(
     # 7. Call runtime. The model's registry entry sets the temperature and
     #    top_p when it declares them (issue #580); otherwise the request keeps
     #    ChatRequest's temperature and the adapter's top_p, as before.
-    sampling = active_model_sampling(conn, runtime.id)
+    sampling = active_model_sampling(conn, runtime.id, config)
     messages = [
         ChatMessage(role="system", content=prompt.system_prompt),
         ChatMessage(role="user", content=prompt.user_prompt),
