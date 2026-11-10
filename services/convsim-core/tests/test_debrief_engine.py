@@ -290,6 +290,26 @@ class TestComputeScores:
     def test_empty_turns_returns_empty(self):
         assert _compute_scores([]) == {}
 
+    def test_spellings_of_one_dimension_are_scored_together(self):
+        # Seen in a real Qwen3 4B session: the model wrote the same dimension
+        # three ways across turns, and the scorecard listed it twice.
+        rows = [
+            _make_npc_row({"rubric_observations": [
+                {"rubric_id": "self-awareness", "observation": "a", "score_delta": 2},
+            ]}),
+            _make_npc_row({"rubric_observations": [
+                {"rubric_id": "Self Awareness", "observation": "b", "score_delta": 1},
+                {"rubric_id": "self_awareness", "observation": "c", "score_delta": 1},
+            ]}),
+        ]
+        assert _compute_scores(rows) == {"self_awareness": 54}
+
+    def test_id_with_no_letters_or_digits_is_skipped(self):
+        row = _make_npc_row({"rubric_observations": [
+            {"rubric_id": " -- ", "observation": "x", "score_delta": 3},
+        ]})
+        assert _compute_scores([row]) == {}
+
     def test_no_rubric_observations_returns_empty(self):
         row = _make_npc_row({"rubric_observations": []})
         assert _compute_scores([row]) == {}
