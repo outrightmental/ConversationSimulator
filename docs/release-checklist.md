@@ -31,22 +31,25 @@ intend to tag.
 | Release smoke — macOS aarch64 | `.github/workflows/release-smoke.yml` (job: `smoke-macos / aarch64`) | All CI-subset subsystems on Apple Silicon |
 | Release smoke — Windows x86_64 | `.github/workflows/release-smoke.yml` (job: `smoke-windows`) | All CI-subset subsystems on Windows |
 
-**Release workflow job chain** (triggered by pushing a `vX.Y.Z` tag):
+**Release workflow job chain** (triggered by pushing a `vX.Y.Z` tag, or by
+**Actions → Release → Run workflow** from `main` with `tag: vX.Y.Z` and
+`edition: full`, in which case the `release` job creates the tag on the commit
+the run built):
 
 | Job | Depends on | What it does |
 |---|---|---|
 | `validate` | — | Smoke check |
 | `build-desktop` | `validate` | Cross-platform Tauri builds (macOS, Linux, Windows) |
 | `release` | `build-desktop` | Publishes the GitHub release notes, no binaries: the tag's own section of `RELEASE_NOTES.md`, or keeps a release already made in the GitHub UI as it is |
-| `steam` | `release` | Stages the build to Steam and sets `beta` live — **pauses for `steam-release` environment approval** |
+| `steam` | `release` | Stages the build in Steamworks → Builds without setting any branch live — **pauses for `steam-release` environment approval** |
 | `defender-scan` | `build-desktop`, `release` | Uploads signed Windows build to Azure; Defender for Storage scans on upload; appends scan note to release — **runs in parallel with `steam`** |
 
 > **Defender scan and Steam approval sequence:** `defender-scan` runs in
 > parallel with the `steam` job. The `steam-release` environment approval gate
 > is the human moment to glance at the Defender verdict in the release notes
-> before clicking **Approve** for Steam go-live. If the `defender-scan` job
+> before clicking **Approve** for the Steam upload. If the `defender-scan` job
 > has not yet finished when the Steam approval dialog appears, wait for it —
-> a clean Defender verdict should precede Steam beta publication.
+> a clean Defender verdict should precede the Steam upload.
 >
 > If the six `AZURE_*` org secrets are not configured, `defender-scan` emits a
 > `::warning` and exits cleanly; release and Steam are unaffected.
@@ -54,9 +57,11 @@ intend to tag.
 
 > **Steam step:** After pushing a tag, the `steam` job appears in Actions →
 > Release and waits for a required reviewer to click **Approve** before any
-> Steam credential is used. Approving uploads all three depots and sets the
-> `beta` branch live. If Steam secrets are not yet configured, the job emits an
-> INFO and completes without uploading — the release remains green.
+> Steam credential is used. Approving uploads all three depots and stages the
+> build in Steamworks → Builds; no branch is set live, so a human sets it live
+> on `beta` (or, after the Stage 4 gate, `default`) in Steamworks. If Steam
+> secrets are not yet configured, the job emits an INFO and completes without
+> uploading — the release remains green.
 
 **CI-subset subsystems (no model downloads, fake runtime):**
 

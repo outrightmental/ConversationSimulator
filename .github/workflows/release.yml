@@ -1702,10 +1702,18 @@ jobs:
           echo "Resolved: tag=$TAG prerelease=$PRERELEASE make_latest=$MAKE_LATEST exists=$EXISTS"
 
       # No `files:` key — this publishes notes, never artifacts.
+      #
+      # target_commitish matters only when the tag does not exist yet, which is
+      # a full-edition Run workflow from a branch: the release then creates the
+      # tag, and without it GitHub would put the tag on the default branch's
+      # head at publish time, which can be newer than the commit build-desktop
+      # built and Steam stages. Pin it to the commit this run built. A tag push
+      # already has its tag, and GitHub ignores the value then.
       - name: Publish release notes (no binaries)
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.relmeta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.relmeta.outputs.name }}
           body_path: ${{ steps.relmeta.outputs.body_path }}
           draft: false
