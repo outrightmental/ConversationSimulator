@@ -45,6 +45,7 @@ from convsim_core.scenario_state import (
     VariableVisibility,
     apply_state_delta,
     build_variable_defs,
+    evaluate_event_triggers,
     hidden_variable_names,
     initialize_state,
     partition_state_by_visibility,
@@ -470,6 +471,68 @@ class TestEventsBeforeTheTurn:
 # ---------------------------------------------------------------------------
 # End to end through the API
 # ---------------------------------------------------------------------------
+
+
+# Events that are meant to speak in the first reply. Every other event a pack
+# or the catalog authors waits for a turn that earns it: since events reach the
+# prompt (issue #580), one true at the defaults directs the NPC's first reply
+# whatever the player said.
+_FIRST_REPLY_EVENTS = {
+    # The opening asks "What did you want to say?"; the player's first line is
+    # the no, and Ryan's lighter reframe is the first test of it.
+    ("holding_your_ground", "first_test"),
+    # Victor challenges every claim until credibility (35) reaches 50; his
+    # opening already demands what the candidate decided, and why.
+    ("hostile_executive_interview", "credibility_challenge"),
+}
+
+
+def _every_scenario() -> List[Any]:
+    packs = [pytest.param(f, id=f.stem) for f in _scenario_files()]
+    catalog = [pytest.param(sid, id=f"catalog-{sid}") for sid in SCENARIOS]
+    return packs + catalog
+
+
+@pytest.mark.parametrize("source", _every_scenario())
+def test_no_event_is_true_at_the_defaults_unless_meant_for_the_first_reply(source) -> None:
+    if isinstance(source, Path):
+        info = load_scenario_info_from_pack(source.parent.parent, f"scenarios/{source.name}")
+        scenario_id = source.stem
+    else:
+        info, scenario_id = SCENARIOS[source], source
+    state = initialize_state(build_variable_defs(info.state_variable_overrides))
+    fired = evaluate_event_triggers(state, 1, info.events or [], set())
+    unexpected = [e for e in fired if (scenario_id, e) not in _FIRST_REPLY_EVENTS]
+    assert unexpected == [], f"{scenario_id}: true at the defaults: {unexpected}"
+
+
+def test_the_first_reply_events_still_are():
+    """The exceptions are pinned: each is in its pack and true at the defaults."""
+    found = set()
+    for path in _scenario_files():
+        info = load_scenario_info_from_pack(path.parent.parent, f"scenarios/{path.name}")
+        state = initialize_state(build_variable_defs(info.state_variable_overrides))
+        found |= {(path.stem, e) for e in evaluate_event_triggers(state, 1, info.events or [], set())}
+    assert found == _FIRST_REPLY_EVENTS
+
+
+def test_elena_comes_back_to_the_gap_on_turn_three():
+    """stretch_role_interview's gap_probing was true at gap_acknowledged's
+    default (0 < 1), so Elena's first reply raised the gap, even after a
+    candidate who had just addressed it."""
+    info = _pack_scenario("job-interview-basic", "stretch_role_interview")
+    event = next(e for e in info.events if e.id == "gap_probing")
+    state = initialize_state(build_variable_defs(info.state_variable_overrides))
+    fired: set = set()
+    assert [evaluate_event_triggers(state, turn, [event], fired) for turn in range(1, 6)] == [
+        [], [], ["gap_probing"], [], [],
+    ]
+    text = " ".join(event.npc_instruction.split())
+    assert "If the candidate has not yet addressed it directly" in text
+    assert "If they already have" in text
+    variable = next(v for v in prompt_state_variables(
+        info.state_variable_overrides, info.events, info.ending_conditions) if v.name == "gap_acknowledged")
+    assert variable.description.startswith("Whether the candidate has addressed the experience gap")
 
 
 class _RecordingRuntime(FakeChatRuntime):

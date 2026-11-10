@@ -37,9 +37,9 @@ static_assertions:
   - description: At least one event is defined
     path: events
     check: min_length_1
-  - description: gap_probing event fires when gap_acknowledged is below 1
+  - description: gap_probing event comes back to the experience gap on turn 3
     path: events[id=gap_probing].when
-    check: "type=variable_below AND variable=gap_acknowledged AND threshold=1"
+    check: "type=max_turns AND value=3"
   - description: Success ending condition targets the conviction variable
     path: ending_conditions.success
     check: "type=variable_above AND variable=conviction"
