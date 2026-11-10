@@ -1426,9 +1426,14 @@ class TestMain:
             def __init__(self, api: ScriptedApi) -> None:
                 self.request = api.request
 
-        assert self._run(tmp_path / "a", RestOnly(self._clean_api())) == 2  # type: ignore[arg-type]
+        # One authored move, so the authored-state check (hard since #580)
+        # passes and the exit code is the socket's alone.
+        moves = [{"comprehension": 5}] + [{}] * 5
+        assert self._run(tmp_path / "a", RestOnly(self._clean_api(deltas=moves))) == 2  # type: ignore[arg-type]
         assert "cannot open the session socket; pass --rest-only" in capsys.readouterr().err
-        assert self._run(tmp_path / "b", RestOnly(self._clean_api()), "--rest-only") == 0  # type: ignore[arg-type]
+        assert self._run(  # type: ignore[arg-type]
+            tmp_path / "b", RestOnly(self._clean_api(deltas=moves)), "--rest-only"
+        ) == 0
 
     def test_setup_errors_exit_two(self, tmp_path: Path) -> None:
         assert replay.main(["--only", "not_a_demo"], transport=ScriptedApi([]), log=_quiet) == 2

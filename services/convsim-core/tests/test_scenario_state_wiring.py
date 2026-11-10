@@ -554,8 +554,19 @@ class _RecordingRuntime(FakeChatRuntime):
                 "replay_suggestions": ["r"],
             }
         else:
+            # A different line each turn: the repetition guard (issue #580)
+            # retries a reply that repeats the NPC's last line, which would
+            # add a request this test does not count.
+            turn = sum(
+                1 for r in self.requests
+                if "replay_suggestions" not in ((r.json_schema or {}).get("properties") or {})
+            )
             response = {
-                "npc_utterance": "Where does that number come from?",
+                "npc_utterance": (
+                    "Where does that number come from?",
+                    "And who else has seen those figures?",
+                    "Walk me through how you would measure that next quarter.",
+                )[(turn - 1) % 3],
                 "npc_emotion": "skeptical",
                 "state_delta": {"evidence_strength": -12, "case_clarity": 8, "impression": 2,
                                 "rapport": 0, "trust": 9},
