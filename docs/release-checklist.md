@@ -37,7 +37,7 @@ intend to tag.
 |---|---|---|
 | `validate` | — | Smoke check |
 | `build-desktop` | `validate` | Cross-platform Tauri builds (macOS, Linux, Windows) |
-| `release` | `build-desktop` | Publishes GitHub release; updates beta-channel updater manifest |
+| `release` | `build-desktop` | Publishes the GitHub release notes, no binaries: the tag's own section of `RELEASE_NOTES.md`, or keeps a release already made in the GitHub UI as it is |
 | `steam` | `release` | Stages the build to Steam and sets `beta` live — **pauses for `steam-release` environment approval** |
 | `defender-scan` | `build-desktop`, `release` | Uploads signed Windows build to Azure; Defender for Storage scans on upload; appends scan note to release — **runs in parallel with `steam`** |
 
