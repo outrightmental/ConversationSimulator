@@ -38,7 +38,7 @@ the repository; uploading to Steamworks is a separate, manual step.
 | Shortcut icon | Yes | 256 × 256 px or 512 × 512 px, `.ico` or PNG | Demo done (`publishing/assets/icons/demo_shortcut_icon.png`); base not started |
 | Mac icon | For macOS shortcuts | `.icns` | Demo done (`apps/desktop/src-tauri/icons-demo/icon.icns`); base is `apps/desktop/src-tauri/icons/icon.icns` |
 | Page background | Optional | 1438 × 810 px, JPG or PNG | Base committed (`capsules/page_background.png`); none for the demo by design — see [Demo edition](#demo-edition) |
-| Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Source captures exist (see `docs/assets/screenshots/`); re-shoot at Steam dimensions |
+| Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Demo app: five 1920 × 1080 captures committed under `screenshots/demo/` (`scripts/capture-store-screenshots.mjs`), not yet uploaded; see `STEAM_NEXT_FEST_DEMO.md` §4.2. Base app: source captures in `docs/assets/screenshots/` (2× README frames), still to be re-shot at Steam dimensions |
 | Gameplay trailer | Yes | MP4, H.264, 1920 × 1080 px, 30–120 seconds | Not started |
 
 ---
