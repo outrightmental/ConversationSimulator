@@ -282,7 +282,7 @@ class TestActiveModelSampling:
 
     @pytest.mark.parametrize(
         "saved",
-        [None, ("llama_cpp", None), ("ollama", "llama3.2:3b")],
+        [None, ("llama_cpp", None), ("ollama", "fake-tag:1b")],
         ids=["nothing-saved", "runtime-saved-without-a-model", "ollama-tag-saved"],
     )
     def test_without_a_saved_model_file_the_newest_ready_install_gives_its_entry(
