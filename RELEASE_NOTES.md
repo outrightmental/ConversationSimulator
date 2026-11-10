@@ -48,7 +48,9 @@ no model would fix, and it is now wired:
   probes and the endings can be reached.
 - A reply that repeats one of the character's last two lines is generated
   once more, unless the player asked to hear it again. On the conversation
-  screen, which streams the reply, that applies to its first sentence.
+  screen, which streams the reply, that applies to its first sentence. The
+  check compares words, so it does not yet catch a repeat in Japanese, which
+  is written without spaces (#583).
 - The registry's sampling defaults (temperature 0.75, top-p 0.9) reach the
   runtime; turns went out at 0.8 and 0.95 before.
 - **The starter model is Qwen3 4B Instruct 2507** (2.5 GB, Apache-2.0), the
