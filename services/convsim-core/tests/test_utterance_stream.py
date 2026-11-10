@@ -196,12 +196,50 @@ class TestSentenceGate:
 
 
 # ---------------------------------------------------------------------------
-# The gate holds back a repeat (issue #580)
+# The gate holds back a repeating first sentence (issue #580)
 # ---------------------------------------------------------------------------
 
 _RAY_T3 = (
     "That's a solid offer, and I see your point. Let me check if we can make it work. "
     "What's the smallest you'd be open to for the car?"
+)
+# Verbatim from the issue #580 transcripts: what each NPC said before, and the
+# line that repeated it.
+_DANA_OPENING = (
+    "Good morning! Thanks so much for making the time. I'm Dana Reyes, Engineering "
+    "Manager on the platform team here at Meridian Systems. I've looked over your "
+    "resume — very interesting background. To kick things off, tell me about a time "
+    "when you had to work through a difficult technical problem under real pressure. "
+    "What was the situation, and how did you handle it?"
+)
+_RAY_T2_ISSUE = (
+    "I see what you're saying. The car is priced at $15,500, but I understand your "
+    "perspective. Let me check the tire situation — we do have new tires on hand. "
+    "What's the lowest you'd be willing to go?"
+)
+_RAY_T3_ISSUE = (
+    "That's a solid offer, and I see your point. Let me check if we can make it work. "
+    "We do have new tires on hand, so that could be a nice addition. "
+    "What's the smallest you'd be open to for the car?"
+)
+_RAY_T4_ISSUE = (
+    "I understand your offer. Let me check if we can make this work. "
+    "We do have new tires on hand, so that’s a good match. "
+    "What’s the smallest you’d be open to for the car?"
+)
+_DIANE_T1 = (
+    "You mentioned leading a cross-team migration, onboarding two new hires, and "
+    "shipping three weeks early. Can you quantify the impact of these achievements on "
+    "our company's bottom line? What specific metrics or outcomes have you observed?"
+)
+_DIANE_T2 = (
+    "I see the market rate. But without specific data on the cost to the company of not "
+    "giving you the raise, I can't justify this request. What's the financial impact of "
+    "not adjusting your compensation?"
+)
+_DIANE_T3 = (
+    "I see. Let's focus on what we can address this cycle. What specific metrics or "
+    "outcomes have you observed that would justify a partial adjustment now?"
 )
 
 
@@ -221,53 +259,66 @@ class TestSentenceGateRepetition:
         assert gate.repeated is not None and gate.repeated.longest_run == 9
         # Not a safety block: the pipeline keeps the stream running.
         assert gate.blocked is None
+        # Nothing is ever released after it, so the guard can replace the line.
+        assert gate.feed("That's a solid offer, and I see your point. Here is my number.", done=True) == []
 
-    def test_a_later_sentence_that_repeats_is_held_and_what_was_released_stands(self):
-        """Ray's T4: the new sentences go out, the looped question does not."""
-        line = (
-            "I hear you, and I respect that. We have new tires on it. "
-            "What's the smallest you'd be open to for the car?"
-        )
-        gate = SentenceGate(checker=_safe, previous_lines=[_RAY_T3])
+    @pytest.mark.parametrize("previous, line", [
+        # Dana's follow-up shares the stock 7-word "tell me about a time when
+        # you" with her opening. Cut there, the line had no question at all.
+        ([_DANA_OPENING], (
+            "An N+1 query behind holiday timeouts, fixed overnight. Tell me about a time "
+            "when you made a mistake that affected your team. What did you learn from it?"
+        )),
+        # Ray's answer to the walk-away ultimatum, and the turn before it.
+        ([_RAY_T3_ISSUE], _RAY_T4_ISSUE),
+        ([_RAY_T2_ISSUE], _RAY_T3_ISSUE),
+        # Diane's T1 question, two lines back.
+        ([_DIANE_T2, _DIANE_T1], _DIANE_T3),
+        # A run that starts in the first sentence and ends in the second.
+        (["Okay, sure. Let me check with my manager about the price."],
+         "Okay, sure. Let me check with my manager on that."),
+        # The previous line's closing question, after a new first sentence.
+        (["That's our best price. Does that work for you?"], "I can add floor mats. Does that work for you?"),
+    ])
+    def test_a_repeat_after_the_first_sentence_streams_with_the_line(self, previous, line):
+        """Holding a later sentence back cannot undo what is on screen, only
+        cut the line short; the pipeline notes the repeat after the line."""
+        gate = SentenceGate(checker=_safe, previous_lines=previous)
         out = _stream(gate, line)
-        assert out == ["I hear you, and I respect that.", " We have new tires on it."]
-        assert gate.released_text == "".join(out)
-        assert line.startswith(gate.released_text)
-        assert gate.repeated is not None
-        # Nothing more is ever released, whatever arrives after.
-        assert gate.feed(line + " Deal?", done=True) == []
+        assert "".join(out) == gate.released_text == line
+        assert len(out) >= 2
+        assert gate.repeated is None
+        from convsim_prompt.repetition import check_repetition
 
-    def test_a_run_that_crosses_into_the_next_sentence_holds_that_sentence(self):
-        previous = "Okay, sure. Let me check with my manager about the price."
-        gate = SentenceGate(checker=_safe, previous_lines=[previous])
-        out = _stream(gate, "Okay, sure. Let me check with my manager on that.")
-        # "okay sure let me check with my manager" is the run; the first
-        # sentence alone ("okay sure") is not a repeat and is released.
-        assert out == ["Okay, sure."]
-        assert gate.repeated is not None
+        assert check_repetition(line, previous).flagged
+
+    def test_sentences_arriving_together_are_judged_as_one_first_release(self):
+        gate = SentenceGate(checker=_safe, previous_lines=[_RAY_T3])
+        line = "I hear you. What's the smallest you'd be open to for the car?"
+        assert gate.feed(line, done=True) == ["I hear you.", " What's the smallest you'd be open to for the car?"]
+        assert gate.repeated is None
 
     def test_the_line_before_the_previous_one_counts(self):
         older = "What specific metrics or outcomes have you observed from your work?"
         gate = SentenceGate(checker=_safe, previous_lines=["Where does that number come from?", older])
-        out = _stream(gate, "I appreciate that. What specific metrics or outcomes have you observed lately?")
-        assert out == ["I appreciate that."]
+        assert _stream(gate, "What specific metrics or outcomes have you observed lately? Tell me.") == []
         assert gate.repeated.against == (1,)
 
-    def test_the_same_closing_question_is_held_at_the_end(self):
+    def test_a_first_sentence_ending_on_the_previous_closing_question_is_held(self):
+        """Any released prefix can become the committed line (a later sentence
+        may fail the safety check), so a first release that ends with the
+        previous line's closing question is never let out."""
         previous = "That's our best price. Does that work for you?"
         gate = SentenceGate(checker=_safe, previous_lines=[previous])
-        out = _stream(gate, "I can add floor mats. Does that work for you?")
-        assert out == ["I can add floor mats."]
+        assert _stream(gate, "Does that work for you? I can also add mats.") == []
         assert [m.kind for m in gate.repeated.matches] == ["question"]
 
-    def test_a_sentence_that_would_leave_the_line_ending_on_that_question_is_held(self):
-        """Any released prefix can become the committed line, so a prefix that
-        ends with the previous line's closing question is never released."""
-        previous = "That's our best price. Does that work for you?"
-        gate = SentenceGate(checker=_safe, previous_lines=[previous])
-        out = _stream(gate, "Sure. Does that work for you? I can also add mats.")
-        assert out == ["Sure."]
-        assert gate.repeated is not None
+    def test_later_sentences_are_still_checked_for_safety(self):
+        gate = SentenceGate(checker=_unsafe_when("BAD"), previous_lines=[_RAY_T3])
+        out = _stream(gate, "I hear you. What's the smallest you'd be open to for the car? BAD words now.")
+        assert out == ["I hear you.", " What's the smallest you'd be open to for the car?"]
+        assert gate.blocked is not None
+        assert gate.repeated is None
 
     def test_whole_line_similarity_holds_a_line_nothing_of_which_is_out(self):
         # One sentence: nothing is released before the line is done. Its two

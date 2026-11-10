@@ -16,10 +16,12 @@ check, so nothing is ever shown and then withdrawn (design question 2 on
 #518). Released text is committed text: a later sentence that fails the check
 is withheld, generation stops, and the line is committed as what was released.
 
-The gate also holds back a sentence that repeats one of the NPC's last two
-lines (issue #580), because the repetition guard's retry may only replace a
-line nobody has seen. See :meth:`SentenceGate._repeats` for what it can judge
-before the line is complete.
+The gate also holds back a first sentence that repeats one of the NPC's last
+two lines (issue #580): the repetition guard's retry may only replace a line
+nobody has seen, and before the first release is the one point where it still
+can. Once a sentence is out, later ones are not held for repetition: cutting
+the line there would commit a stub (an answer without its question), and no
+retry could replace it. See :meth:`SentenceGate._repeats`.
 """
 from __future__ import annotations
 
@@ -217,10 +219,12 @@ class SentenceGate:
     including it passes ``checker``; the first failure sets ``blocked`` with the
     offending validation result and nothing further is ever released.
 
-    With ``previous_lines`` (the NPC's last lines, newest first), a slice must
-    also not repeat them; the first one that does sets ``repeated`` and nothing
-    further is released. Unlike ``blocked``, ``repeated`` does not ask for
-    generation to stop: the model's bookkeeping is still wanted.
+    With ``previous_lines`` (the NPC's last lines, newest first), the first
+    slice must also not repeat them; if it does, ``repeated`` is set and nothing
+    is ever released, so the whole line is still the engine's to replace.
+    Unlike ``blocked``, ``repeated`` does not ask for generation to stop: the
+    line is retried from the complete output. Later slices are checked for
+    safety only (see ``_repeats``).
     """
 
     hidden_agenda: Optional[List[str]] = None
@@ -237,29 +241,30 @@ class SentenceGate:
         return validate_npc_output(utterance=text, hidden_agenda=self.hidden_agenda)
 
     def _repeats(self, text: str, complete: bool) -> RepetitionReport:
-        """Whether the line so far, ``text``, would be a repeat if it ended here.
+        """Whether the first release, ``text``, would make the line a repeat.
 
-        Any released prefix can become the committed line: a later sentence
-        may fail a check and be held back. So a sentence is released only if
-        the line up to it, taken as the whole line, shares no 6-word run with
-        an earlier line and does not end with the previous line's closing
-        question. The whole-line similarity is the exception: it is judged
-        only on the ``complete`` line, and only while nothing has been
-        released, because once part of the line is on screen holding back its
-        last sentence would only shorten the line, not make it less like the
-        earlier one.
+        Only the first release is judged. Held back, it leaves nothing on
+        screen, and the repetition guard can still replace the whole line with
+        its retry. Any later sentence is the rest of a line the player is
+        already reading: holding it back cannot undo what is out, it only cuts
+        the line short. On the starter model that cut "An N+1 query behind
+        holiday timeouts, fixed overnight." off Dana's next question, which
+        shared a stock 7-word run with her opening, and left Ray's answer to a
+        walk-away ultimatum at "I understand your offer." A later repeat is let
+        through and noted after the line (``repetition_retry_skipped``).
+
+        The first release passes if, taken as the whole line, it shares no
+        6-word run with an earlier line and does not end with the previous
+        line's closing question. Similarity measures the whole line, so it is
+        judged only when the first release is the ``complete`` line.
 
         The guard must never cost the player a turn: should the check itself
         fail, the sentence is not held back for it.
         """
-        if not self.previous_lines:
+        if not self.previous_lines or self.released:
             return RepetitionReport()
         try:
-            return check_repetition(
-                text,
-                self.previous_lines,
-                similarity=complete and not self.released,
-            )
+            return check_repetition(text, self.previous_lines, similarity=complete)
         except Exception:  # noqa: BLE001 — a broken guard must not break the stream
             logger.exception("Repetition check failed on a streamed sentence; releasing it")
             return RepetitionReport()

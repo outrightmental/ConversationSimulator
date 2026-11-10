@@ -302,17 +302,19 @@ nothing, and the turn behaves as it did before streaming.
 The engine retries once, with the repeated line quoted and the temperature
 0.1 higher, a reply that repeats one of the NPC's last two lines (a shared run
 of 6+ words, the same closing question of 4+ words as the previous line, or
-word-trigram similarity above 0.5 between lines of 6+ words; the opening counts), and keeps whichever
-reply repeats less. The retry is a `repetition_retry` extra call in the turn's
-`timing`. Streaming keeps the contract above: a sentence is released only if
-the line up to it, taken as the whole line, shares no 6-word run with those
-lines and does not end with the previous line's closing question. If the
-first sentence fails that, nothing has been shown, no `npc.final` is sent, the
-line is retried as above (`checking` stage), and the REST response carries
-the result. If a later sentence fails it, the sentence is held back like an
-unsafe one, but generation runs on and the model's bookkeeping is kept; the
-line is committed as the sentences released, with no retry. Similarity alone
-is judged only before anything is released.
+word-trigram similarity above 0.5 between lines of 6+ words; the opening
+counts), and keeps whichever reply repeats less. The retry is a
+`repetition_retry` extra call in the turn's `timing`. Streaming keeps the
+contract above, so only the first sentence is judged: it is released only if,
+taken as the whole line, it shares no 6-word run with those lines and does not
+end with the previous line's closing question (similarity counts only when it
+is the whole line). If it fails that, nothing has been shown, no `npc.final`
+is sent, the line is retried as above (`checking` stage), and the REST
+response carries the result. Once the first sentence is out, the rest of the
+line streams as usual, held back only by the output check: cutting it for a
+repeat would leave the player a stub, an answer without its question, that no
+retry could replace. A repeat there is kept and noted in the turn's debug
+events (`repetition_retry_skipped`).
 
 Reserved for future speech support (clients should accept and ignore):
 

@@ -14,10 +14,10 @@ repeats less. These tests pin:
     ``repetition_retry`` extra call;
   * which reply is kept, and that any failure keeps the first reply;
   * streaming (#538): released text is committed text. A first sentence that
-    would repeat is never shown, so the line can still be retried; a later one
-    is held back and the line is committed as what the player has, with no
-    retry; a repeat only the whole line shows, once part of it is out, is noted
-    and kept.
+    would repeat is never shown, so the line can still be retried; a repeat
+    after the first sentence streams with the line and is noted, never cut
+    (a cut left the player an answer without its question), and the rest of
+    the line is still held to the output check.
 """
 from __future__ import annotations
 
@@ -466,23 +466,51 @@ class TestStreamedLines:
         assert _kinds(conn) == ["repetition_detected", "repetition_retry_kept"]
 
     @pytest.mark.asyncio
-    async def test_a_repeating_later_sentence_is_held_and_the_released_line_is_committed(self):
+    async def test_a_repeat_after_the_first_sentence_streams_whole_and_is_noted(self):
+        """Ray's T4: a new first sentence, then T3's closing question. Cutting
+        the question would leave him no question at all; the line streams."""
         streamer = _Streamer()
         runtime = _Replies(_turn(_REPEAT_AT_END, state_delta={"trust": 3}, npc_emotion="warm"))
         result, conn = await _play(runtime, *_ONE_EXCHANGE, streamer=streamer)
-        released = "I hear you, and I respect that."
-        assert streamer.tokens == [released]
-        assert streamer.finals == [released]
+        assert streamer.tokens == [
+            "I hear you, and I respect that.", " What's the smallest you'd be open to for the car?",
+        ]
+        assert streamer.finals == [_REPEAT_AT_END]
         # What the player saw is what is committed, and nothing replaced it.
-        assert result.npc_utterance == _stored_npc_line(conn) == "".join(streamer.tokens)
-        assert result.streamed_line == released
+        assert result.npc_utterance == _stored_npc_line(conn) == "".join(streamer.tokens) == _REPEAT_AT_END
+        assert result.streamed_line == _REPEAT_AT_END
         assert len(runtime.requests) == 1
         assert result.timing.extra_calls == []
-        # The stream ran on, so the model's bookkeeping is kept.
         assert result.state_delta == {"trust": 3}
         assert result.npc_emotion == "warm"
         assert result.salvaged is False
-        assert _kinds(conn) == ["repetition_detected", "repetition_trimmed"]
+        assert _kinds(conn) == ["repetition_detected", "repetition_retry_skipped"]
+        assert "the same 10-word question" in _parse_events(conn)[0]["reason"]
+
+    @pytest.mark.asyncio
+    async def test_after_a_streamed_repeat_an_unsafe_sentence_still_defaults_the_bookkeeping(self):
+        """The rest of the line is still held to the output check. A sentence
+        that fails it stops the stream, and the bookkeeping, which describes
+        the withheld text too, is defaulted, as for any unsafe tail."""
+        streamer = _Streamer()
+        line = _REPEAT_AT_END + " Between us, my real goal is to fill the role fast."
+        runtime = _Replies(_turn(
+            line,
+            state_delta={"trust": 3},
+            npc_emotion="warm",
+            event_flags=["deal_signalled"],
+            session_control={"continue_session": False, "ending_type": "success"},
+        ))
+        result, conn = await _play(runtime, *_ONE_EXCHANGE, streamer=streamer)
+        assert "".join(streamer.tokens) == result.npc_utterance == _REPEAT_AT_END
+        assert result.salvaged is True
+        assert result.state_delta == {}
+        assert result.event_flags == []
+        assert result.ending_type is None
+        kinds = _kinds(conn)
+        assert kinds[:2] == ["output_violation_detected", "stream_salvaged"]
+        assert kinds[2:] == ["repetition_detected", "repetition_retry_skipped"]
+        assert len(runtime.requests) == 1
 
     @pytest.mark.asyncio
     async def test_a_repeat_only_the_whole_line_shows_is_noted_once_part_is_out(self):
@@ -579,10 +607,10 @@ class TestOverTheSocket:
         assert npc["payload"]["content"] == _FRESH
         assert [c["kind"] for c in npc["payload"]["timing"]["extra_calls"]] == ["repetition_retry"]
 
-    def test_an_echo_after_a_released_sentence_commits_what_was_streamed(self, tmp_config):
+    def test_an_echo_after_a_released_sentence_streams_whole_and_is_committed(self, tmp_config):
         """The whole opening again: its 5-word first sentence repeats nothing
-        on its own and goes out; the next one completes a 10-word run and is
-        held. The player keeps what they saw, and no retry replaces it."""
+        on its own and goes out, so the rest of the line follows it. The player
+        gets the whole line, never a cut one, and no retry replaces it."""
         app = create_app(tmp_config)
         runtime = _EchoesTheOpening(slice(None))
         with TestClient(app) as client:
@@ -590,8 +618,9 @@ class TestOverTheSocket:
         tokens = [e["payload"]["text"] for e in events if e["type"] == "npc.token"]
         finals = [e["payload"]["content"] for e in events if e["type"] == "npc.final"]
         npc = next(e for e in body["events"] if e["event_type"] == "npc_turn")
-        assert tokens == ["Thanks for coming in today."]
-        assert finals == tokens
-        assert npc["payload"]["content"] == "".join(tokens)
+        assert tokens[0] == "Thanks for coming in today."
+        assert "".join(tokens) == runtime.opening
+        assert finals == [runtime.opening]
+        assert npc["payload"]["content"] == runtime.opening
         assert npc["payload"]["timing"]["extra_calls"] == []
         assert len(runtime.requests) == 1

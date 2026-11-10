@@ -679,10 +679,12 @@ def _repair_is_coming(parse_input: str, hidden_agenda: Optional[List[str]]) -> b
 # which the D-05 pre-check's check (a) shares.
 #
 # Released text is committed text (#538), so the retry may only replace a line
-# nobody has seen. The sentence gate holds back a streamed sentence that would
-# make the line so far a repeat: if nothing was released yet, the whole line is
-# still the engine's to replace and comes here; if the player already has part
-# of it, the line is committed as the part they have (see process_turn).
+# nobody has seen. The sentence gate holds back a streamed first sentence that
+# would make the line a repeat: nothing has been released, so the whole line is
+# still the engine's to replace and comes here. Once a sentence is out, the
+# rest of the line streams as usual (only the safety check can hold it back),
+# and a repeat in it is noted, not retried: cutting the line there would leave
+# the player a stub, an answer without its question (see process_turn).
 
 #: How much hotter the retry samples than the turn did.
 REPETITION_RETRY_TEMPERATURE_STEP = 0.1
@@ -721,11 +723,12 @@ def _note_released_repetition(
     previous_lines: List[str],
     events: List[TurnEvent],
 ) -> None:
-    """Record a streamed line that repeats, though the gate let all of it out.
+    """Record a streamed line that repeats, though the gate let it out.
 
-    Only the whole-line similarity can get past the gate once a sentence has
-    been released, and the line is committed text by then: it is noted for
-    the debug drawer, not retried.
+    The gate judges only the first release; a repeat later in the line, or one
+    only the whole line's similarity shows, is on screen by the time it is
+    complete. The line is committed text then: it is noted for the debug
+    drawer, not retried.
     """
     try:
         report = check_repetition(line, previous_lines) if previous_lines else RepetitionReport()
@@ -892,10 +895,10 @@ async def process_turn(
     the complete line. Released text is committed text: once a sentence has
     been sent, the turn is never regenerated, and a later sentence that fails
     the check stops generation and the turn is built from what was released.
-    A sentence that would repeat one of the NPC's last two lines is held back
-    the same way, but generation runs on for the bookkeeping; when that is
-    the first sentence, nothing has been shown and the repetition guard may
-    still retry the turn (issue #580). With no streamer the turn behaves as
+    A first sentence that would repeat one of the NPC's last two lines is held
+    back too, with generation running on: nothing has been shown, so the
+    repetition guard may still retry the turn (issue #580). A repeat after the
+    first sentence streams and is noted. With no streamer the turn behaves as
     before.
 
     Raises TurnInputError if the player text fails validation.
@@ -1020,9 +1023,9 @@ async def process_turn(
     # Streaming (issue #538): decode the spoken line out of the model's JSON as
     # it arrives, release it sentence by sentence once each sentence has passed
     # the output check, and tell the client which stage the turn is in. The
-    # gate also holds back a sentence that would make the line a repeat of
-    # one of the NPC's last two lines (issue #580), so the repetition guard's
-    # retry only ever replaces a line nobody has seen.
+    # gate also holds back a first sentence that would make the line a repeat
+    # of one of the NPC's last two lines (issue #580), so the repetition
+    # guard's retry only ever replaces a line nobody has seen.
     previous_npc_lines = _previous_npc_lines(recent_transcript)
     extractor = UtteranceStreamExtractor() if streamer is not None else None
     gate = SentenceGate(hidden_agenda=hidden_agenda, previous_lines=previous_npc_lines)
@@ -1058,7 +1061,7 @@ async def process_turn(
                 # retry path can run on it.
                 return bool(gate.released)
             if extractor.done:
-                if gate.repeated is not None and not gate.released:
+                if gate.repeated is not None:
                     # The first sentence would have repeated an earlier line,
                     # so the whole line is held for the repetition guard: the
                     # player has seen none of it and the line is not final.
@@ -1117,17 +1120,9 @@ async def process_turn(
                 event_type="stream_salvaged",
                 reason="; ".join(f"{k}: {v}" for k, v in salvage.defaulted.items()) or "fields defaulted",
             ))
-        if gate.repeated is not None:
-            # A later sentence would have repeated an earlier NPC line (issue
-            # #580). It was held back, the stream ran on for the bookkeeping,
-            # and the line is what the player has: no retry can replace it.
-            turn_parse_events.append(_repetition_event("repetition_detected", gate.repeated.describe()))
-            turn_parse_events.append(_repetition_event(
-                "repetition_trimmed",
-                "a later sentence repeated an earlier NPC line; the released sentences stand",
-            ))
-        else:
-            _note_released_repetition(released_line, previous_npc_lines, turn_parse_events)
+        # The gate let the first sentence out, so nothing it held back was for
+        # repetition; a repeat later in the line is noted (issue #580).
+        _note_released_repetition(released_line, previous_npc_lines, turn_parse_events)
         used_fallback = False
     else:
         # 8b. Validate / repair / fallback, exactly as before streaming existed.
