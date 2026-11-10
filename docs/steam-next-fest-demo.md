@@ -177,6 +177,16 @@ achievements and Steam Cloud stay base-app-only (a Steam demo cannot award the
 base app's achievements). "Clear local data" in the demo clears the shared
 directory, and its copy says so.
 
+The demo plays only its own model. A full-app profile can hold other models;
+one from before v0.4 has the earlier starter (`qwen3-4b-instruct-q4_k_m`)
+installed and selected. In the demo only the demo model's own files count: the
+engine autostart (`runtime/active.py`) starts the engine only on the demo
+model's install, never on the full app's selection or its other installs, and
+the setup status and the Home screen count only that install. A player who
+does not have it is offered the demo's one download, as a new player is. The
+full app's selection and files are left as they are, and the full app keeps
+playing them.
+
 ### Store assets
 
 The demo attaches to the base app's store page as its demo; Valve renders the

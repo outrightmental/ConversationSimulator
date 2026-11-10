@@ -557,3 +557,180 @@ def test_demo_pin_that_is_not_in_the_registry_falls_back_to_the_starter(tmp_path
         with patch("convsim_core.routers.setup_install._run_pipeline", new_callable=AsyncMock):
             resp = client.post("/api/setup/install", json={"registry_id": _STARTER_MODEL_ID})
         assert resp.status_code == 200, resp.text
+
+
+# ── Demo edition: a full-app profile's other model is not the demo's ──────────
+#
+# The demo shares the full app's data root (D-06). A player who used the full
+# app before v0.4 has the earlier starter installed and selected; the v0.4
+# registry sync keeps that model's registry row, and the demo now resolves the
+# new starter. The demo must play only its own model's files: it must not start
+# the engine on the full app's selection, and it must report its own model as
+# missing, so the player is sent to the demo's one-click install.
+
+_EARLIER_STARTER_ID = "qwen3-4b-instruct-q4_k_m"
+
+
+def _unreachable_llama_url() -> str:
+    """A loopback URL nothing listens on, so no llama_cpp health probe made by
+    these tests reaches a real engine running on this machine."""
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    return f"http://127.0.0.1:{port}"
+
+
+def _registry_entry(registry_id: str, role: str) -> dict:
+    """A registry entry shaped like the bundled starter, under another id."""
+    import copy
+
+    data = yaml.safe_load(_REGISTRY_PATH.read_text(encoding="utf-8"))
+    starter = next(m for m in data["models"] if m["id"] == _STARTER_MODEL_ID)
+    entry = copy.deepcopy(starter)
+    entry["id"] = registry_id
+    entry["name"] = f"{registry_id} (test)"
+    entry["role"] = role
+    return entry
+
+
+def _install_ready(conn, models_dir: Path, registry_id: str) -> str:
+    """A ready install record for *registry_id*, with its file on disk."""
+    from convsim_core.services.model_manager_service import (
+        create_install_record,
+        mark_install_ready,
+    )
+
+    models_dir.mkdir(parents=True, exist_ok=True)
+    path = models_dir / f"{registry_id}.gguf"
+    path.write_bytes(b"GGUF")
+    install_id = create_install_record(
+        conn, registry_id=registry_id, filename=path.name, file_path=str(path)
+    )
+    mark_install_ready(conn, install_id, size_bytes=4, verified_sha256="0" * 64, file_path=str(path))
+    return str(path)
+
+
+def _settle_autostart(client: TestClient, app) -> None:
+    """Wait for the startup autostart task, which runs on the client's loop."""
+    import asyncio
+
+    async def _wait() -> None:
+        tasks = list(getattr(app.state, "_autostart_tasks", None) or ())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    client.portal.call(_wait)
+
+
+@pytest.fixture()
+def earlier_starter_root(tmp_path, monkeypatch):
+    """A data root the full app left with the earlier starter installed and selected."""
+    from convsim_core.runtime.sidecar import LlamaCppSidecar
+    from convsim_core.services.model_manager_service import set_active_config
+    from convsim_core.services.model_registry_service import upsert_registry_models
+
+    monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "no-whisper-cli"))
+    monkeypatch.setenv("CONVSIM_LLAMA_CPP_BASE_URL", _unreachable_llama_url())
+    # An engine executable is present, so a missing model is the only reason
+    # an autostart can skip; the start itself is recorded, never run.
+    monkeypatch.setattr(
+        "convsim_core.runtime.sidecar.find_executable", lambda: "/fake/llama-server"
+    )
+    start = AsyncMock()
+    monkeypatch.setattr(LlamaCppSidecar, "start", start)
+
+    full = create_app(_config(tmp_path))
+    with TestClient(full) as client:
+        conn = full.state.db.connection()
+        # The v0.3 registry row stays behind: registry sync never deletes rows.
+        upsert_registry_models(conn, [_registry_entry(_EARLIER_STARTER_ID, "starter")])
+        earlier = _install_ready(conn, tmp_path / "models" / "llm", _EARLIER_STARTER_ID)
+        set_active_config(conn, runtime_id="llama_cpp", model_id=earlier)
+        resp = client.post("/api/setup/outcome", json={"outcome": "completed-with-model"})
+        assert resp.status_code == 204
+    start.reset_mock()
+    return {"tmp_path": tmp_path, "earlier": earlier, "start": start}
+
+
+def test_demo_does_not_autostart_the_full_apps_earlier_starter(earlier_starter_root):
+    from convsim_core.runtime.active import ensure_llama_sidecar_running, find_ready_model_path
+
+    root = earlier_starter_root
+    demo = create_app(_config(root["tmp_path"], edition="demo"))
+    with TestClient(demo) as client:
+        _settle_autostart(client, demo)
+        assert root["start"].await_count == 0
+        conn = demo.state.db.connection()
+        config = demo.state.service_config
+        assert edition.resolve_demo_model_id(conn, config) == _STARTER_MODEL_ID
+        assert find_ready_model_path(conn, config) is None
+        # An explicit path to that file does not load it either.
+        started = client.portal.call(
+            lambda: ensure_llama_sidecar_running(demo, model_path=root["earlier"])
+        )
+        assert started is None
+        assert root["start"].await_count == 0
+        # "Use model" says the model is missing, not that the engine failed.
+        resp = client.post("/api/models/use", json={"runtime_id": "llama_cpp"})
+        assert resp.status_code == 503
+        assert "No AI model is installed yet" in resp.json()["error"]["message"]
+        assert root["start"].await_count == 0
+
+
+def test_full_edition_still_autostarts_the_earlier_starter(earlier_starter_root):
+    """The full app keeps playing whatever its player selected."""
+    from convsim_core.runtime.active import find_ready_model_path
+
+    root = earlier_starter_root
+    full = create_app(_config(root["tmp_path"]))
+    with TestClient(full) as client:
+        _settle_autostart(client, full)
+        root["start"].assert_awaited_once()
+        assert root["start"].await_args.kwargs["model_path"] == root["earlier"]
+        conn = full.state.db.connection()
+        assert find_ready_model_path(conn, full.state.service_config) == root["earlier"]
+        assert find_ready_model_path(conn) == root["earlier"]
+
+
+def test_demo_reports_its_model_missing_when_only_the_earlier_starter_is_installed(
+    earlier_starter_root,
+):
+    root = earlier_starter_root
+    demo = create_app(_config(root["tmp_path"], edition="demo"))
+    with TestClient(demo) as client:
+        status = client.get("/api/setup/status").json()
+        assert status["kind"] == "incomplete"
+        assert "llm-present" in status["missing"]
+        # Home shows the demo's one-download prompt, not a ready model.
+        assert client.get("/api/health").json()["runtime"]["llm_ready"] is False
+
+    full = create_app(_config(root["tmp_path"]))
+    with TestClient(full) as client:
+        assert client.get("/api/setup/status").json()["kind"] == "ready"
+        assert client.get("/api/health").json()["runtime"]["llm_ready"] is True
+
+
+def test_demo_plays_its_own_install_when_another_model_is_selected(earlier_starter_root):
+    """Once the demo model is installed it is the file the demo starts, even
+    while the full app's selection names another model and a newer install of
+    a third model exists."""
+    from convsim_core.runtime.active import ensure_llama_sidecar_running, find_ready_model_path
+
+    root = earlier_starter_root
+    models_dir = root["tmp_path"] / "models" / "llm"
+    demo = create_app(_config(root["tmp_path"], edition="demo"))
+    with TestClient(demo) as client:
+        conn = demo.state.db.connection()
+        demo_path = _install_ready(conn, models_dir, _STARTER_MODEL_ID)
+        _install_ready(conn, models_dir, "qwen3-8b-instruct-q4_k_m")  # the newest install
+        assert find_ready_model_path(conn, demo.state.service_config) == demo_path
+        started = client.portal.call(
+            lambda: ensure_llama_sidecar_running(demo, model_path=root["earlier"])
+        )
+        assert started == demo_path
+        assert root["start"].await_args.kwargs["model_path"] == demo_path
+
+        assert client.get("/api/setup/status").json()["kind"] == "ready"
+        assert client.get("/api/health").json()["runtime"]["llm_ready"] is True

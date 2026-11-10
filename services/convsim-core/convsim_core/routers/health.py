@@ -7,7 +7,8 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core import __version__
-from convsim_core.edition import edition_info
+from convsim_core.edition import demo_model_paths, edition_info, is_demo
+from convsim_core.runtime.active import find_ready_model_path
 from convsim_core.runtime.types import RuntimeHealth, RuntimeStatus
 from convsim_core.services.model_manager_service import get_active_config, get_most_recent_benchmark
 from convsim_core.stt.types import SttHealth
@@ -199,6 +200,24 @@ def _find_installed_model(
     return dict(row) if row is not None else None
 
 
+def _readiness_selection(
+    conn: sqlite3.Connection, config: Any, active_cfg: dict[str, Optional[str]]
+) -> dict[str, Optional[str]]:
+    """The selection the readiness summary judges, for this edition.
+
+    The full edition judges the saved selection. The demo edition counts only
+    the demo model's own files, because it shares the full app's data root
+    (D-06): a saved selection that names another model, such as the earlier
+    starter a pre-v0.4 profile has selected, is replaced by the demo model's
+    ready file (the one the engine autostart loads), or by no selection when
+    the demo model is not installed, so Home offers the demo's one download.
+    """
+    model_id = active_cfg.get("model_id")
+    if not is_demo(config) or not model_id or model_id in demo_model_paths(conn, config):
+        return active_cfg
+    return {**active_cfg, "model_id": find_ready_model_path(conn, config)}
+
+
 def _build_readiness(
     conn: sqlite3.Connection,
     active_cfg: dict[str, Optional[str]],
@@ -324,7 +343,13 @@ async def health(request: Request) -> HealthResponse:
             path=db.path,
             migrations_applied=db.migrations_applied,
         ),
-        runtime=_build_readiness(conn, active_cfg, runtime_health, stt_health, tts_health),
+        runtime=_build_readiness(
+            conn,
+            _readiness_selection(conn, config, active_cfg),
+            runtime_health,
+            stt_health,
+            tts_health,
+        ),
         llm_runtime=runtime_health,
         active_model=_ActiveModelConfig(**active_cfg),
         privacy=_PrivacyPosture(
