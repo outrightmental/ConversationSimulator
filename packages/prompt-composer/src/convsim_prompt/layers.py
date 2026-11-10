@@ -454,7 +454,8 @@ def build_state_variables_layer(scenario: ScenarioData) -> str:
         # Ray names a lower counter).
         f"How the conversation stands for {npc_name} (you). In state_delta every turn, give each "
         "a number: above 0 if this exchange raises it, below 0 if it lowers it, else 0. Small "
-        "steps, unless an exchange changes a lot.",
+        "steps, unless an exchange changes a lot. It is the change, never the new value: to take "
+        "a variable from 50 to 55, write 5.",
     ]
     for variable in scenario.state_variables:
         lines.append(_state_variable_line(variable))
