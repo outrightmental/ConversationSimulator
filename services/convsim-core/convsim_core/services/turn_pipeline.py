@@ -761,6 +761,59 @@ def _repetition_event(event_type: str, reason: str) -> TurnEvent:
     return TurnEvent(event_type=event_type, category="repetition", reason=reason)
 
 
+@dataclass
+class _RetryKeptEvent(TurnEvent):
+    """``repetition_retry_kept``, with the raw output of the first reply.
+
+    A kept retry is the turn: its raw output is what the NPC row stores, and
+    what the debrief and the debug drawer read. The first reply, which the
+    player never got, is kept here so the drawer can still show it.
+    """
+
+    discarded_raw_output: str = ""
+
+
+@dataclass(frozen=True)
+class _RetryReply:
+    """The repetition retry's reply: the turn parsed from it, and the output it came as.
+
+    ``raw_text`` is the text the turn was parsed from (the runtime's
+    pre-parsed object serialised, when it gave one), and ``structured`` that
+    object, or None. A kept retry replaces the first reply's output with
+    these before the turn is stored.
+    """
+
+    output: TurnOutput
+    raw_text: str
+    structured: Optional[Dict[str, Any]]
+
+
+def _debug_parse_events(events: List[TurnEvent], *, save_transcript: bool) -> List[Dict[str, Any]]:
+    """The turn's parse events as the ``debug`` event stores them.
+
+    A hidden_agenda_leak reason embeds verbatim keywords copied from the NPC's
+    private hidden agenda. It is redacted so private content is never written
+    to the debug log (issue #199: no hidden/private content in logs by
+    default); event_type + category still identify the leak. The first reply
+    a kept repetition retry replaced is a line of the conversation, and the
+    session export carries every event: it is kept only when the transcript
+    is saved, and never from a turn that leaked the hidden agenda.
+    """
+    leaked = any(e.category == "hidden_agenda_leak" for e in events)
+    out: List[Dict[str, Any]] = []
+    for e in events:
+        entry: Dict[str, Any] = {
+            "event_type": e.event_type,
+            "category": e.category,
+            "reason": None if e.category == "hidden_agenda_leak" else e.reason,
+            "is_recoverable": e.is_recoverable,
+        }
+        if isinstance(e, _RetryKeptEvent) and save_transcript and not leaked:
+            entry["discarded_raw_output"] = e.discarded_raw_output
+        out.append(entry)
+    return out
+
+
 #: Why a repeat was kept without a retry, for the debug drawer.
 _ALREADY_RELEASED = "the line had already been released to the player"
 _REPEAT_REQUESTED = "the player asked for the line again"
@@ -812,8 +865,8 @@ async def _retry_repetitive_reply(
     hidden_agenda: Optional[List[str]],
     timing: TurnTimingBuilder,
     timeout_s: float,
-) -> tuple[Optional[TurnOutput], str]:
-    """Generate the turn once more; return the parsed reply, or None and why not.
+) -> tuple[Optional[_RetryReply], str]:
+    """Generate the turn once more; return the reply, or None and why not.
 
     The same request, schema and sampling, with the system prompt untouched so
     the engine's prompt cache serves all of it, the repeated line(s) quoted in
@@ -846,8 +899,9 @@ async def _retry_repetitive_reply(
             "repetition_retry", (time.perf_counter() - started) * 1000.0, _output_tokens(final)
         )
     retry_events: List[TurnEvent] = []
+    parse_input = _parse_input(raw_text, structured)
     output = _parse_reply(
-        _parse_input(raw_text, structured),
+        parse_input,
         request=retry_request,
         runtime=None,
         hidden_agenda=hidden_agenda,
@@ -857,13 +911,14 @@ async def _retry_repetitive_reply(
         e.event_type == "output_violation_detected" for e in retry_events
     ):
         return None, "the retry's reply did not pass the output check as written"
-    return output, ""
+    return _RetryReply(output=output, raw_text=parse_input, structured=structured), ""
 
 
 async def _guard_repetition(
     turn_output: TurnOutput,
     previous_lines: List[str],
     *,
+    raw_text: str,
     runtime: ChatRuntime,
     request: ChatRequest,
     prompt: PromptBundle,
@@ -872,20 +927,22 @@ async def _guard_repetition(
     events: List[TurnEvent],
     streamer: Optional[TurnStreamer],
     first_call_s: float,
-) -> TurnOutput:
-    """The repetition guard on a line nobody has seen yet. Returns the line to keep.
+) -> Optional[_RetryReply]:
+    """The repetition guard on a line nobody has seen yet.
 
-    Cheap when the reply is not a repeat: a word comparison with two lines and
-    no model call. On a repeat, one retry (see ``_retry_repetitive_reply``);
-    the retry is kept only if it repeats strictly less. Never raises: on any
-    error the first reply is kept.
+    Returns the retry to keep in place of the first reply, whose raw output
+    is ``raw_text``, or None to keep the first reply. Cheap when the reply is
+    not a repeat: a word comparison with two lines and no model call. On a
+    repeat, one retry (see ``_retry_repetitive_reply``); the retry is kept
+    only if it repeats strictly less. Never raises: on any error the first
+    reply is kept.
     """
     try:
         if not previous_lines or not _is_model_line(turn_output):
-            return turn_output
+            return None
         report = check_repetition(turn_output.npc_utterance, previous_lines)
         if not report.flagged:
-            return turn_output
+            return None
         events.append(_repetition_event("repetition_detected", report.describe()))
         if streamer is not None:
             await streamer.progress("checking")
@@ -900,26 +957,30 @@ async def _guard_repetition(
         )
         if retry is None:
             events.append(_repetition_event("repetition_retry_discarded", why_not))
-            return turn_output
-        retry_report = check_repetition(retry.npc_utterance, previous_lines)
+            return None
+        retry_report = check_repetition(retry.output.npc_utterance, previous_lines)
         if less_repetitive(retry_report, report):
-            events.append(_repetition_event(
-                "repetition_retry_kept",
-                f"the retry repeats less: {retry_report.describe()}" if retry_report.flagged
-                else "the retry does not repeat an earlier line",
+            events.append(_RetryKeptEvent(
+                event_type="repetition_retry_kept",
+                category="repetition",
+                reason=(
+                    f"the retry repeats less: {retry_report.describe()}" if retry_report.flagged
+                    else "the retry does not repeat an earlier line"
+                ),
+                discarded_raw_output=raw_text,
             ))
             return retry
         events.append(_repetition_event(
             "repetition_retry_discarded",
             f"the retry repeats as much or more: {retry_report.describe()}",
         ))
-        return turn_output
+        return None
     except Exception as exc:  # noqa: BLE001 — the guard must never cost the player a turn
         logger.exception("Repetition guard failed; keeping the first reply")
         events.append(_repetition_event(
             "repetition_retry_discarded", f"the guard failed ({type(exc).__name__})",
         ))
-        return turn_output
+        return None
 
 
 async def process_turn(
@@ -1221,7 +1282,8 @@ async def process_turn(
         used_fallback = False
     else:
         # 8b. Validate / repair / fallback, exactly as before streaming existed.
-        # The original raw_text is preserved in the DB for the debug drawer.
+        # The original raw_text is preserved in the DB for the debug drawer,
+        # unless the repetition guard keeps its retry (8c): then the retry's.
         parse_input = _parse_input(raw_text, native_structured)
 
         if streamer is not None and _repair_is_coming(parse_input, hidden_agenda):
@@ -1249,9 +1311,10 @@ async def process_turn(
             _note_repetition(
                 turn_output.npc_utterance, previous_npc_lines, turn_parse_events, _REPEAT_REQUESTED,
             )
-        turn_output = await _guard_repetition(
+        kept_retry = await _guard_repetition(
             turn_output,
             guarded_lines,
+            raw_text=raw_text,
             runtime=runtime,
             request=request,
             prompt=prompt,
@@ -1261,6 +1324,12 @@ async def process_turn(
             streamer=streamer,
             first_call_s=(observation.final_at or time.perf_counter()) - observation.sent_at,
         )
+        if kept_retry is not None:
+            # The retry is the turn: the row stores its output, which the
+            # debrief scores and the debug drawer shows, not the first reply's.
+            turn_output = kept_retry.output
+            raw_text = kept_retry.raw_text
+            native_structured = kept_retry.structured
     timing.fallback = used_fallback
     timing.salvaged = salvaged
     # The repair calls run inside parse_turn_output, so their wall time is
@@ -1425,22 +1494,7 @@ async def process_turn(
                 "salvaged": salvaged,
                 "streamed": bool(released_line),
                 "used_native_structured_output": native_structured is not None,
-                "parse_events": [
-                    {
-                        "event_type": e.event_type,
-                        "category": e.category,
-                        # A hidden_agenda_leak reason embeds verbatim keywords
-                        # copied from the NPC's private hidden agenda. Redact it
-                        # so private content is never written to the debug log
-                        # (issue #199: no hidden/private content in logs by
-                        # default). event_type + category still identify the leak.
-                        "reason": (
-                            None if e.category == "hidden_agenda_leak" else e.reason
-                        ),
-                        "is_recoverable": e.is_recoverable,
-                    }
-                    for e in turn_parse_events
-                ],
+                "parse_events": _debug_parse_events(turn_parse_events, save_transcript=save_transcript),
             }), now,
         ))
         conn.executemany(
