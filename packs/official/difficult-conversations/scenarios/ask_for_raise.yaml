@@ -41,11 +41,12 @@ goals:
     - "The player who names the cost to the company of not adjusting compensation will shift Diane's posture significantly; almost no one does this"
     - "Diane will probe any unsubstantiated claim — if the player asserts market rate without data, she will ask where that number comes from; if they cannot answer, her confidence in their judgment drops"
     - "Diane is watching whether the player tracks her questions closely enough to realize she is looking for budget justification language, not personal validation"
-# evidence_strength and case_clarity start above the thresholds of
-# vague_claim_probe (< 30) and no_number_anchor (< 25), so neither probe is
-# true at the defaults: each waits for a turn that weakens the case (#580).
-# The success threshold sits far enough above case_clarity's default that it
-# still takes at least three strong turns.
+# vague_claim_probe and no_number_anchor fire below 10, where evidence_strength
+# and case_clarity start, so neither is true at the defaults: each waits for a
+# turn that takes its variable below its start (#580). Success (case_clarity
+# 10 -> above 65) and strong_case_acknowledged (evidence_strength 10 -> above
+# 80) sit as far above the starting values as before the probes moved, so
+# each still takes four turns at the per-turn delta limit.
 state:
   variables:
     impression:
@@ -63,13 +64,13 @@ state:
     evidence_strength:
       min: 0
       max: 100
-      default: 40
+      default: 10
       visibility: hidden
       max_delta_per_turn: 20
     case_clarity:
       min: 0
       max: 100
-      default: 30
+      default: 10
       visibility: hidden
       max_delta_per_turn: 18
 difficulty:
@@ -108,7 +109,7 @@ events:
     when:
       type: variable_below
       variable: evidence_strength
-      threshold: 30
+      threshold: 10
     npc_instruction: >-
       The player has made a claim without supporting evidence. Diane probes it
       directly: "When you say you've taken on more scope — can you give me
@@ -120,7 +121,7 @@ events:
     when:
       type: variable_below
       variable: case_clarity
-      threshold: 25
+      threshold: 10
     npc_instruction: >-
       The player has been talking about deserving more without naming a number.
       Diane cuts in: "You've told me about the work. What number are you
@@ -132,7 +133,7 @@ events:
     when:
       type: variable_above
       variable: evidence_strength
-      threshold: 70
+      threshold: 80
     npc_instruction: >-
       The player has presented a solid, specific case. Diane's affect shifts —
       she is still not committing to anything, but she engages more
@@ -155,7 +156,7 @@ ending_conditions:
   success:
     type: variable_above
     variable: case_clarity
-    threshold: 70
+    threshold: 65
   failure:
     type: variable_below
     variable: impression

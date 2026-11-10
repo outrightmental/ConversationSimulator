@@ -144,17 +144,17 @@ thirty minutes with your manager, Diane Kowalczyk, to make the case.
 |---|---|---|---|
 | `impression` | Yes | 45 | Diane's overall confidence in the player's case |
 | `rapport` | Yes | 40 | Professional warmth and engagement |
-| `evidence_strength` | No | 40 | How well the player's claims are backed by specific evidence |
-| `case_clarity` | No | 30 | Whether the ask is specific, grounded, and repeatable upward |
+| `evidence_strength` | No | 10 | How well the player's claims are backed by specific evidence |
+| `case_clarity` | No | 10 | Whether the ask is specific, grounded, and repeatable upward |
 
 **Key events:**
-- **vague_claim_probe** — repeating, fires when `evidence_strength < 30`; Diane asks for specifics. Not true at the default (40): it waits for a turn that weakens the evidence
-- **no_number_anchor** — fires once when `case_clarity < 25`; Diane asks the player to name a number. Not true at the default (30): it waits for a turn that blurs the ask
-- **strong_case_acknowledged** — fires once when `evidence_strength > 70`; Diane shifts to process
+- **vague_claim_probe** — repeating, fires when `evidence_strength < 10`; Diane asks for specifics. Not true at the default (10): it waits for a turn that weakens the evidence
+- **no_number_anchor** — fires once when `case_clarity < 10`; Diane asks the player to name a number. Not true at the default (10): it waits for a turn that blurs the ask
+- **strong_case_acknowledged** — fires once when `evidence_strength > 80`; Diane shifts to process (at least four strong turns)
 - **deflation_signal** — fires once when `impression < 25`; Diane begins closing without encouragement
 
 **Endings:**
-- **Success** — `case_clarity > 70`: Diane has a case she can act on (at least three strong turns)
+- **Success** — `case_clarity > 65`: Diane has a case she can act on (at least four strong turns)
 - **Failure** — `impression < 15`: Diane has lost interest in the conversation
 - **Timeout** — 18 turns elapsed; outcome determined by final state
 

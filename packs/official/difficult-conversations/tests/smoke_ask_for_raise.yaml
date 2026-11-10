@@ -47,13 +47,13 @@ static_assertions:
     check: min_length_1
   - description: Success ending condition targets case_clarity
     path: ending_conditions.success
-    check: "type=variable_above AND variable=case_clarity AND threshold=70"
+    check: "type=variable_above AND variable=case_clarity AND threshold=65"
   - description: Failure ending condition targets impression
     path: ending_conditions.failure
     check: "type=variable_below AND variable=impression AND threshold=15"
   - description: Pack manifest declares this scenario as an entry scenario
     path: manifest.entry_scenarios
     check: "contains scenarios/ask_for_raise.yaml"
-  - description: vague_claim_probe event fires when evidence_strength is below 30
+  - description: vague_claim_probe event fires when evidence_strength is below 10
     path: events[id=vague_claim_probe].when
-    check: "type=variable_below AND variable=evidence_strength AND threshold=30"
+    check: "type=variable_below AND variable=evidence_strength AND threshold=10"

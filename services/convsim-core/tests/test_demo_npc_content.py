@@ -12,6 +12,9 @@ output check that play uses, and pin what the rewrite relies on:
 
 - no authored event or ending is already true at a scenario's defaults, and
   every ending can still be reached within the scenario's turn limit;
+- each persona agrees with what else the prompt carries: Ray's argument with
+  his counter ladder, Diane's timeline with the scenario's event, Rosa's
+  correction rules with the difficulty preset text;
 - the facts each NPC answers from are in a persona field the turn prompt
   renders, so they survive the three-exchange transcript window;
 - secrets stay in the private persona;
@@ -21,6 +24,7 @@ output check that play uses, and pin what the rewrite relies on:
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -69,8 +73,8 @@ def _pack_dir(scenario_id: str) -> Path:
     return _PACK_DIRS[demo.pack_id]
 
 
-def _persona_layers(scenario_id: str, difficulty: str = "standard") -> tuple[str, str]:
-    """The NPC_PUBLIC_PERSONA and NPC_PRIVATE_PERSONA text the turn prompt carries."""
+def _turn_prompt_layers(scenario_id: str, difficulty: str = "standard") -> Dict[str, str]:
+    """The first turn prompt's layers, by layer name."""
     info = _load(scenario_id)
     state = initialize_state(build_variable_defs(info.state_variable_overrides))
     bundle = compose_turn_prompt(PromptComposerInput(
@@ -79,7 +83,13 @@ def _persona_layers(scenario_id: str, difficulty: str = "standard") -> tuple[str
         safety_policy=_prompt_safety_policy(scenario_id),
         player_utterance="Hello.",
     ))
-    return bundle.layer_map["NPC_PUBLIC_PERSONA"], bundle.layer_map["NPC_PRIVATE_PERSONA"]
+    return bundle.layer_map
+
+
+def _persona_layers(scenario_id: str, difficulty: str = "standard") -> tuple[str, str]:
+    """The NPC_PUBLIC_PERSONA and NPC_PRIVATE_PERSONA text the turn prompt carries."""
+    layers = _turn_prompt_layers(scenario_id, difficulty)
+    return layers["NPC_PUBLIC_PERSONA"], layers["NPC_PRIVATE_PERSONA"]
 
 
 def _prompt_safety_policy(scenario_id: str):
@@ -113,9 +123,8 @@ def test_no_authored_event_or_ending_is_true_at_the_defaults(scenario_id):
     assert ending is None, f"{scenario_id}: ending {ending!r} is true at the defaults"
 
 
-def _turns_to_ending(info: ScenarioInfo, kind: str) -> Optional[int]:
-    """Fewest turns, at the per-turn delta limit, until the ending fires (None: never)."""
-    condition = info.ending_conditions[kind]
+def _turns_at_the_delta_limit(info: ScenarioInfo, condition: dict, fires) -> Optional[int]:
+    """Fewest turns, moving the condition's variable by its per-turn limit, until ``fires``."""
     defs = build_variable_defs(info.state_variable_overrides)
     variable = condition["variable"]
     step = defs[variable].max_delta_per_turn
@@ -123,9 +132,17 @@ def _turns_to_ending(info: ScenarioInfo, kind: str) -> Optional[int]:
     state = initialize_state(defs)
     for turn in range(1, info.max_turns + 1):
         state = apply_state_delta(state, {variable: step}, defs).new_state
-        if evaluate_ending_condition(state, turn, info.max_turns + 1, {kind: condition}) == kind:
+        if fires(state, turn):
             return turn
     return None
+
+
+def _turns_to_ending(info: ScenarioInfo, kind: str) -> Optional[int]:
+    """Fewest turns, at the per-turn delta limit, until the ending fires (None: never)."""
+    condition = info.ending_conditions[kind]
+    return _turns_at_the_delta_limit(info, condition, lambda state, turn: (
+        evaluate_ending_condition(state, turn, info.max_turns + 1, {kind: condition}) == kind
+    ))
 
 
 @pytest.mark.parametrize("scenario_id", _DEMO_IDS)
@@ -137,9 +154,31 @@ def test_endings_are_reachable_within_the_turn_limit(scenario_id, kind):
     assert turns >= 2, f"{scenario_id}: {kind} can fire on the first turn"
 
 
-def test_ask_for_raise_success_still_takes_three_strong_turns():
-    """Raising case_clarity's default moved the success threshold with it."""
-    assert _turns_to_ending(_load("ask_for_raise"), "success") >= 3
+def _turns_to_event(info: ScenarioInfo, event_id: str) -> Optional[int]:
+    """Fewest turns, at the per-turn delta limit, until the event fires (None: never)."""
+    event = next(e for e in info.events if e.id == event_id)
+    return _turns_at_the_delta_limit(info, event.when, lambda state, turn: bool(
+        evaluate_event_triggers(state, turn, [event], set())
+    ))
+
+
+def test_ask_for_raise_keeps_its_original_pacing():
+    """Moving the probes off the defaults must not shorten the conversation.
+
+    Before #580, case_clarity climbed from 10 to above 65 for success and
+    evidence_strength from 0 to above 70 for strong_case_acknowledged: four
+    turns each at the delta limit. Both still need the same climb, so any
+    sequence of strengthening turns reaches them on the same turn as before.
+    """
+    info = _load("ask_for_raise")
+    defs = build_variable_defs(info.state_variable_overrides)
+    success = info.ending_conditions["success"]
+    strong = next(e for e in info.events if e.id == "strong_case_acknowledged").when
+
+    assert success["threshold"] - defs["case_clarity"].default == 65 - 10
+    assert strong["threshold"] - defs["evidence_strength"].default == 70 - 0
+    assert _turns_to_ending(info, "success") == 4
+    assert _turns_to_event(info, "strong_case_acknowledged") == 4
 
 
 def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
@@ -150,6 +189,11 @@ def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
 
     weaker = apply_state_delta(state, {"evidence_strength": -20, "case_clarity": -18}, defs).new_state
     fired = evaluate_event_triggers(weaker, 2, info.events, set())
+    assert "vague_claim_probe" in fired
+    assert "no_number_anchor" in fired
+
+    slightly_weaker = apply_state_delta(state, {"evidence_strength": -3, "case_clarity": -3}, defs).new_state
+    fired = evaluate_event_triggers(slightly_weaker, 2, info.events, set())
     assert "vague_claim_probe" in fired
     assert "no_number_anchor" in fired
 
@@ -167,7 +211,7 @@ def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
 # scenario summary (neither of which the turn prompt carries after turn 3).
 _RENDERED_FACTS = {
     "used_car_negotiation": ["$15,500", "$13,500 to $14,200", "41,000 miles", "service records", "tread"],
-    "ask_for_raise": ["pay band", "HR", "two weeks"],
+    "ask_for_raise": ["pay band", "HR", "end of week"],
     "the_ask": ["green corridors", "bird", "Thursday afternoon seminar"],
     "spanish_coffee": ["Sevilla", "three years", "cruasán 1,80 €", "café con leche 1,80 €"],
     "behavioral_interview": ["eight engineers", "deploy pipeline", "first 90 days", "B2B"],
@@ -198,6 +242,73 @@ def test_ray_keeps_his_floor_and_ladder_private():
     for secret in ("13,800", "14,600"):
         assert secret not in public, f"{secret} must stay in the private persona"
         assert secret in private
+
+
+def test_ray_argues_above_the_comps_and_his_ladder_agrees():
+    """Ray's persona once said the car "belongs at the top of" the comps.
+
+    That made $14,200 his own fair price, with his first counters (15,000,
+    14,600) above it. He now argues the car is worth more than the comps, and
+    the ladder comes down from the list to the comps' top and holds there,
+    above the floor.
+    """
+    public, _ = _persona_layers("used_car_negotiation")
+    comps = next(s for s in public.split(". ") if "$13,500 to $14,200" in s)
+    assert "worth more than" in comps
+    assert "top of that range" not in public
+
+    agenda = _load("used_car_negotiation").scenario_data.npc.private_persona.hidden_agenda
+    ladder_item = next(item for item in agenda if "list one step" in item)
+    ladder = [int(n.replace(",", "")) for n in re.findall(r"\b1\d,\d{3}\b", ladder_item.split(":", 1)[1])]
+    assert ladder == [15000, 14600, 14200], "down from the 15,500 list to the comps' top"
+    assert "I could do 15,000" in public, "the speaking-style example counter is the first step"
+    floor_item = next(item for item in agenda if "Your floor is" in item)
+    floor = int(re.search(r"\b1\d,\d{3}\b", floor_item).group().replace(",", ""))
+    assert floor == 13800
+    assert floor < 13900 < ladder[-1], "the one last move stays above the floor"
+
+
+def test_diane_gives_the_timeline_the_scenario_gives():
+    """Diane's process said "within two weeks"; the scenario's event says "end of week"."""
+    public, _ = _persona_layers("ask_for_raise")
+    info = _load("ask_for_raise")
+    strong = next(e for e in info.events if e.id == "strong_case_acknowledged")
+    assert "end of week" in strong.npc_instruction
+    assert "end of week" in public
+    assert "two weeks" not in public and "two-week" not in public
+
+
+def _rosa_correction_rules() -> Dict[str, str]:
+    public, _ = _persona_layers("spanish_coffee")
+    style = public.split("Speaking style: ", 1)[1].split("\nDemeanor: ", 1)[0]
+    return dict(re.findall(r"\b(Warm|Standard|Hard|Adversarial): ([^.]+)\.", style))
+
+
+def test_rosa_has_a_correction_rule_per_preset_that_fits_the_preset_text():
+    """Rosa once coached adversarial customers like hard ones.
+
+    The adversarial preset renders low disclosure and high time pressure, so
+    she leaves mistakes alone there. Hard renders low disclosure too, so its
+    one correction (the pack's documented hard mode) is all she volunteers.
+    """
+    rules = _rosa_correction_rules()
+    assert set(rules) == {"Warm", "Standard", "Hard", "Adversarial"}
+
+    adversarial = _turn_prompt_layers("spanish_coffee", "adversarial")["SCENARIO_BRIEF"]
+    assert "NPC disclosure: low" in adversarial and "Time pressure: high" in adversarial
+    assert "leaves mistakes alone" in rules["Adversarial"]
+    assert "no hints" in rules["Adversarial"]
+    assert "try again" not in rules["Adversarial"]
+
+    hard = _turn_prompt_layers("spanish_coffee", "hard")["SCENARIO_BRIEF"]
+    assert "NPC disclosure: low" in hard
+    assert "try again" in rules["Hard"]
+    assert "all she volunteers" in rules["Hard"]
+
+    warm = _turn_prompt_layers("spanish_coffee", "warm")["SCENARIO_BRIEF"]
+    assert "NPC disclosure: high" in warm
+    assert "never corrects" in rules["Warm"]
+    assert "recasts" in rules["Standard"]
 
 
 def test_jordan_keeps_the_pack_safety_boundaries():
@@ -255,7 +366,7 @@ _RULE_FOLLOWING_LINES = {
     "ask_for_raise": [
         "Fifteen percent above what you're paid now — where does that number come from?",
         "Three postings and two offers in your network. That's a source I can use. What range are you asking for?",
-        "I check it against the pay band for the role, HR reviews it, and you get a written answer within two weeks.",
+        "I check it against the pay band for the role, HR reviews it, and I'll come back to you by end of week.",
         "That's a fair question — what would a backfill actually cost us, in your view?",
     ],
     "the_ask": [
