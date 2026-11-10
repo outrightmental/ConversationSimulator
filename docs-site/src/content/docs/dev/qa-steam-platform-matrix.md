@@ -28,7 +28,12 @@ sidebar:
 - macOS 12 Monterey — dropped from QA matrix; may still work but is untested
 - macOS 13 Ventura — dropped (issue #472): no upstream llama.cpp prebuilt
   targets macOS 13, so the bundled engine cannot launch there; the shipped
-  floor is 14.0, enforced in CI by the `llama-minos-gate` job
+  floor is 14.0, enforced in CI by the `llama-minos-gate` job. The app
+  declares the same floor (`bundle.macOS.minimumSystemVersion` in
+  `tauri.conf.json`, written to the bundle's `LSMinimumSystemVersion`), so
+  macOS 13 refuses to open it rather than opening an app whose engine cannot
+  start; `tests/acceptance/test_macos_minimum_version.py` fails if the app's
+  declared floor ever falls below the engine's
 - 32-bit (x86) on any platform
 - ARM Windows — not targeted in v1
 - ChromeOS / Android / iOS — not targeted in v1
