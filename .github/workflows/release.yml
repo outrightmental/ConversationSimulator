@@ -1665,7 +1665,30 @@ jobs:
             BODY_PATH=""
           else
             NAME="Conversation Simulator $TAG"
-            BODY_PATH="docs/release-notes-template.md"
+            # A tag pushed without a release made in the UI first used to publish
+            # docs/release-notes-template.md as the body, placeholders and all.
+            # Publish this tag's own section of RELEASE_NOTES.md instead: the
+            # lines under "# Conversation Simulator <tag> — Release Notes" up to
+            # the next version heading, without the heading itself (the release
+            # name carries it) and without the rule that separates sections.
+            NOTES="$RUNNER_TEMP/release-notes.md"
+            awk -v header="# Conversation Simulator $TAG — Release Notes" '
+              $0 == header { found = 1; next }
+              found && /^# Conversation Simulator v/ { exit }
+              found { lines[++n] = $0 }
+              END {
+                while (n > 0 && (lines[n] ~ /^[[:space:]]*$/ || lines[n] == "---")) n--
+                start = 1
+                while (start <= n && lines[start] ~ /^[[:space:]]*$/) start++
+                for (i = start; i <= n; i++) print lines[i]
+              }
+            ' RELEASE_NOTES.md > "$NOTES"
+            if grep -q '[^[:space:]]' "$NOTES"; then
+              BODY_PATH="$NOTES"
+            else
+              echo "::warning::RELEASE_NOTES.md has no section for $TAG; publishing the template. Edit the release body by hand."
+              BODY_PATH="docs/release-notes-template.md"
+            fi
           fi
 
           {
