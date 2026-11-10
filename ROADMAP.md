@@ -51,14 +51,17 @@ criteria.
 
 ### Done — shipped in v0.4.0
 
-- [x] The reply arrives as it is written — sentence-by-sentence streaming over a WebSocket served by convsim-core, with released text committed (#538)
-- [x] The wait says what it is doing — staged turn panel, reading bar, reply-start estimate from measured speeds (#539)
-- [x] Every turn records what it cost — engine timings, stages, extra calls, rolling speeds endpoint (#519)
-- [x] The engine launches for one conversation — one slot, explicit context, small batches, bounded cache (#523)
-- [x] The first session explains itself — resume, reply speed, plain language, meter clarity, whole-turn counting (#501)
+- [x] The reply arrives as it is written: sentence-by-sentence streaming over a WebSocket served by convsim-core, with released text committed (#538)
+- [x] The wait says what it is doing: staged turn panel, reading bar, reply-start estimate from this machine's measured speeds (#539)
+- [x] Every turn records what it cost: engine timings, stage times, extra calls, rolling speeds endpoint (#519)
+- [x] The engine launches for one conversation: one slot, registry context size, 256-token batches, 1 GiB prompt cache bound (#523)
+- [x] The first session explains itself: resume, reply speed, plain wording, meter clarity, whole-turn counting (#501)
+- [x] The Conversation Brief leads with the mission: numbered goals, two decisions, the mechanical settings in one card (#500, building on #486)
 - [x] The demo has its own icon set and Steamworks icons (#499)
 - [x] Copy diagnostics works on macOS; a rejected request names the field (#508)
-- [x] Slow turns wait instead of failing; convsim-core runs as a supervised sidecar and shuts down its whole process tree (#456, #485, #489)
+- [x] Model downloads show the real model folder and offer Retry when the connection drops (#568)
+- [x] Slow turns wait instead of failing; convsim-core runs as a supervised sidecar and shuts down its whole process tree (#489, #456, #485)
+- [x] Screenshots and a demo recording from a real local-model session (#455); diagnostics name the release version (#490); tracker structure declared and validated in CI (#491)
 
 ### Done — shipped in v0.3.0
 

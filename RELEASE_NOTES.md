@@ -1,10 +1,12 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Conversation Simulator v0.4.0 — Release Notes
 
-> **Minor release (2026-11-07)** — the first public demo. The character's
-> reply arrives on screen as the model writes it, the wait says what it is
-> doing and when the reply will start, the first session explains itself, and
-> the engine launches tuned for one conversation at a time. This is also the
+> **Minor release (2026-11-10).** This is the release the free demo edition
+> is built from. The character's reply reaches the screen a sentence at a time
+> while the model writes it. The wait says what the turn is doing and, once
+> turns have been measured on this machine, when the reply will start. The
+> first session explains itself, the Conversation Brief leads with the
+> mission, and the engine launches sized for one conversation. This is the
 > first tag since v0.2.9, so everything merged since then ships here. The
 > v0.3.0 notes further down were written in July and never tagged; that work
 > reached players through the v0.2.x patch releases.
@@ -14,140 +16,244 @@
 ### The reply arrives as it is written (#538)
 
 The NPC's words used to land all at once, after the whole turn had been
-generated and checked. They now reach the screen sentence by sentence while
-the model is still writing, over a WebSocket (`/ws/session/{id}`) served by
-convsim-core itself.
+generated and checked. They now reach the screen a sentence at a time while
+the model is still writing, over a WebSocket at `/ws/session/{id}` that
+convsim-core serves itself.
 
-- A sentence is released only once the safety check has passed on everything
-  released so far. Released text is committed text: a turn that is cut off
-  after the first sentence keeps what the player has read, fills in the
-  bookkeeping with defaults and is marked `salvaged`. There is no second model
-  call and no reply that vanishes after being read. Regeneration happens only
-  when nothing was released.
-- One turn at a time per session. A second submission while a turn is running
-  answers `409 TURN_IN_PROGRESS`; a message typed while the reply is finishing
-  is queued on screen and sent when the turn commits.
-- The socket accepts only the desktop webview's origin and the two local
-  development origins. It carries no replay; the transcript stays the record.
+- A sentence is released only after the output check has passed on everything
+  released so far, and released text is committed text. If a later sentence
+  fails the check, it is withheld, generation stops, and the turn is committed
+  with the sentences already shown and no state change. If the reply is cut
+  off, the turn keeps the released line and every part of the model's output
+  that closed before the cut, with defaults for the rest. Either way the turn
+  is marked `salvaged`, no second model call is made, and nothing the player
+  has read is taken back. The repair and retry path runs only when nothing was
+  released.
+- One turn runs at a time per session. A second submission while a turn is
+  running answers `409 TURN_IN_PROGRESS`. A message typed after the whole line
+  is on screen, while the turn is still being saved, is queued and sent when
+  the turn commits.
+- The socket accepts the desktop webview's origins and the Vite dev server's
+  (port 7354), and answers any other browser origin with a 403. Events are not
+  stored or replayed: a client that reconnects is sent the session's current
+  state, and the transcript stays the record.
 
 ### The wait says what it is doing (#539, #519)
 
-Waiting on a local model meant staring at a spinner. The panel under the
-transcript now narrates the turn in the character's voice through six stages:
-waiting, reading, writing, finishing, checking, voice.
+In v0.2.9 the wait was "NPC is responding…", a notice after five seconds
+that the NPC was taking longer than usual, and a performance banner. The
+panel under the transcript now says which stage the turn is in, with the
+character's name where the pack gives one: getting ready, thinking (reading
+the prompt), replying, updating the scene, trying again (a repair or safety
+retry) and getting the voice ready.
 
 - While the engine reads the prompt, a bar fills from the engine's own
-  progress figures, with the share it already had cached pre-filled.
-- A reply-start estimate ("Alex will start replying in about 6–9 s") is
-  computed from this machine's measured reading and writing speeds over the
-  last twenty turns, and shown only when it is worth showing (over four
-  seconds, never while text is already streaming).
-- "Your turn." is announced to assistive technology when the reply lands, and
-  focus rests on the panel while the turn runs. Reduced-motion preferences are
-  honoured. The performance warning banner is gone; the panel is the answer.
-- Every turn now records what it cost: prompt tokens read and cached, output
-  tokens, reading and writing speed, the time at each stage boundary, extra
-  model calls (repair, safety retry) and voice synthesis time. The record rides
-  on each transcript turn and in the debug drawer, and
-  `GET /api/performance/rolling` reports rolling speeds per engine and model.
-  llama-server supplies its timings and prompt progress; Ollama its done-chunk
-  figures; the built-in fake runtimes report deterministic values. The figures
-  are stored with the session and leave the machine only in an export the
-  player asks for (`docs/privacy.md`).
+  progress reports, with the part it already had cached drawn in. llama-server
+  sends them; Ollama does not, so its bar shows no fraction.
+- "Reply starts in about 5–8 s." appears only while the turn is getting ready
+  or reading, and only when the reply is four seconds or more away. It is
+  worked out from this machine's measured speeds (the medians over its newest
+  twenty recorded turns on the same engine and model) and how much of the
+  prompt is left to read; before the engine's first progress report it is the
+  measured time to first words less the time already waited. It counts down
+  with the clock, and each end of the range is rounded to whole seconds under
+  ten seconds, to five seconds under a minute, and to whole minutes from a
+  minute on.
+- From five seconds the panel adds one footnote: the next replies can be
+  shortened under Reply speed, in Settings. It is text, not a link, because
+  leaving the screen mid-turn would lose the pending message. The demo adds
+  that closing other apps usually helps.
+- Each stage is announced once to assistive technology, "Your turn." is
+  announced when the reply lands, and focus rests on the panel while the turn
+  runs. A reduced-motion preference stops the bar's fill animation.
+- The performance warning banner, which told players to raise GPU layers, and
+  the slow notice are gone. A timed-out turn now suggests Quick replies (and,
+  in the full app, a smaller model) instead.
+- Every NPC turn now records what it cost: prompt tokens read and reused from
+  cache, output tokens, reading and writing speed, the time at each stage
+  boundary, extra model calls (repair, safety retry) with their own time,
+  voice synthesis time, and the model that served it, never as a file path.
+  llama-server supplies its timings and prompt progress, Ollama the figures in
+  its final chunk, and the built-in fake runtimes fixed values. The record
+  rides on the turn response, the transcript and the session's debug view, and
+  `GET /api/performance/rolling` reports this machine's medians over the
+  newest twenty records for one engine and model, leaving out stopped and
+  fallback turns. It is stored with the session, deleted with it, included in
+  a session export, and sent nowhere (`docs/privacy.md`).
 
 ### The engine launches for one conversation (#523)
 
-llama-server used to start with its defaults, which are sized for serving many
-clients at once. It now starts with one slot, an explicit context size from
-the model registry (8192 tokens unless the registry says otherwise), a batch
-of 256 tokens and a prompt cache bounded at 1 GiB, so a single conversation
-gets the whole machine and a long one does not grow without limit. Each
-setting is an environment default the operator can still override.
+llama-server used to start with its own defaults, which suit a shared
+inference server: four slots, the model's full trained context, an 8 GiB
+prompt cache and a 2048-token batch. The app now starts it with one slot, a
+context size from the model registry (8192 tokens for the three Qwen3
+entries, 32768 for Mistral Small 3.1 24B; a GGUF file you register yourself
+gets the context you stated, or 8192), a 256-token batch and a prompt cache
+bounded at 1 GiB. With one slot the conversation has the whole context rather
+than a share of it, prompt progress arrives every batch rather than once per
+prompt, and the cache cannot grow past its bound. The context size goes on
+the command line; the other three travel as `LLAMA_ARG_*` environment
+defaults, which an older engine ignores. A value already set in the
+environment wins for all four, and `runtime.log` records what the engine was
+started with.
 
 ### The first session explains itself (#501)
 
 Playtest feedback said the first few sessions felt "both too sparse and too
 technical". Four things changed.
 
-- **Resume.** `GET /api/sessions` lists a profile's sessions, and a
-  *Conversation in progress* strip on every screen, a *Resume your
-  conversation* action on Home and a *Resume* button per session in Settings
-  lead back to the one left open. Reload and relaunch resume too.
-- **Reply speed.** One named setting (*Quick replies / Balanced / Fuller
-  replies*) scales how much the character says per turn, which is the
-  dominant cost of a turn. It applies to the next message without a restart.
-- **Plain language.** A familiarity question on first run chooses between
-  `plain` and `technical` wording. At `plain`, session ids, flow states and
-  raw flag names leave the conversation screen; the character is called by
-  name. The tutorial drops "scenario event", "hidden prompt" and "rubric
-  dimensions", and answers questions about the meters, its mood, whether it is
-  an AI, how conversations end and what the debrief is, instead of carrying on
-  with the next canned line.
+- **Resume.** `GET /api/sessions` lists a profile's sessions. An unfinished
+  conversation can be picked up from a *Conversation in progress.* strip in
+  the app's frame, a *Resume your conversation* action on Home, or the
+  *Resume* button that *Your sessions* in Settings shows beside each
+  conversation still in progress. A reload or relaunch resumes it too.
+- **Reply speed.** One setting in Settings (*Quick replies*, *Balanced*,
+  *Fuller replies*) scales how many words the character writes per turn, the
+  dominant cost of a turn on local hardware. It takes effect on the next
+  message, with nothing to restart.
+- **Plain wording.** The welcome screen asks how familiar the player is with
+  AI language models, and the answer picks plain or technical wording (the
+  *Wording* setting in Settings). Plain wording hides session ids, internal
+  state names and event flags. At either level the character is called by
+  name wherever the pack gives one. The tutorial no longer says "scenario
+  event", "hidden prompt" or "rubric dimensions", and it answers questions
+  about the meters, its mood, whether it is an AI, how conversations end and
+  what the debrief is, instead of carrying on with the next scripted line.
+  The First Words debrief asks about wording once more.
 - **Meters and turns.** The two meters sit above the transcript in a labelled
-  *Conversation meters* panel, draw the tick they moved this turn, and are
-  separated from the character's *Mood*. A turn is the player's message plus
-  the reply, so the transcript and the debrief count the same thing.
+  *Conversation meters* panel, show how far they moved this turn, and are kept
+  apart from the character's *Mood*. A turn is the player's message plus the
+  reply, so the transcript and the debrief count the same thing.
 
-### The demo has its own face (#499)
+### The Conversation Brief leads with the mission (#500)
+
+The pre-conversation screen read as a wall of identical form controls. It is
+now in three tiers. First the mission: pack, title, situation and the
+scenario's player-visible goals, numbered under *Your objective* in the one
+lit panel. Then the two decisions that change the conversation, *Difficulty*
+and *Your role*. The five mechanical settings (input, audio, language,
+privacy and the variation seed) are grouped in one dimmer *Session setup*
+card, each still one Tab or D-pad press away. The launch bar with *Start
+conversation* stays pinned to the bottom of the screen. Scenario details from
+the API now carry `player_visible_goals`; the hidden goals never leave the
+server. A difficulty level with no description shows its name once instead of
+twice.
+
+### The demo has its own icon (#499)
 
 The Steam demo and the full app showed the same icon in the Steam client. The
 demo edition now bundles its own icon set: the same speech-bubble mark on a
-deep purple plate with a "DEMO" ribbon at 128 px and above, generated by
-`publishing/assets/source/gen_icons.py` and checked by 39 acceptance cases,
-with the Steamworks App Icon, Shortcut Icon and Mac Icon produced from the
-same source.
+deep purple plate instead of the full app's teal, with a "DEMO" ribbon at
+128 px and above. `publishing/assets/source/gen_icons.py` generates that set
+and the Steamworks App Icon and Shortcut Icon from one source, the bundle's
+`icon.icns` serves as the Mac Icon, and 39 acceptance cases check the result.
 
 ### Copy diagnostics works on macOS, and a rejected request says why (#508)
 
 The web clipboard APIs are unusable in the packaged macOS and Linux webviews,
-so *Copy diagnostics* dead-ended at "Copy failed". It now copies through the
-desktop shell first and falls back to the web APIs elsewhere. A request that
-convsim-core rejects (`422`) names the field and the rule it broke instead of
-"Request validation failed", is written to the log the diagnostics report
-collects, and never echoes the rejected value. An explicit `null` for an
-optional setting means "use the default".
+so *Copy diagnostics* dead-ended at "Copy failed". Every copy button now
+writes through the desktop shell's clipboard first, then the browser
+clipboard API, then the older copy command. A request that convsim-core
+rejects (`422`) names the field and the rule it broke instead of "Request
+validation failed", is written to the log the diagnostics report collects,
+and never echoes the rejected value. An explicit `null` for an optional
+setting means "use the default".
+
+### Model downloads show the real folder and offer Retry (#568)
+
+The confirm-install screen's *Saves to* row (*Storage path* in the model
+manager) showed `~/.convsim/models/llm/<id>.gguf`, a folder the engine no
+longer writes to. It now reads the Models folder from
+`GET /api/privacy/folders`, the same source Settings uses, and shows
+`<folder>/<id>.gguf`, or a *File name* row with `<id>.gguf` alone while the
+folder loads or if the request fails. On the installing screen, Retry used to
+depend on matching the error text, which the download library's messages
+never matched, so a player whose connection dropped saw an opaque error.
+Every download failure is now classified as `NETWORK`, `HTTP`, `CHECKSUM` or
+`UNKNOWN` with a message that is never empty, the code is stored with the
+install and returned by the install status API, and a `NETWORK` failure shows
+*Network connection lost* with *Retry*.
 
 ### Also since v0.2.9
 
-- Slow turns are no longer failed at 60 seconds. A stalled engine answers
-  `504 TURN_TIMEOUT`, an unreachable one `503 RUNTIME_UNAVAILABLE`, and the
-  conversation screen waits out a long turn and reconciles with the saved
-  transcript instead of rolling back a reply the server already has.
-- The Conversation Brief is a briefing: a hero that says what you are about to
-  do, numbered setting cards, difficulty rows with the character's traits as
-  meters, and a launch bar pinned to the bottom of the screen (#486).
-- convsim-core runs as a supervised desktop sidecar: readiness is a real health
-  exchange rather than an open port, a crashed engine is restarted with
-  backoff, and quitting shuts down the whole process tree, including
-  llama-server and the voice sidecar (#456, #485).
-- A per-model clock showed how long a turn would take while the model was
-  thinking (#488); the staged panel above replaces it.
-- Diagnostics report the release version instead of the package version
-  (#490).
-- The README and docs carry screenshots and a demo recording from a real
-  local-model session (#455). They predate the v0.4 conversation screen and
-  are being recaptured (#554).
-- The issue tracker's labels, fields and milestones are declared in one file
-  and validated in CI (#491).
+- Slow turns are no longer failed at 60 seconds (#489). The conversation
+  screen waits up to five minutes and checks the saved transcript before
+  giving up, so a reply the server already has is shown rather than rolled
+  back. A stalled engine answers `504 TURN_TIMEOUT` and an unreachable one
+  `503 RUNTIME_UNAVAILABLE`.
+- The Conversation Brief first became a briefing in #486: styled cards in
+  place of unstyled fieldsets, difficulty rows that draw the character's
+  traits as meters, and a launch bar pinned to the bottom of the screen. The
+  mission-first layout above builds on it.
+- convsim-core runs as a supervised desktop sidecar (#456, #485). Readiness is
+  a `GET /api/health` exchange rather than an open port, a core that exits on
+  its own is restarted up to three times with backoff, and quitting shuts down
+  the whole process tree, including llama-server and the voice sidecar.
+- A per-model clock, the median of this machine's recent whole turns, showed
+  how long a turn would take while the model was thinking (#488). The staged
+  panel above replaces it whenever the core reports stages, and falls back to
+  it when no socket delivers them.
+- The README and docs carry six screenshots and a demo recording captured from
+  a real local-model session (#455). They predate the v0.4 conversation
+  screen; see Known gaps.
+- Diagnostics and the crash and beta reports name the release version instead
+  of the package version, which always read 0.1.0 (#490, #498).
+- The issue tracker's labels, fields and milestones are declared in
+  `.github/project-structure.yml` and validated in CI (#491).
+- CI fixes: the UI package declares the TypeScript it type-checks with
+  (#558), the `stop_all` concurrency test waits on a rendezvous instead of a
+  stopwatch (#561), and the launch tests fail if a launch setting is dropped
+  or moved onto the command line (#567).
 
 ## Upgrade notes
 
-No data migration. Two new settings, *Reply speed* and *Wording*, take their
-defaults (Balanced, plain) until changed. Turn timing records are stored as
-events in the session database and appear in transcript exports. The
-WebSocket at `/ws/session/{id}` is served by convsim-core on the same port as
-the API; the interim TypeScript backend no longer serves one.
+- One database migration, `0019_install_error_code`, runs when convsim-core
+  starts. It adds a nullable `error_code` column to `installed_models` and
+  `setup_install_jobs`. Rows written before it keep no code, and the
+  installing screen falls back to the old text match for them.
+- Turn timing records need no migration: they are stored as `turn_timing`
+  events in the existing session events table.
+- Two new settings, *Reply speed* and *Wording*, start at *Balanced* and plain
+  wording. A player who set up before this release does not see the welcome
+  screen's familiarity question; the next First Words debrief asks about
+  wording once, and both settings can be changed in Settings at any time.
+- The session WebSocket is served by convsim-core on its API port, 7355, so
+  streaming needs nothing else running.
+- For developers: the root `package.json` `engines` field now asks for
+  Node.js 20 or newer (it said 18). Use Node 22 or 24; CI runs 24. The locked
+  better-sqlite3 12.11.1 declares Node 20.x and 22.x through 26.x, and
+  publishes prebuilt binaries only for Node 22, 24, 25 and 26. On Node 20, 21
+  or 23, `pnpm install` finds no prebuilt binary and compiles better-sqlite3
+  from source with node-gyp, which needs Python and a C++ build toolchain;
+  without them the install fails. On Node 18 or 19, pnpm warns
+  `Unsupported engine`, carries on, and then compiles it the same way. The
+  setup scripts and the first-run check still accept Node 18, so passing them
+  does not mean the install will succeed.
 
 ## Known gaps
 
-- The screenshots and demo recording show the pre-v0.4 conversation screen
-  (#554).
-- Model names are still shown as the registry writes them, for example
-  "Qwen3 4B Instruct Q4_K_M" (#555).
-- The reply-start estimate needs measured turns on a real model before it can
-  appear; the first turn on a fresh machine shows the stages without one.
-- The First Words tutorial is defined twice, as a pack and as a catalog entry,
-  with cross-copy guards keeping them in step (#553).
+- The screenshots and the README's demo recording show the pre-v0.4
+  conversation screen, with the old performance advisory and the meters below
+  the transcript. Recapturing them needs a real local-model session (#554).
+- The macOS build is Apple Silicon only (the release workflow builds
+  `macOS-aarch64` alone), while the Steam store copy's macOS requirements list
+  Intel processors too (#563).
+- Model names are shown as the registry writes them, for example "Qwen3 4B
+  Instruct Q4_K_M" (#555).
+- The reply-start estimate needs turns measured on this machine with the same
+  engine and model before it can appear. The first turn on a fresh machine, or
+  on a newly chosen model, shows the stages and the clock without one.
+- The First Words tutorial is defined twice, as a pack and as a catalog entry.
+  Tests hold both copies to the same wording rules until they are merged
+  (#553).
+- Valve has not granted the Steam Deck Verified tier. The QA matrix lists it
+  as an open gate (G4-02) for the public release.
+- With more than one model in Ollama, conversations and debriefs use the
+  first model `ollama list` shows. The model chosen with *Use this model* is
+  used only by the benchmark, and is the name Home shows.
+- Choosing another llama.cpp model while the engine is running saves the
+  choice, but the engine keeps the old model until the app is quit and
+  reopened.
 
 ---
 
