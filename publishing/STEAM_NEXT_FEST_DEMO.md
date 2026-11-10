@@ -203,6 +203,11 @@ gate (D-01, D-02).
 | Put a demo build on the internal `beta` branch | Same, with `set_live_branch: beta` (create the branch on the demo app first: **App Admin → Builds → Branches**) |
 | Make the demo public (`default`) | `workflow_dispatch` only, `set_live_branch: default`, **after the demo gate passes** — the same rule as the base app |
 
+A Steam Deploy dispatch downloads the depot payload from the demo Release
+run's artifacts, which are kept for 90 days. Past that, rebuild from the tag
+(a new BuildID), or set the already-staged BuildID live in Steamworks
+(**App Admin → Builds**), which needs no artifacts.
+
 What the workflow does differently for `edition: demo`:
 
 - resolves `STEAM_DEMO_APP_ID` and the three `STEAM_DEMO_DEPOT_*_ID` variables

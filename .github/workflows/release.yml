@@ -77,6 +77,30 @@ jobs:
             exit 1
           fi
           echo "OK: building the demo from $TAG ($TAG_SHA)."
+      # A full-edition Run workflow creates the tag when it does not exist yet:
+      # the release job pins it to this run's commit. When the tag already
+      # exists, GitHub leaves it where it is, so a run from a newer commit
+      # would publish nothing new yet stage a Steam build the tag does not
+      # point to, and a demo dispatched from the tag would then come from
+      # different source. Refuse that before a single binary is compiled.
+      - name: An existing release tag is this run's commit
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.edition != 'demo' }}
+        env:
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "OK: tag $TAG does not exist yet; the release job creates it on $GITHUB_SHA."
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
+          if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::tag $TAG already exists at $TAG_SHA, but this run is on $GITHUB_SHA." \
+                 "Run the workflow from the tag (under 'Use workflow from'), or release under a new tag."
+            exit 1
+          fi
+          echo "OK: tag $TAG is this run's commit ($TAG_SHA)."
 
   # ── Cross-platform desktop builds ─────────────────────────────────────────────
   build-desktop:
@@ -1624,7 +1648,14 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/**/*.msi
             apps/desktop/src-tauri/target/release/steam-depot-windows.tar.gz
           if-no-files-found: warn
-          retention-days: 7
+          # The Steam depot is assembled from these artifacts, not from the
+          # GitHub release, and not only by the chained steam job: setting a
+          # demo build live on beta or default is a later Steam Deploy dispatch
+          # with this run's run_id (publishing/STEAM_NEXT_FEST_DEMO.md §3), weeks
+          # after the build in the demo timeline. At 7 days that dispatch found
+          # nothing to download, and the only way out was a rebuild with a new
+          # BuildID. 90 is the most GitHub keeps them, as for the scan records.
+          retention-days: 90
 
   # ── Publish GitHub release ────────────────────────────────────────────────────
   release:
