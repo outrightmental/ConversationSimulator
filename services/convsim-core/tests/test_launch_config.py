@@ -27,6 +27,7 @@ from convsim_core.runtime.launch import (
     LaunchConfig,
     context_length_for_command,
     launch_env,
+    registry_id_for_model_path,
     resolve_launch_config,
 )
 from convsim_core.runtime.sidecar import build_command
@@ -207,6 +208,41 @@ def test_lookup_failure_never_blocks_a_start(caplog):
 
     assert config == LaunchConfig()
     assert any("launch config" in rec.message for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# registry_id_for_model_path — the same lookup, for a turn's sampling (#580)
+# ---------------------------------------------------------------------------
+
+
+def test_registry_id_for_model_path_maps_a_file_as_the_launch_does(db, tmp_path):
+    conn = db.connection()
+    model = tmp_path / "registry-model.gguf"
+    model.write_bytes(b"gguf")
+    _seed_registry_model(conn, registry_id="old-row", context_length=2048, file_path=str(model))
+    _seed_registry_model(conn, registry_id="reg-model", context_length=6144, file_path=str(model))
+    mine = tmp_path / "my-own.gguf"
+    mine.write_bytes(b"gguf")
+    register_user_gguf(conn, path=str(mine))
+
+    # The newest row for the file, matched after normalisation.
+    assert registry_id_for_model_path(str(model), conn) == "reg-model"
+    assert registry_id_for_model_path(str(tmp_path / "." / "registry-model.gguf"), conn) == "reg-model"
+    # A player-supplied GGUF, an unknown file, and no file or connection have none.
+    assert registry_id_for_model_path(str(mine), conn) is None
+    assert registry_id_for_model_path(str(tmp_path / "never-installed.gguf"), conn) is None
+    assert registry_id_for_model_path(None, conn) is None
+    assert registry_id_for_model_path(str(model), None) is None
+
+
+def test_registry_id_for_model_path_never_raises(caplog):
+    conn = MagicMock()
+    conn.execute.side_effect = sqlite3.OperationalError("no such table: installed_models")
+
+    with caplog.at_level("WARNING"):
+        assert registry_id_for_model_path("/models/m.gguf", conn) is None
+
+    assert any("registry lookup" in rec.message for rec in caplog.records)
 
 
 # ---------------------------------------------------------------------------

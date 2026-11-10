@@ -20,11 +20,14 @@ The primary registry file. Each entry includes:
 The `runtime.llama_cpp` defaults are all used. `context_length` sizes the
 engine's context when the app launches it. `temperature_default` and
 `top_p_default` are the sampling a conversation on that model is sent with:
-each NPC turn, its repair and retry calls, and the debrief. A model whose
-entry leaves one out, and a GGUF you registered yourself, are sent at
+each NPC turn, its repair and retry calls, and the debrief. The model is the
+file the app starts the engine on, matched to its entry the same way as for
+`context_length`, whether or not a selection is saved. A model whose entry
+leaves one out, a GGUF you registered yourself, and a llama-server you
+started on a data directory with no install record of its file are sent at
 temperature 0.8 and the llama.cpp adapter's top-p (0.95 unless
-`CONVSIM_LLAMA_CPP_TOP_P` sets it). The model benchmark keeps its fixed
-temperature of 0.
+`CONVSIM_LLAMA_CPP_TOP_P` sets it); `docs/runtime-adapters.md` has the
+details. The model benchmark keeps its fixed temperature of 0.
 
 All registry-managed models have a verified 64-character lowercase SHA-256
 hex digest and a Hugging Face URL pinned to a specific commit SHA.  The app

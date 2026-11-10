@@ -194,10 +194,27 @@ HTTP API. `llama-server` is the inference binary from the llama.cpp project.
 
 **Sampling.** A conversation's requests (each NPC turn, its repair and
 retry calls, and the debrief) carry the temperature and top-p that the
-selected model's registry entry declares as `runtime.llama_cpp.temperature_default`
-and `top_p_default` (issue #580). A model with no such entry, such as a GGUF
-the player registered, is sent at temperature 0.8 and the top-p above.
-The model benchmark keeps its fixed temperature of 0.
+model's registry entry declares as `runtime.llama_cpp.temperature_default`
+and `top_p_default` (issue #580). The model is found the way the app finds
+the one to start the engine on: the saved selection when it is a model file
+on disk, otherwise the newest ready install, mapped to its registry entry by
+the same install-record lookup that sets the engine's context size. It does
+not matter whether the model was selected in setup or Settings or the core
+was started with `CONVSIM_RUNTIME_ID=llama_cpp` and nothing saved. A file
+selected while the engine is running is the one whose values are sent from
+then on, although the engine keeps the earlier file until the app is
+reopened.
+
+Where there is no registry value to use, a request is sent at temperature
+0.8, the request default, and the top-p above. That covers a GGUF the player
+registered and a value the entry does not declare. It also covers a
+llama-server the app did not start, on a data directory with no install
+record of its file, such as the one `scripts/nightly-model-smoke.py` runs:
+the app does not ask a running server which file it loaded, and without an
+install record it could not map the file to an entry. A server you start
+yourself while the app does hold a ready install is sent the values of the
+file the app would have started, whichever file the server loaded. The model
+benchmark keeps its fixed temperature of 0.
 
 **Health check.** Calls `GET /health` on the llama-server. HTTP 200 → READY;
 HTTP 503 → STARTING (model still loading); connection error → UNAVAILABLE.

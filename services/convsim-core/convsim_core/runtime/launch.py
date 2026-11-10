@@ -15,6 +15,8 @@ This module is the one place that decides how the app launches the engine:
   the context size read from the model registry; a player-supplied GGUF uses
   the context the player stated when registering it, or
   ``DEFAULT_CONTEXT_LENGTH`` when they stated none.
+* :func:`registry_id_for_model_path` — the registry entry a model file maps
+  to, by the same lookup, for the sampling a turn is sent with (issue #580).
 * :func:`launch_env` — the ``LLAMA_ARG_*`` environment the engine is spawned
   with.
 * :func:`context_length_for_command` — the ``--ctx-size`` to put on the
@@ -170,6 +172,32 @@ def resolve_launch_config(
     a bookkeeping problem must not stop the engine from starting.
     """
     return LaunchConfig(context_length=_context_length_for_model(model_path, conn))
+
+
+def registry_id_for_model_path(
+    model_path: str | None,
+    conn: sqlite3.Connection | None,
+) -> str | None:
+    """The registry id of the model file at ``model_path``, or None.
+
+    This is the mapping :func:`resolve_launch_config` makes to find a model's
+    registry row: the newest ``installed_models`` row for the file, with paths
+    compared after normalisation, and that row's ``registry_id``. The turn
+    pipeline reads a model's registry sampling through it (issue #580), so a
+    turn and the engine's launch agree on which registry entry a file is. A
+    player-supplied GGUF, a file the app has no install record of, and a
+    failed lookup give None. Never raises.
+    """
+    if not model_path or conn is None:
+        return None
+    try:
+        row = _installed_row_for_path(conn, model_path)
+    except Exception as exc:  # noqa: BLE001 — a bookkeeping problem must not stop a turn
+        logger.warning("registry lookup for %s failed (%s)", model_path, exc)
+        return None
+    if row is None:
+        return None
+    return row.get("registry_id") or None
 
 
 # ── Registry lookup ───────────────────────────────────────────────────────────
