@@ -109,9 +109,10 @@ class ServiceConfig(BaseSettings):
     # itself lives in convsim_core/edition.py.
     edition: Literal["full", "demo"] = "full"
     # Registry id of the model the demo edition installs. Unset = the registry's
-    # `role: starter` entry (Qwen3 4B today). Set CONVSIM_DEMO_MODEL_ID to point
-    # the demo at a smaller tier once one clears the demo quality bar — no code
-    # change required. Ignored outside the demo edition.
+    # `role: starter` entry (Qwen3 4B Instruct 2507 today). Set
+    # CONVSIM_DEMO_MODEL_ID to point the demo at a smaller tier once one clears
+    # the demo quality bar — no code change required. Ignored outside the demo
+    # edition.
     demo_model_id: Optional[str] = None
 
     @model_validator(mode="after")

@@ -37,7 +37,7 @@ refuses to start a download if either field is missing or equals `PENDING`.
 
 | Tier         | Model                              | Size    | Min VRAM |
 | ------------ | ---------------------------------- | ------- | -------- |
-| Starter      | Qwen3 4B Instruct Q4\_K\_M         | 2.5 GB  | 4 GB     |
+| Starter      | Qwen3 4B Instruct 2507 Q4\_K\_M    | 2.5 GB  | 4 GB     |
 | Standard     | Qwen3 8B Instruct Q4\_K\_M         | 5.0 GB  | 6 GB     |
 | High-quality | Qwen3 14B Instruct Q4\_K\_M        | 9.0 GB  | 10 GB    |
 | High-quality | Mistral Small 3.1 24B Q4\_K\_M     | 14.3 GB | 16 GB    |

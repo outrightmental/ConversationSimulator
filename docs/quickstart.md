@@ -52,7 +52,7 @@ missions. **Cancel and go home** stops the install.
 When every stage is done, the app opens the **Scenario Library**. The demo
 opens its Home screen instead.
 
-The recommended model is **Qwen3 4B Instruct Q4_K_M** (2.5 GB, Apache-2.0). The
+The recommended model is **Qwen3 4B Instruct 2507 Q4_K_M** (2.5 GB, Apache-2.0). The
 model registry gives 4 GB of GPU memory as its minimum, and it also runs on the
 CPU alone, more slowly. No internet connection is needed after this one-time
 download. To use Ollama or your own GGUF file instead, expand **Advanced: use

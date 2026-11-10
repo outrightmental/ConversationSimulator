@@ -48,25 +48,38 @@ CONVSIM_EDITION=demo ./scripts/dev.sh
 
 ### Which model?
 
-**The demo ships the registry's existing starter tier, Qwen3 4B Instruct
+**The demo ships the registry's starter tier, Qwen3 4B Instruct 2507
 Q4_K_M (2.5 GB, Apache-2.0).** The demo edition installs whatever the registry's
 `role: starter` entry is, or the model named by `CONVSIM_DEMO_MODEL_ID`, so
 this is a configuration decision, not a code one.
 
+Until v0.4 the starter was the hybrid Qwen3 4B (`qwen3-4b-instruct-q4_k_m`),
+run with reasoning off. Issue #580 replayed the five demo conversations
+(`scripts/demo-gate-replay.py`) on both 4B models with the same code, and the
+2507 instruct release was more coherent in every one. It follows Ray's counter
+ladder, confirms Rosa's orders instead of offering them back, and answers the
+player's direct questions where the hybrid model looped. It is the same size
+and licence, and needs the same hardware. Qwen publishes no GGUF of 2507, so
+the registry pins unsloth's quantisation by revision and digest. Its replies
+run longer than the hybrid model's, and the replays ran on a CPU-only VM, so
+D-05's latency clause on the reference hardware is still the check that it
+fits the budget.
+
 The note asked "can we use a smaller/faster Qwen model?" — evaluated, and not
 for the first Next Fest build:
 
-- The 4B is the only tier the nightly real-model smoke
+- A 4B is the smallest tier the nightly real-model smoke
   (`scripts/nightly-model-smoke.py`) and the release-checklist reference
-  hardware have been run against. The demo's quality bar is defined by
-  *incoherent NPC turns* and *missing debriefs* being blockers; the turn
-  pipeline asks the model for structured output (state deltas, event
-  evaluation) and the debrief asks for a rubric-scored analysis. 1.7B-class
+  hardware have been run against (the hybrid 4B, so far). The demo's
+  quality bar is defined by *incoherent NPC turns* and *missing debriefs*
+  being blockers; the turn pipeline asks the model for structured output
+  (state deltas, event evaluation) and the debrief asks for a rubric-scored
+  analysis. 1.7B-class
   models are markedly less reliable at both, and a 0.6B model is out of the
   question for this product. A stalled 2.5 GB download is recoverable (the
   pipeline resumes it); an incoherent character is the demo lost.
-- On the reference tier the 4B already hits the documented latency budget, so
-  "faster" buys little that a player would notice at Next Fest.
+- On the reference tier the hybrid 4B already hit the documented latency
+  budget, so "faster" buys little that a player would notice at Next Fest.
 
 **How to revisit it, cheaply.** `scripts/pin-model.py` prints a policy-compliant
 registry entry (commit-pinned URL, SHA-256 from the Hub's LFS metadata) for

@@ -91,7 +91,7 @@ before the bytes land on your machine. Here is how to get one:
 
 1. Launch the app. The **Model Manager** opens on first run.
 2. Choose a model from the built-in registry. We recommend starting with
-   **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB) — it is the lightest model in the
+   **Qwen3 4B Instruct 2507 Q4\_K\_M** (~2.5 GB) — it is the lightest model in the
    registry and the only practical choice for CPU-only machines. Larger models
    (Qwen3 8B and up) are available if your hardware has the RAM/VRAM headroom
    for them.

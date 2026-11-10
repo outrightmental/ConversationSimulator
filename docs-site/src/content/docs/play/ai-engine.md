@@ -84,7 +84,7 @@ see [Changing the model later](#changing-the-model-later).
 
 | Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
 |---|---|---|---|---|---|
-| Starter | Qwen3 4B Instruct Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
+| Starter | Qwen3 4B Instruct 2507 Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
 | Standard | Qwen3 8B Instruct Q4_K_M | 5.0 GB | ~13 min | 6 GB | Yes (very slow) |
 | High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~24 min | 10 GB | Not practical |
 | High-quality | Mistral Small 3.1 24B Instruct Q4_K_M | 14.3 GB | ~38 min | 16 GB | Not practical |

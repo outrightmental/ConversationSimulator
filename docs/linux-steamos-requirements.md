@@ -141,7 +141,7 @@ Via the Steam library (after depot upload):
 
 1. Install from the Steam library entry — no terminal required.
 2. On first launch the app shows the welcome screen. Click **Set me up** to
-   download the recommended starter model (Qwen3 4B Instruct Q4_K_M, 2.5 GB).
+   download the recommended starter model (Qwen3 4B Instruct 2507 Q4_K_M, 2.5 GB).
 
 Manual AppImage install for testing (Desktop Mode):
 

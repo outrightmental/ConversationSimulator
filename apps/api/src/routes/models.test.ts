@@ -72,7 +72,7 @@ describe('GET /api/models', () => {
     const body = res.json<ModelsResponse>();
     const starter = body.registry.find((m) => m.role === 'starter');
     expect(starter).toBeDefined();
-    expect(starter!.id).toBe('qwen3-4b-instruct-q4_k_m');
+    expect(starter!.id).toBe('qwen3-4b-instruct-2507-q4_k_m');
   });
 
   it('exposes license_spdx and license_url for each registry entry', async () => {
@@ -199,7 +199,7 @@ describe('POST /api/models/install', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/models/install',
-      payload: { registry_id: 'qwen3-4b-instruct-q4_k_m' },
+      payload: { registry_id: 'qwen3-4b-instruct-2507-q4_k_m' },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toMatch(/checksum/i);
@@ -209,11 +209,11 @@ describe('POST /api/models/install', () => {
     await app.inject({
       method: 'POST',
       url: '/api/models/install',
-      payload: { registry_id: 'qwen3-4b-instruct-q4_k_m' },
+      payload: { registry_id: 'qwen3-4b-instruct-2507-q4_k_m' },
     });
     const db = getDb();
     const rows = db
-      .prepare("SELECT id FROM installed_models WHERE registry_id='qwen3-4b-instruct-q4_k_m'")
+      .prepare("SELECT id FROM installed_models WHERE registry_id='qwen3-4b-instruct-2507-q4_k_m'")
       .all();
     expect(rows).toHaveLength(0);
   });
@@ -223,7 +223,7 @@ describe('POST /api/models/install', () => {
     await app.inject({
       method: 'POST',
       url: '/api/models/install',
-      payload: { registry_id: 'qwen3-4b-instruct-q4_k_m' },
+      payload: { registry_id: 'qwen3-4b-instruct-2507-q4_k_m' },
     });
     expect(spy).not.toHaveBeenCalled();
   });
