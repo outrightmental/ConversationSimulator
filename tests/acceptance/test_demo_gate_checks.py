@@ -13,7 +13,7 @@ these tests pin the harness instead:
     canned fallback turn), and the boundaries are where the issue puts them
     (a 6-word repeat, a 4-word closing question, a 5-word agenda run, a
     3-digit agenda number);
-  * severities: (a), (b), (e), (f) hard and (c), (d) warnings by default,
+  * severities: (a), (b), (d), (e), (f) hard and (c) a warning by default,
     ``--strict`` and per-check overrides, and the exit status that follows;
   * the facts the checks read come from the files that own them: the five
     conversations from ``edition.py``, the baseline variables from
@@ -487,15 +487,21 @@ class TestTurnFallback:
 class TestSeverity:
     def test_defaults(self) -> None:
         assert checks.resolve_severity() == {
-            "a": "hard", "b": "hard", "c": "warn", "d": "warn", "e": "hard", "f": "hard",
+            "a": "hard", "b": "hard", "c": "warn", "d": "hard", "e": "hard", "f": "hard",
         }
+
+    def test_rubric_check_is_hard_now_the_engine_scores_the_rubric(self) -> None:
+        # The engine scores a scenario on its rubric's dimensions only (issue
+        # #578), so a debrief off the rubric fails a replay by default.
+        assert checks.DEFAULT_SEVERITY["d"] == checks.HARD
+        assert checks.resolve_severity(warn=["rubric_ids"])["d"] == checks.WARN
 
     def test_strict_makes_everything_hard(self) -> None:
         sev = checks.resolve_severity(strict=True, warn=["a"])
         assert set(sev.values()) == {"hard"}
 
     def test_per_check_overrides_by_letter_or_name(self) -> None:
-        sev = checks.resolve_severity(hard=["authored_state"], warn=["a"])
+        sev = checks.resolve_severity(hard=["authored_state"], warn=["a", "d"])
         assert sev["c"] == "hard" and sev["a"] == "warn" and sev["d"] == "warn"
 
     def test_conflicts_and_unknown_checks_are_errors(self) -> None:
@@ -516,7 +522,8 @@ class TestSeverity:
 
     def test_verdicts(self) -> None:
         assert checks.run_verdict(self._results("")) == "pass"
-        assert checks.run_verdict(self._results("cd")) == "warn"
+        assert checks.run_verdict(self._results("c")) == "warn"
+        assert checks.run_verdict(self._results("cd")) == "fail"
         assert checks.run_verdict(self._results("a")) == "fail"
         assert checks.run_verdict(self._results("cd", checks.resolve_severity(strict=True))) == "fail"
         assert checks.run_verdict(self._results(""), error="turn 2: HTTP 504") == "fail"
@@ -550,7 +557,7 @@ class TestEvaluateRun:
             rubric_ids=["clarity", "preparation", "empathy", "holding_firm", "outcome_framing"],
         )
         status = {r.letter: r.status for r in results}
-        assert status == {"a": "FAIL", "b": "pass", "c": "warn", "d": "warn", "e": "pass", "f": "pass"}
+        assert status == {"a": "FAIL", "b": "pass", "c": "warn", "d": "FAIL", "e": "pass", "f": "pass"}
         assert checks.run_verdict(results) == "fail"
 
     def test_a_clean_run_passes(self) -> None:
@@ -696,6 +703,7 @@ class ScriptedApi:
         *,
         deltas: Optional[List[Dict[str, int]]] = None,
         scores: Optional[Dict[str, float]] = None,
+        rubric_scores: bool = False,
         end_after: Optional[int] = None,
         fail_turn: Optional[int] = None,
         runtime_id: str = "llama_cpp",
@@ -708,6 +716,9 @@ class ScriptedApi:
         self.npc_lines = npc_lines
         self.deltas = deltas or [{} for _ in npc_lines]
         self.scores = scores if scores is not None else {}
+        # Score each session's own rubric, as the engine does since issue
+        # #578, for a replay that plays more than one conversation.
+        self.rubric_scores = rubric_scores
         self.end_after = end_after
         self.fail_turn = fail_turn
         self.runtime_id = runtime_id
@@ -790,7 +801,10 @@ class ScriptedApi:
             }
             if self.raise_at_debrief is not None:
                 raise self.raise_at_debrief
-            return 200, {"used_fallback": False, "scores": self.scores}
+            scores = (
+                {_facts(self.scenario_id).rubric_ids[0]: 55.0} if self.rubric_scores else self.scores
+            )
+            return 200, {"used_fallback": False, "scores": scores}
         if path.endswith("/transcript"):
             return 200, {"transcript_saved": True, "turns": list(self.transcript)}
         raise AssertionError(f"unexpected call {method} {path}")
@@ -999,7 +1013,7 @@ class TestNpcMemory:
         )
 
     def _api(self, **kw: Any) -> ScriptedApi:
-        return ScriptedApi(TestPlayConversation.lines, scores={"comprehension": 55.0}, **kw)
+        return ScriptedApi(TestPlayConversation.lines, rubric_scores=True, **kw)
 
     def test_every_run_starts_without_a_recap_and_none_is_left(self, tmp_path: Path) -> None:
         api = self._api()
@@ -1154,6 +1168,15 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
             assert by_letter["a"]["findings"][0]["turn"] == 2
             assert by_letter["f"]["status"] == "pass"
             assert record["verdict"] == "fail"
+            # The demo plays the pack, so the debrief carries the pack
+            # rubric's names (issue #578), and scores nothing off it. The
+            # fake runtime writes no rubric notes and no bands, so (d) fails:
+            # it scored no dimension at all.
+            body = record["debrief"]["body"]
+            rubric_ids = _facts(scenario_id).rubric_ids
+            assert list(body["dimension_names"]) == rubric_ids
+            assert set(body["scores"]) <= set(rubric_ids)
+            assert by_letter["d"]["status"] == "FAIL"
             # The debrief's recap was found under the engine's own key and
             # deleted, so run 2 started without run 1's.
             memory = record["npc_memory"]
