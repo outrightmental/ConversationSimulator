@@ -417,6 +417,49 @@ describe('useSetupFlow step machine', () => {
     })
   })
 
+  it('a failed job puts its message and error_code on actionError', async () => {
+    // InstallingStep decides which recovery panel to show from the code; the
+    // flow must hand it over with the message rather than drop it.
+    const failedJob = {
+      id: 42,
+      status: 'failed' as const,
+      registry_id: 'qwen3-4b-q4',
+      stages: [],
+      error_message: 'All connection attempts failed',
+      error_code: 'NETWORK' as const,
+      created_at: '',
+      updated_at: '',
+    }
+    mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: failedJob })
+
+    const { result } = renderHook(() => useSetupFlow('installing', 42), { wrapper })
+
+    await waitFor(() => expect(result.current.actionError).not.toBeNull())
+    expect(result.current.actionError).toMatchObject({
+      kind: 'http-error',
+      message: 'All connection attempts failed',
+      code: 'NETWORK',
+    })
+  })
+
+  it('a failed job from an engine without error_code leaves actionError.code unset', async () => {
+    const failedJob = {
+      id: 42,
+      status: 'failed' as const,
+      registry_id: 'qwen3-4b-q4',
+      stages: [],
+      error_message: 'network error: connection refused',
+      created_at: '',
+      updated_at: '',
+    }
+    mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: failedJob })
+
+    const { result } = renderHook(() => useSetupFlow('installing', 42), { wrapper })
+
+    await waitFor(() => expect(result.current.actionError).not.toBeNull())
+    expect(result.current.actionError?.code).toBeUndefined()
+  })
+
   it('exposes no demo or tutorial step in the flow union (demo-warning is gone)', async () => {
     const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
     // Type-level guarantee spot-checked at runtime: the flow object carries no

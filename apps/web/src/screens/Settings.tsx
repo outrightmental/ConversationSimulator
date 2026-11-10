@@ -18,6 +18,7 @@ import { useUiLanguageLevel } from '../hooks/useUiLanguageLevel'
 import { flowStateLabelKey } from '../lib/plainLanguage'
 import { RemediationCard } from '../setup/RemediationCard'
 import { openExternal } from '../lib/openExternal'
+import { copyTextToClipboard } from '../lib/clipboard'
 import { clearTurnSamples } from '../lib/turnEstimate'
 import { useIsDemo } from '../edition'
 import type { PreflightResponse, PreflightFixAction } from '@convsim/shared'
@@ -147,10 +148,10 @@ export default function Settings() {
   // A router navigation to /settings#reply-speed does not scroll on its own, so
   // a deep link to the reply-speed section would land the player at the top of
   // a long settings page with nothing obviously changed (issue #501 §1). The
-  // conversation screen's slow-response notice names the section rather than
-  // linking to it — leaving mid-turn loses the pending message on resume — so
-  // nothing links here today; the anchor is kept as the stable target for
-  // whatever does next.
+  // reply-speed footnote in the conversation screen's turn panel
+  // (NpcTurnProgress) names the section rather than linking to it, because
+  // leaving mid-turn loses the pending message on resume. So nothing links
+  // here today; the anchor is kept as the stable target for whatever does next.
   useEffect(() => {
     if (!hash) return
     const target = document.getElementById(hash.slice(1))
@@ -194,13 +195,11 @@ export default function Settings() {
   }, [])
 
   async function handleCopyFolder(folderPath: string, key: string) {
-    try {
-      await navigator.clipboard.writeText(folderPath)
-      setCopiedFolder(key)
-      setTimeout(() => setCopiedFolder((v) => (v === key ? null : v)), 1500)
-    } catch {
-      // ignore — clipboard may be unavailable in non-secure contexts
-    }
+    // Via lib/clipboard: in the packaged macOS build navigator.clipboard does
+    // not exist at all, so reading .writeText off it threw (issue #508).
+    if (!(await copyTextToClipboard(folderPath))) return
+    setCopiedFolder(key)
+    setTimeout(() => setCopiedFolder((v) => (v === key ? null : v)), 1500)
   }
 
   async function handleOpenFolder(folderPath: string) {

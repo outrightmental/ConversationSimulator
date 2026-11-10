@@ -2,8 +2,8 @@
 
 /**
  * Latency budgets that define "fast enough" on the mid-spec reference machine.
- * All values in milliseconds. PerformanceWarning thresholds are derived from
- * these constants rather than scattered ad-hoc numbers.
+ * All values in milliseconds. These are targets, not measurements; #522 moves
+ * them into one shared definition.
  *
  * Reference machine: Apple M2 / NVIDIA RTX 3060 equivalent — the mid-spec
  * "Fast" tier documented in docs/performance.md. Nightly CI smoke tests fail
@@ -38,20 +38,85 @@ export interface LatencySnapshot {
   tts_first_sentence_ms?: number;
 }
 
-/** Machine-readable codes for performance degradation suggestions. */
-export type PerformanceSuggestionCode =
-  | 'use_smaller_model'
-  | 'reduce_context_length'
-  | 'switch_to_push_to_talk'
-  | 'disable_tts'
-  | 'enable_transcript_summarization';
+// ---------------------------------------------------------------------------
+// What each NPC turn actually cost (issue #519).
+// Mirrors `TurnTiming` in services/convsim-core/convsim_core/services/turn_timing.py;
+// keep the two in step. Every millisecond is measured, never estimated; a field
+// the engine or the pipeline could not supply is null.
+// ---------------------------------------------------------------------------
 
-/** A user-visible performance warning with an actionable suggestion. */
-export interface PerformanceWarning {
-  /** Machine-readable code, stable across releases. */
-  code: PerformanceSuggestionCode;
-  /** Short headline for the warning (shown in bold). */
-  title: string;
-  /** Detailed explanation with a specific suggested fix. */
-  detail: string;
+/** The six stages of an NPC turn, in order. Defined once here and in the core. */
+export const TURN_STAGES = ['waiting', 'reading', 'writing', 'finishing', 'checking', 'voice'] as const
+export type TurnStage = (typeof TURN_STAGES)[number]
+
+export type TurnFinishReason = 'stop' | 'length' | 'cancelled'
+
+export interface TurnExtraCall {
+  kind: 'repair' | 'safety_retry'
+  ms: number
+  tokens: number | null
+}
+
+export interface TurnTimingContext {
+  /** The model id the adapter sent with the request (its request or configured value; llama-server echoes `default` when none was configured). Not a name the engine reported. */
+  model_id: string
+  /**
+   * Which installed model served the turn, when the active selection was the runtime that served it:
+   * the registry id of a model the app installed, or the file name of a user-supplied model file.
+   * Never a file path. Null for a pinned scripted or fake session and whenever the selection did not serve the turn.
+   */
+  registry_model_id: string | null
+  runtime_id: string
+  engine_variant: string | null
+  n_ctx: number | null
+  n_batch: number | null
+  threads: number | null
+  /** True when fewer than half the prompt tokens came from the engine's cache; null when the engine did not report cache use. */
+  cold: boolean | null
+}
+
+export interface TurnTiming {
+  total_ms: number
+  waiting_ms: number | null
+  reading_ms: number | null
+  /** Request received → first generated token. */
+  first_token_ms: number | null
+  /** Request received → first reply text released to the player. Null until words stream (#538). */
+  first_words_ms: number | null
+  /** Request received → spoken line complete. Null until words stream (#538). */
+  reply_done_ms: number | null
+  writing_ms: number | null
+  /** Compose + parse + persist. */
+  other_ms: number
+  extra_calls: TurnExtraCall[]
+  /** The streamed reply was cut and the fields that had closed were kept (#538). Never true on the plain turn route. */
+  salvaged: boolean
+  /** The parser gave up on the reply and the canned fallback line was spoken. */
+  fallback: boolean
+  /** Generation did not run to its end: the token budget cut it off (`length`) or the caller cancelled it (`cancelled`). Stopped and fallback turns are left out of the rolling medians. */
+  stopped: boolean
+  finish_reason: TurnFinishReason | null
+  voice: { synth_ms: number | null; first_audio_ms: number | null } | null
+  tokens: {
+    prompt: number | null
+    cached: number | null
+    evaluated: number | null
+    output: number | null
+    spoken: number | null
+  }
+  rates: { reading_tps: number | null; writing_tps: number | null }
+  context: TurnTimingContext
+}
+
+/** `GET /api/performance/rolling`: this machine's recent medians for one model and engine configuration. */
+export interface RollingSpeeds {
+  runtime_id: string | null
+  model_id: string | null
+  /** Recorded turns the medians were taken over; 0 means every figure is null. */
+  samples: number
+  reading_tps: number | null
+  writing_tps: number | null
+  first_token_ms: number | null
+  first_words_ms: number | null
+  total_ms: number | null
 }

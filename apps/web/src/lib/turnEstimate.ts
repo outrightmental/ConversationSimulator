@@ -15,6 +15,8 @@
 // use is kept: switching models starts the estimate over rather than carrying a
 // cache per model, a cheap trade for a number that is rebuilt within two turns.
 
+import { roundApproxDuration } from './formatDuration'
+
 const STORAGE_KEY = 'convsim.turnTiming'
 
 /** Identifies the samples when the runtime has not named its model (health not
@@ -136,4 +138,109 @@ export function clearTurnSamples(): void {
   } catch {
     // Nothing to do: a store we cannot clear is a store we cannot read either.
   }
+}
+
+// ---------------------------------------------------------------------------
+// When the reply will *start* (issue #539).
+//
+// Once words stream (#538) the wait the player feels ends when the first
+// sentence lands, not when the turn ends. The panel therefore estimates the
+// start of the reply, from this machine's measured speeds (#519's rolling
+// medians) and how much of the prompt the engine still has to read (the core's
+// turn.progress reports). Nothing here models the model: both inputs are
+// measurements, and with neither there is no estimate.
+// ---------------------------------------------------------------------------
+
+/** Below this expected wait no estimate is shown: a number for a 2 s pause is noise. */
+export const REPLY_START_THRESHOLD_MS = 4_000
+
+/** How long the first sentence usually is, in tokens, when the engine has not
+ *  started writing yet. A short sentence of a spoken line; deliberately modest
+ *  so the estimate errs early rather than late. */
+export const FIRST_SENTENCE_TOKENS = 24
+
+export interface ReplyStartInputs {
+  /** Prompt tokens the engine has still to read, from the latest progress report; null before the first. */
+  unreadPromptTokens: number | null
+  /** How long ago that progress report arrived, in milliseconds. */
+  sinceReportMs: number
+  /** How long the player has been waiting on this turn, in milliseconds. */
+  waitedMs: number
+  /** This machine's median reading speed, tokens per second, or null. */
+  readingTps: number | null
+  /** This machine's median writing speed, tokens per second, or null. */
+  writingTps: number | null
+  /** This machine's median time to first words, from recorded turns, or null. */
+  measuredFirstWordsMs: number | null
+}
+
+/**
+ * The expected milliseconds from now until the reply starts, or null with
+ * nothing to go on.
+ *
+ * With a progress report and both speeds: the unread prompt at the reading
+ * speed, plus one short sentence at the writing speed, less the time since
+ * that report arrived. Otherwise the measured time to first words on this
+ * machine, when any turn has been recorded, less the time already waited:
+ * that median counts from the moment the turn went out, so quoting it
+ * unchanged would promise the whole wait again on every tick of the clock.
+ * Never below zero, and never a figure from the docs or a model size.
+ */
+export function estimateReplyStartMs(inputs: ReplyStartInputs): number | null {
+  const { unreadPromptTokens, sinceReportMs, waitedMs, readingTps, writingTps, measuredFirstWordsMs } = inputs
+  if (
+    unreadPromptTokens !== null &&
+    Number.isFinite(unreadPromptTokens) &&
+    readingTps !== null &&
+    readingTps > 0 &&
+    writingTps !== null &&
+    writingTps > 0
+  ) {
+    const readMs = (Math.max(0, unreadPromptTokens) / readingTps) * 1000
+    const writeMs = (FIRST_SENTENCE_TOKENS / writingTps) * 1000
+    return remaining(readMs + writeMs, sinceReportMs)
+  }
+  if (measuredFirstWordsMs !== null && Number.isFinite(measuredFirstWordsMs) && measuredFirstWordsMs > 0) {
+    return remaining(measuredFirstWordsMs, waitedMs)
+  }
+  return null
+}
+
+function remaining(totalMs: number, passedMs: number): number {
+  const passed = Number.isFinite(passedMs) ? Math.max(0, passedMs) : 0
+  return Math.max(0, Math.round(totalMs - passed))
+}
+
+/**
+ * The range quoted to the player around a point estimate: a median is not a
+ * promise.
+ *
+ * Each end is rounded to a grid that suits its size, so the quote claims no
+ * more precision than a median of a few turns has: the grid
+ * `roundApproxDuration` sets under a minute (whole seconds under ten, then
+ * fives), and whole minutes from a minute on. A two-minute wait is quoted in
+ * minutes, the unit the clock beside it reads in, not as "86–135 s".
+ */
+export function replyStartRange(ms: number): { lowMs: number; highMs: number } {
+  let low = roundRangeEnd(ms * 0.8)
+  let high = roundRangeEnd(ms * 1.25)
+  // Whole minutes are coarse enough to carry an end past the estimate itself
+  // (0.8 × 115 s rounds to 2 min, 1.25 × 70 s to 1 min). Step that end one
+  // grain outwards, so the range always holds the figure it is a range around.
+  if (low > ms) low = Math.max(rangeGrainMs(low - 1), low - rangeGrainMs(low - 1))
+  if (high < ms) high += rangeGrainMs(high)
+  if (high <= low) high = low + rangeGrainMs(low)
+  return { lowMs: low, highMs: high }
+}
+
+const MINUTE_MS = 60_000
+
+function roundRangeEnd(ms: number): number {
+  const onSecondsGrid = roundApproxDuration(ms)
+  if (onSecondsGrid < MINUTE_MS) return onSecondsGrid
+  return Math.max(MINUTE_MS, Math.round(ms / MINUTE_MS) * MINUTE_MS)
+}
+
+function rangeGrainMs(ms: number): number {
+  return ms < 10_000 ? 1_000 : ms < MINUTE_MS ? 5_000 : MINUTE_MS
 }

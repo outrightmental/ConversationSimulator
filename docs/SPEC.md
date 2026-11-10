@@ -1152,12 +1152,21 @@ Must allow:
 * Transcript saving on/off.
 * Random seed / variation seed.
 
-The screen is a briefing the player reads, not a settings form they fill in. It
-must carry its own hierarchy:
+The screen is a briefing the player reads, not a settings form they fill in — a
+preflight screen for a conversation. It must be grokkable at a glance, without
+being read, and it must carry three tiers of visual weight:
+
+1. **The mission** — what this conversation is and what the player is trying to
+   achieve.
+2. **The decisions** — the two choices that change the conversation: how the
+   character behaves, and who the player is in it.
+3. **The setup** — the mechanical settings. Grouped and demoted, never hidden:
+   every control stays on the screen and one Tab (or one D-pad press) away.
 
 | Element           | Requirement                                                                                                       |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Brief hero        | Pack, title, summary, and the facts of the engagement: role, estimated length, turn limit, content rating, voice.  |
+| Mission objective | The scenario's `goals.player_visible`, numbered, in the brightest panel on the screen — a player who reads nothing else must still come away knowing what they are trying to do. A scenario that declares no goals falls back to the role brief, which is then not repeated elsewhere. `goals.hidden` is the NPC's covert agenda and is never part of the brief: the engine withholds it from the scenario response unless dev mode is active and the caller asks for it explicitly. |
 | Numbered sections | The settings read as a short labelled sequence, not an undifferentiated stack of fields.                          |
 | Difficulty traits | Patience, disclosure, volatility and time pressure drawn as meters; the fill always matches the number shown.     |
 | Purpose panel     | The rubric dimensions this scenario practises, when it declares any.                                              |
@@ -1764,20 +1773,30 @@ DELETE /api/sessions/{session_id}
 /ws/session/{session_id}
 ```
 
-Events:
+Served by `convsim-core`. Every message is an envelope
+`{ "seq", "session_id", "type", "ts", "payload" }`; the payloads are:
 
 ```json
-{ "type": "session.state", "state": "NpcThinking" }
-{ "type": "stt.partial", "text": "I think my strongest..." }
-{ "type": "stt.final", "text": "I think my strongest example is..." }
-{ "type": "npc.token", "text": "That" }
-{ "type": "npc.final", "turn": { "...": "..." } }
-{ "type": "tts.audio_chunk", "url": "local-cache://..." }
-{ "type": "scenario.state_delta", "delta": { "trust": 4 } }
-{ "type": "scenario.event", "event_id": "rambling_warning" }
-{ "type": "safety.redirect", "reason": "..." }
-{ "type": "error", "message": "..." }
+{ "type": "session.state",        "payload": { "state": "PlayerTurnListening", "state_vars": { "trust": 54 }, "ending_type": null } }
+{ "type": "turn.progress",        "payload": { "stage": "reading", "prompt": { "processed": 512, "total": 2034, "cached": 0 }, "output_tokens": 0, "elapsed_ms": 3100 } }
+{ "type": "npc.token",            "payload": { "text": "That's insightful." } }
+{ "type": "npc.final",            "payload": { "content": "That's insightful. You've done your homework." } }
+{ "type": "scenario.state_delta", "payload": { "delta": { "trust": 4 }, "state_vars": { "trust": 54 }, "turn_number": 3, "emotion": "impressed", "event_flags": [], "triggered_scenario_events": [], "ending_type": null, "salvaged": false, "timing": { "...": "..." } } }
+{ "type": "scenario.event",       "payload": { "flags": ["rambling_warning"] } }
+{ "type": "safety.redirect",      "payload": { "reason": "..." } }
+{ "type": "error",                "payload": { "code": "SESSION_NOT_FOUND", "message": "..." } }
+{ "type": "stt.partial",          "payload": { "text": "I think my strongest..." } }
+{ "type": "stt.final",            "payload": { "text": "I think my strongest example is...", "confidence": 0.9 } }
+{ "type": "tts.audio_chunk",      "payload": { "chunk_index": 0, "total_chunks": 2, "text": "...", "voice_id": "af_heart", "cache_path": "...", "error": null } }
 ```
+
+`npc.token` carries one checked sentence at a time; the sentences of a turn
+concatenate to the committed line, and the REST turn response always equals
+what was streamed. `npc.final` marks the end of the spoken line only; the
+turn's state change arrives on `scenario.state_delta` at commit. The stages of
+`turn.progress` are defined in `convsim_core/services/turn_timing.py`. A
+second `POST /turn` while one is in flight is refused with 409
+`TURN_IN_PROGRESS`. See `docs/architecture.md` for the origin rule.
 
 ---
 

@@ -28,6 +28,18 @@ implementation; `convsim-core` is the target architecture (see the
 All dev-server proxy targets point to `127.0.0.1` — see
 [`apps/web/vite.config.ts`](https://github.com/outrightmental/ConversationSimulator/blob/main/apps/web/vite.config.ts).
 
+## WebSocket origins
+
+`convsim-core` serves one WebSocket route, `/ws/session/{id}`, for live turn
+events (issue #538). Browsers send an `Origin` header on the upgrade, and CORS
+middleware does not cover upgrades, so the route checks it itself: only the
+packaged webview's origins (`tauri://localhost`, `http://tauri.localhost`,
+`https://tauri.localhost`) and the dev server (`http://127.0.0.1:7354`,
+`http://localhost:7354`) may connect. Any other origin is answered with HTTP 403
+before the handshake. A request with no `Origin` header is a non-browser client
+on the same machine and is accepted, the same trust the REST API extends. The
+list lives in `convsim_core/origins.py`, beside the CORS list.
+
 ## Wildcard binding is rejected by default
 
 Attempting to bind to `0.0.0.0` (all IPv4 interfaces) is rejected at startup

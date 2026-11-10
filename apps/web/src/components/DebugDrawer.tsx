@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { LATENCY_BUDGETS } from '@convsim/shared'
 import type { LatencySnapshot } from '@convsim/shared'
+import { copyTextToClipboard } from '../lib/clipboard'
 
 export interface DebugTurnEntry {
   turnId: number
@@ -71,16 +72,10 @@ function CopyButton({ payload }: { payload: Record<string, unknown> }) {
     } catch {
       text = String(payload)
     }
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setLabel('Copied!')
-        setTimeout(() => setLabel('Copy JSON'), 2000)
-      },
-      () => {
-        setLabel('Copy failed')
-        setTimeout(() => setLabel('Copy JSON'), 2000)
-      },
-    )
+    void copyTextToClipboard(text).then((ok) => {
+      setLabel(ok ? 'Copied!' : 'Copy failed')
+      setTimeout(() => setLabel('Copy JSON'), 2000)
+    })
   }
 
   return (

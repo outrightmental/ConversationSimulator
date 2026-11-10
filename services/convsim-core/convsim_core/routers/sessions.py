@@ -11,19 +11,22 @@ Routes:
 
 NOTE: Turn processing is not idempotent. Clients should check session state
 (GET /api/sessions/{id}) before retrying after a network error to avoid
-duplicate turns.
+duplicate turns. One turn runs at a time per session: a second POST /turn while
+one is in flight answers 409 TURN_IN_PROGRESS and starts no generation (#538).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import secrets
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from convsim_core.edition import (
     DEMO_SCENARIO_IDS,
@@ -47,11 +50,19 @@ from convsim_core.scenario_state import (
 from convsim_core.scenarios import resolve_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
-from convsim_core.services.model_manager_service import get_active_config
+from convsim_core.services.model_manager_service import get_active_config, recorded_model_id
 from convsim_core.services.relationship_memory import update_relationship_memory
+from convsim_core.services.session_events import SessionEventBus, SessionTurnStreamer
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
 from convsim_core.services.tts_queue import synthesize_utterance
+from convsim_core.services.turn_timing import (
+    TurnClock,
+    TurnTimingBuilder,
+    VoiceTiming,
+    load_turn_timings,
+    persist_turn_timing,
+)
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
 logger = logging.getLogger(__name__)
@@ -122,11 +133,35 @@ class SessionCreateRequest(BaseModel):
     # client can never point a session at a sidecar-backed runtime this way.
     runtime_id: Optional[Literal["scripted", "fake"]] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def null_means_default(cls, data: Any) -> Any:
+        """Treat an explicit ``null`` as "field not provided" wherever a default exists.
+
+        A client that renders an unset option as ``null`` instead of omitting
+        the key gets a 422 no amount of retrying can clear, and the setup
+        screen has no way to recover — exactly the dead end in issue #508.
+        ``tts_voice_id`` is the live example: the web UI documents it as
+        "omitted when no voice is selected, in which case the backend applies
+        its default", so a null plainly means the default.
+
+        Only defaulted fields are forgiven. ``scenario_id`` and
+        ``player_role_name`` are required, so a missing or null value there
+        still fails loudly — and now says which field it was.
+        """
+        if not isinstance(data, dict):
+            return data
+        optional = {name for name, f in cls.model_fields.items() if not f.is_required()}
+        return {k: v for k, v in data.items() if not (v is None and k in optional)}
+
     @field_validator("player_role_name")
     @classmethod
     def player_role_name_not_blank(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("player_role_name cannot be blank")
+            # Just the constraint: the 422 summary already prefixes the field
+            # path, so repeating the name here read "player_role_name:
+            # player_role_name cannot be blank" on the error card (issue #508).
+            raise ValueError("cannot be blank")
         return v
 
     @field_validator("tts_voice_id")
@@ -137,7 +172,16 @@ class SessionCreateRequest(BaseModel):
         try:
             validate_voice_id(v)
         except TtsVoiceValidationError as exc:
-            raise ValueError(str(exc)) from exc
+            # validate_voice_id quotes the id it rejected and lists every
+            # approved one — fine in a log line, wrong here: this sentence
+            # becomes the 422's `message`, which the compact error card shows
+            # and "Copy diagnostics" copies into a public bug report (issue
+            # #508). Name the constraint, not the value — the same rule that
+            # drops Pydantic's "input" key. The approved ids are already
+            # discoverable at GET /api/tts/voices.
+            raise ValueError(
+                "not an approved built-in voice id (see GET /api/tts/voices)"
+            ) from exc
         return v
 
 
@@ -186,10 +230,14 @@ class TurnSubmitRequest(BaseModel):
     @field_validator("content")
     @classmethod
     def content_not_empty(cls, v: str) -> str:
+        # Just the constraint, for the same reason player_role_name's validator
+        # shed its field name: the 422 summary prefixes the field path itself,
+        # so "Turn content cannot be blank" rendered as "content: Turn content
+        # cannot be blank" on the error card and in a copied report (issue #508).
         if not v.strip():
-            raise ValueError("Turn content cannot be blank")
+            raise ValueError("cannot be blank")
         if len(v.strip()) > MAX_TURN_CONTENT_CHARS:
-            raise ValueError(f"Turn content exceeds {MAX_TURN_CONTENT_CHARS} characters")
+            raise ValueError(f"cannot exceed {MAX_TURN_CONTENT_CHARS} characters")
         return v
 
 
@@ -214,6 +262,10 @@ class TurnEntry(BaseModel):
     emotion: Optional[str] = None
     flow_state_after: Optional[str] = None
     created_at: str
+    # What the turn cost (issue #519); NPC rows only, and only for turns that
+    # reached the model. Carried here so a turn restored after a reload still
+    # has its record.
+    timing: Optional[Dict[str, Any]] = None
 
 
 class TranscriptResponse(BaseModel):
@@ -255,6 +307,7 @@ class TurnDebugDetail(BaseModel):
     used_fallback: bool
     parse_events: List[Dict[str, Any]]
     prompt_metadata: Optional[Dict[str, Any]]
+    timing: Optional[Dict[str, Any]] = None
 
 
 class SessionDebugResponse(BaseModel):
@@ -458,6 +511,25 @@ def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
         return requested
     runtime_id = get_active_config(conn).get("runtime_id")
     return runtime_id if runtime_id in _SESSION_PINNED_RUNTIME_IDS else None
+
+
+def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) -> str | None:
+    """The model identity to stamp on this turn's timing record, or None (issue #519).
+
+    Only a selection that served the turn is recorded. A session pinned to a
+    scripted or fake runtime ran on that runtime whatever the player has
+    selected, and so did an unpinned session when the live runtime is not the
+    selected one; in both cases the record's ``context.model_id`` already
+    names what the runtime itself reported, and the registry id stays None
+    rather than attributing the turn to a model that never ran. A file path
+    is never recorded (see ``recorded_model_id``).
+    """
+    if setup.get("runtime_id") in _SESSION_PINNED_RUNTIME_IDS:
+        return None
+    active = get_active_config(conn)
+    if active.get("runtime_id") != runtime.id:
+        return None
+    return recorded_model_id(conn, active.get("model_id"))
 
 
 def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
@@ -742,10 +814,81 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
     )
 
 
+def _turn_lock(request: Request, session_id: str) -> asyncio.Lock:
+    """The per-session lock that keeps one turn in flight at a time (#538).
+
+    In memory only: nothing is persisted as "in flight", so a crash can never
+    leave a session unable to accept a turn.
+    """
+    locks = getattr(request.app.state, "turn_locks", None)
+    if locks is None:
+        locks = {}
+        request.app.state.turn_locks = locks
+    return locks.setdefault(session_id, asyncio.Lock())
+
+
+def _session_bus(request: Request) -> Optional[SessionEventBus]:
+    return getattr(request.app.state, "session_bus", None)
+
+
+def turn_timeout_message(*, demo: bool) -> str:
+    """The TURN_TIMEOUT message, in words a player can act on.
+
+    The adapter's own message names env vars, and the copy before issue #539
+    told the player to add "GPU layers": an engine term that means nothing to
+    someone who did not set the engine up. Both editions can shorten replies
+    under Reply speed in Settings, which needs no restart. Only the full app
+    can swap the model for a smaller one, so the demo is not sent looking for
+    a model manager it does not have.
+    """
+    advice = "choose Quick replies under Reply speed in Settings"
+    if not demo:
+        advice += ", or try a smaller model"
+    return (
+        "The AI engine stopped responding partway through its reply. "
+        f"Your turn was not recorded, so try again. If this keeps happening, {advice}."
+    )
+
+
 @router.post("/{session_id}/turn", response_model=TurnResponse)
 async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request) -> TurnResponse:
+    # The turn's clock starts the moment the request arrives: every figure in
+    # its timing record (issue #519) is measured from here.
+    clock = TurnClock()
     db = request.app.state.db
     conn = db.connection()
+    row = conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    lock = _turn_lock(request, session_id)
+    if lock.locked():
+        # A second submit used to start a second generation and fail on the
+        # turn-number uniqueness constraint as a 500 (issue #538).
+        raise ConvsimError(
+            code="TURN_IN_PROGRESS",
+            message=(
+                "A reply is already being written for this conversation. "
+                "Wait for it to arrive before sending another message."
+            ),
+            status_code=409,
+        )
+    async with lock:
+        return await _run_turn(session_id, body, request, row, conn, clock)
+
+
+async def _run_turn(
+    session_id: str,
+    body: TurnSubmitRequest,
+    request: Request,
+    row: Any,
+    conn: Any,
+    clock: TurnClock,
+) -> TurnResponse:
+    # Re-read under the lock: the row fetched before acquiring it may predate a
+    # turn that was committing at the time.
     row = conn.execute(
         "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
     ).fetchone()
@@ -772,6 +915,19 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     runtime = _resolve_runtime(request, setup)
     save_transcript = setup.get("save_transcript", True)
     source_mode = setup.get("input_mode", "text-only")
+    timing = TurnTimingBuilder(
+        clock=clock,
+        runtime_id=runtime.id,
+        registry_model_id=_recorded_model_for(conn, runtime, setup),
+    )
+    # Stream the turn to whoever is listening on the session socket (#538).
+    # With no socket connected the pipeline runs exactly as before.
+    bus = _session_bus(request)
+    streamer = (
+        SessionTurnStreamer(bus, session_id, clock)
+        if bus is not None and bus.has_listeners(session_id)
+        else None
+    )
 
     try:
         result = await process_turn(
@@ -787,6 +943,8 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             state_variable_overrides=info.state_variable_overrides,
             scenario_events=info.events,
             ending_conditions=info.ending_conditions,
+            timing=timing,
+            streamer=streamer,
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -799,11 +957,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
         logger.warning("Turn timed out for session %s: %s", session_id, exc)
         raise ConvsimError(
             code="TURN_TIMEOUT",
-            message=(
-                "The AI engine stopped responding partway through its reply. "
-                "Your turn was not recorded — try again, and consider a smaller "
-                "model or more GPU layers if this keeps happening."
-            ),
+            message=turn_timeout_message(demo=is_demo(request.app.state.service_config)),
             status_code=504,
         ) from exc
     except ConnectionError as exc:
@@ -861,6 +1015,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             difficulty_settings_patience=diff_settings.patience if diff_settings else 50,
             enabled=bool(npc_thinking_pause_enabled),
         )
+        synth_started = time.perf_counter()
         tts_events = await _run_tts_for_utterance(
             utterance=result.npc_utterance,
             session_id=session_id,
@@ -871,6 +1026,50 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             now=now,
             thinking_pause_ms=pause_ms,
         )
+        # Synthesis runs here, after the pipeline returned, so the voice stage
+        # is timed here. The queue synthesizes every sentence before answering,
+        # so the moment the first chunk was ready is not observable yet
+        # (first_audio_ms stays null until #533/#544).
+        timing.voice = VoiceTiming(
+            synth_ms=round((time.perf_counter() - synth_started) * 1000.0, 1),
+            first_audio_ms=None,
+        )
+
+    # Build the turn's record once, here, after the pipeline's transaction
+    # committed and after synthesis, so the total is the whole request (issue
+    # #519); the pipeline hands back the builder it filled rather than a record
+    # of its own. An input safety stop never reached the model and has none.
+    if result.timing is not None:
+        record = result.timing.build()
+        persist_turn_timing(conn, session_id, result.turn_number, record, now)
+        npc_event.payload["timing"] = record.model_dump()
+        npc_event.payload["salvaged"] = result.salvaged
+
+    # The commit, announced (#538): the state change the reply produced, then
+    # the session state. A client that committed the line from npc.final
+    # applies these; one that never connected reads the same from the REST
+    # response above, which is the source of truth either way.
+    if bus is not None and bus.has_listeners(session_id):
+        if result.safety_status == "redirect":
+            await bus.broadcast(session_id, "safety.redirect", {
+                "reason": result.safety_reason or "The conversation was steered back on topic.",
+            })
+        await bus.broadcast(session_id, "scenario.state_delta", {
+            "delta": result.state_delta,
+            "state_vars": result.visible_state,
+            "turn_number": result.turn_number,
+            "emotion": result.npc_emotion,
+            "event_flags": result.event_flags,
+            "triggered_scenario_events": result.triggered_scenario_events,
+            "ending_type": result.ending_type,
+            "salvaged": result.salvaged,
+            "timing": npc_event.payload.get("timing"),
+        })
+        await bus.broadcast(session_id, "session.state", {
+            "state": result.new_flow_state,
+            "state_vars": result.visible_state,
+            "ending_type": result.ending_type,
+        })
 
     return TurnResponse(
         session_id=session_id,
@@ -960,6 +1159,8 @@ async def get_session_debug(session_id: str, request: Request) -> SessionDebugRe
         else:
             prompt_by_turn[tn] = payload
 
+    timings_by_turn = load_turn_timings(conn, session_id)
+
     all_game_turns = sorted(set(raw_by_game_turn) | set(debug_by_turn))
     turns: List[TurnDebugDetail] = []
     for game_turn in all_game_turns:
@@ -971,6 +1172,7 @@ async def get_session_debug(session_id: str, request: Request) -> SessionDebugRe
             used_fallback=debug.get("used_fallback", False),
             parse_events=debug.get("parse_events", []),
             prompt_metadata=prompt_by_turn.get(game_turn),
+            timing=timings_by_turn.get(game_turn),
         ))
 
     return SessionDebugResponse(session_id=session_id, turns=turns)
@@ -1106,9 +1308,20 @@ async def delete_session(session_id: str, request: Request) -> None:
         conn.execute("DELETE FROM turn_sessions WHERE session_id = ?", (session_id,))
 
 
-def _turns_from_rows(rows: list) -> List[TurnEntry]:
-    return [
-        TurnEntry(
+def _turns_from_rows(
+    rows: list, timings: Optional[Dict[int, Dict[str, Any]]] = None
+) -> List[TurnEntry]:
+    """Rows → entries. NPC rows carry their turn's timing record when given.
+
+    NPC rows are stored at ``turn_number = game_turn * 2`` (players at
+    ``2n - 1``), and the records are keyed by game turn.
+    """
+    entries: List[TurnEntry] = []
+    for t in rows:
+        timing = None
+        if timings and t["role"] == "npc":
+            timing = timings.get(int(t["turn_number"]) // 2)
+        entries.append(TurnEntry(
             turn_number=t["turn_number"],
             role=t["role"],
             content=t["content"],
@@ -1116,9 +1329,9 @@ def _turns_from_rows(rows: list) -> List[TurnEntry]:
             emotion=t["emotion"],
             flow_state_after=t["flow_state_after"],
             created_at=t["created_at"],
-        )
-        for t in rows
-    ]
+            timing=timing,
+        ))
+    return entries
 
 
 @router.get("/{session_id}/transcript", response_model=TranscriptResponse)
@@ -1153,7 +1366,7 @@ async def get_transcript(session_id: str, request: Request) -> TranscriptRespons
         session_id=session_id,
         scenario_id=row["scenario_id"],
         transcript_saved=True,
-        turns=_turns_from_rows(turn_rows),
+        turns=_turns_from_rows(turn_rows, load_turn_timings(conn, session_id)),
     )
 
 

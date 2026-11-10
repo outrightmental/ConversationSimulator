@@ -5,9 +5,8 @@ from abc import ABC, abstractmethod
 from typing import AsyncIterator
 
 from convsim_core.runtime.types import (
-    ChatFinal,
+    ChatChunk,
     ChatRequest,
-    ChatToken,
     ModelInfo,
     RuntimeCapabilities,
     RuntimeHealth,
@@ -42,8 +41,14 @@ class ChatRuntime(ABC):
         """Return models available through this runtime."""
 
     @abstractmethod
-    def chat_stream(self, request: ChatRequest) -> AsyncIterator[ChatToken | ChatFinal]:
-        """Return an async iterator that yields ChatToken chunks then a single ChatFinal."""
+    def chat_stream(self, request: ChatRequest) -> AsyncIterator[ChatChunk]:
+        """Return an async iterator over the engine's answer to one request.
+
+        It yields zero or more ``ChatProgress`` and ``ChatToken`` chunks, in the
+        order the engine produced them, then exactly one ``ChatFinal``. Progress
+        chunks are optional and come only from a real engine signal; callers
+        that only want text ignore them. ``ChatFinal.text`` is authoritative.
+        """
 
     @abstractmethod
     async def health(self) -> RuntimeHealth:

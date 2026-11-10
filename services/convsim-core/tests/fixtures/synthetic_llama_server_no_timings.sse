@@ -1,0 +1,8 @@
+: synthetic — an OpenAI-compatible server that reports no usage, timings or progress. See README.md.
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":""}}],"id":"chatcmpl-3","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"{\"npc_utterance\": \"Hello there.\", \"npc_emotion\": \"neutral\", \"state_delta\": {}, \"event_flags\": [], \"rubric_observations\": [], \"safety\": {\"status\": \"ok\"}, \"session_control\": {\"continue_session\": true}}"}}],"id":"chatcmpl-3","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":"stop","index":0,"delta":{}}],"id":"chatcmpl-3","object":"chat.completion.chunk"}
+
+data: [DONE]

@@ -41,6 +41,7 @@ vi.mock('../api/client', () => ({
     exportSession: vi.fn(),
     getLogbookProfile: vi.fn().mockReturnValue(new Promise(() => {})),
     exportLogbook: vi.fn().mockReturnValue(new Promise(() => {})),
+    getRollingSpeeds: vi.fn().mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } }),
     connectSession: vi.fn().mockReturnValue({ close: vi.fn() }),
     listSessions: vi.fn().mockResolvedValue({ ok: true, data: { sessions: [] } }),
     getDataFolder: vi.fn().mockResolvedValue({ ok: true, data: { path: '/tmp/data' } }),

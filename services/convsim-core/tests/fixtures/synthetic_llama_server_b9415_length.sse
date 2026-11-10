@@ -1,0 +1,14 @@
+: synthetic — written from llama-server b9415's documented stream shape, not captured. See README.md.
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{}}],"created":1762406400,"id":"chatcmpl-2","model":"qwen3-4b","object":"chat.completion.chunk","prompt_progress":{"total":2140,"cache":1900,"processed":2140,"time_ms":2760.0}}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":""}}],"created":1762406400,"id":"chatcmpl-2","model":"qwen3-4b","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"{\"npc_utterance\": \"Let me think about"}}],"created":1762406400,"id":"chatcmpl-2","model":"qwen3-4b","object":"chat.completion.chunk","timings":{"prompt_n":240,"prompt_ms":2760.0,"prompt_per_token_ms":11.5,"prompt_per_second":86.9,"predicted_n":7,"predicted_ms":1077.0,"predicted_per_token_ms":153.8,"predicted_per_second":6.5,"cache_n":1900}}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" that for a moment, because"}}],"created":1762406400,"id":"chatcmpl-2","model":"qwen3-4b","object":"chat.completion.chunk","timings":{"prompt_n":240,"prompt_ms":2760.0,"prompt_per_token_ms":11.5,"prompt_per_second":86.9,"predicted_n":12,"predicted_ms":1846.0,"predicted_per_token_ms":153.8,"predicted_per_second":6.5,"cache_n":1900}}
+
+data: {"choices":[{"finish_reason":"length","index":0,"delta":{}}],"created":1762406400,"id":"chatcmpl-2","model":"qwen3-4b","object":"chat.completion.chunk"}
+
+data: {"choices":[],"created":1762406400,"id":"chatcmpl-2","model":"qwen3-4b","object":"chat.completion.chunk","usage":{"completion_tokens":12,"prompt_tokens":2140,"total_tokens":2152},"timings":{"prompt_n":240,"prompt_ms":2760.0,"prompt_per_token_ms":11.5,"prompt_per_second":86.9,"predicted_n":12,"predicted_ms":1846.0,"predicted_per_token_ms":153.8,"predicted_per_second":6.5,"cache_n":1900}}
+
+data: [DONE]

@@ -335,3 +335,61 @@ def test_0017_does_not_backfill_for_fresh_install(tmp_path):
     rows = conn.execute("SELECT COUNT(*) AS cnt FROM onboarding_outcomes").fetchone()
     assert rows["cnt"] == 0
     conn.close()
+
+
+def test_0019_adds_error_code_to_an_existing_database(tmp_path):
+    """Migration 0019 applies to a database that already holds install records
+    and setup jobs: the rows survive, gain an error_code column that reads NULL
+    (so the client falls back to the message for them), and the services that
+    read and write the column work against the migrated database."""
+    import sqlite3
+
+    from convsim_core.services.model_manager_service import (
+        get_install_record,
+        mark_install_failed,
+    )
+    from convsim_core.services.setup_install_service import get_job, update_job_status
+    from convsim_core.storage.database import _DB_FILENAME
+
+    db_dir = tmp_path / "db"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    # The file Database.open will find, so the app's own open path migrates it.
+    conn = sqlite3.connect(str(db_dir / _DB_FILENAME))
+    conn.row_factory = sqlite3.Row
+
+    _apply_migrations_before(conn, "0019_install_error_code")
+    install_id = conn.execute(
+        "INSERT INTO installed_models (registry_id, filename, file_path, install_status, "
+        "error_message) VALUES ('qwen3-4b-q4', 'qwen3-4b-q4.gguf', '', 'failed', "
+        "'All connection attempts failed')"
+    ).lastrowid
+    job_id = conn.execute(
+        "INSERT INTO setup_install_jobs (status, registry_id, error_message) "
+        "VALUES ('failed', 'qwen3-4b-q4', 'All connection attempts failed')"
+    ).lastrowid
+    conn.commit()
+    conn.close()
+
+    # Open it the way the app does, which runs every pending migration.
+    db = Database.open(str(db_dir))
+    try:
+        assert db.migrations_applied == len(MIGRATIONS)
+        conn = db.connection()
+        for table in ("installed_models", "setup_install_jobs"):
+            columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            assert "error_code" in columns, table
+
+        record = get_install_record(conn, install_id)
+        assert record["error_message"] == "All connection attempts failed"
+        assert record["error_code"] is None
+        job = get_job(conn, job_id)
+        assert job["status"] == "failed"
+        assert job["error_message"] == "All connection attempts failed"
+        assert job["error_code"] is None
+
+        mark_install_failed(conn, install_id, "Could not connect.", error_code="NETWORK")
+        assert get_install_record(conn, install_id)["error_code"] == "NETWORK"
+        update_job_status(conn, job_id, "failed", "Could not connect.", "NETWORK")
+        assert get_job(conn, job_id)["error_code"] == "NETWORK"
+    finally:
+        db.close()

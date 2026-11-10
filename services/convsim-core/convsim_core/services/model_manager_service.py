@@ -52,6 +52,44 @@ def get_active_config(conn: sqlite3.Connection) -> dict[str, str | None]:
     }
 
 
+def recorded_model_id(conn: sqlite3.Connection, model_id: str | None) -> str | None:
+    """The identifier a turn's timing record stores for the active model (issue #519).
+
+    ``active_model_id`` holds a registry id or an Ollama tag, or, for a model
+    file the engine loads, that file's absolute path. A path can name the
+    player's home folder and the record is exported with the session, so a
+    path is never recorded: a file the app installed from the registry is
+    recorded as its registry id, a user-supplied file as its file name, and
+    an id that is not a file stays as it is.
+    """
+    if not model_id:
+        return None
+    row = conn.execute(
+        "SELECT registry_id, filename FROM installed_models WHERE file_path = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (model_id,),
+    ).fetchone()
+    if row is not None:
+        return row["registry_id"] or row["filename"] or None
+    if _is_model_file_path(model_id):
+        return _file_name(model_id) or None
+    return model_id
+
+
+def _is_model_file_path(model_id: str) -> bool:
+    # A model file is always a .gguf with a folder in front of it (the
+    # register route and the installer both guarantee the extension); an
+    # Ollama tag or a registry id has no separator before a .gguf ending.
+    has_separator = "/" in model_id or "\\" in model_id
+    return os.path.isabs(model_id) or (has_separator and model_id.lower().endswith(".gguf"))
+
+
+def _file_name(path: str) -> str:
+    # Split on both separators: a path written on Windows is still a path
+    # when the database is read on another platform.
+    return path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
 def set_active_config(
     conn: sqlite3.Connection,
     runtime_id: str,
@@ -158,7 +196,8 @@ def get_install_record(
     row = conn.execute(
         """
         SELECT id, registry_id, filename, file_path, size_bytes,
-               install_status, progress_bytes, error_message, verified_sha256, installed_at
+               install_status, progress_bytes, error_message, error_code,
+               verified_sha256, installed_at
         FROM installed_models
         WHERE id = ?
         """,
@@ -202,7 +241,8 @@ def mark_install_ready(
             verified_sha256 = ?,
             file_path = ?,
             progress_bytes = ?,
-            error_message = NULL
+            error_message = NULL,
+            error_code = NULL
         WHERE id = ?
         """,
         (size_bytes, verified_sha256, file_path, size_bytes, install_id),
@@ -216,16 +256,23 @@ def mark_install_failed(
     error_message: str,
     *,
     status: str = "failed",
+    error_code: str | None = None,
 ) -> None:
-    """Mark an install record with a terminal failure status."""
+    """Mark an install record with a terminal failure status.
+
+    *error_code* is the machine-readable kind of the failure (see
+    ``model_download_service.classify_download_error``). Clients decide what
+    to offer from the code; the message is for people.
+    """
     conn.execute(
         """
         UPDATE installed_models
         SET install_status = ?,
-            error_message = ?
+            error_message = ?,
+            error_code = ?
         WHERE id = ?
         """,
-        (status, error_message, install_id),
+        (status, error_message, error_code, install_id),
     )
     conn.commit()
 

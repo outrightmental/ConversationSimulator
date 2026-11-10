@@ -10,6 +10,7 @@ import type {
   TurnResponse,
   SessionEndResponse,
   ScenarioInfo,
+  TurnStage,
   WsEvent,
 } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
@@ -27,6 +28,8 @@ vi.mock('../api/client', () => ({
     // Resume reads the recorded setup back when there is no route state
     // (issue #501 §1), which is how most of these tests render the screen.
     getSession: vi.fn(),
+    // This machine's recent speeds, for the reply-start estimate (issue #539).
+    getRollingSpeeds: vi.fn(),
   },
   apiClient: {
     health: vi.fn(),
@@ -162,6 +165,11 @@ beforeEach(() => {
     error: { kind: 'network', message: 'not mocked' },
   } as never)
   mockApiClient.uploadAudio.mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } })
+  // No recorded turns on this machine unless a test says otherwise (issue #539).
+  mockApi.getRollingSpeeds.mockResolvedValue({
+    ok: true,
+    data: { runtime_id: 'fake', model_id: null, samples: 0, reading_tps: null, writing_tps: null, first_token_ms: null, first_words_ms: null, total_ms: null },
+  })
   // The screen reads health to learn which model the turn estimate belongs to.
   mockApiClient.health.mockResolvedValue({ ok: true, data: healthResponse })
   // Turn timings persist in localStorage by design, and the test store is shared
@@ -1247,6 +1255,487 @@ describe('Conversation screen', () => {
     })
   })
 
+  describe('streaming sentence by sentence (issue #538)', () => {
+    function connectWith(): { fire: (event: WsEvent) => void } {
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      return { fire: (event) => act(() => wsCallback?.(event)) }
+    }
+
+    function ev<T extends WsEvent['type']>(type: T, payload: Extract<WsEvent, { type: T }>['payload'], seq = 1): WsEvent {
+      return { type, seq, session_id: SESSION_ID, ts: '2026-07-01T00:01:00Z', payload } as WsEvent
+    }
+
+    async function submitFirst(text = 'Tell me more.') {
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), { target: { value: text } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    }
+
+    it('commits the line from npc.final with content only and re-enables the reply box before the turn commits', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await submitFirst()
+
+      fire(ev('npc.token', { text: 'First sentence.' }, 1))
+      fire(ev('npc.token', { text: ' Second one.' }, 2))
+      await waitFor(() => expect(screen.getByTestId('streaming-turn')).toHaveTextContent('First sentence. Second one.'))
+      // Still writing: the box is disabled.
+      expect(screen.getByRole('textbox', { name: /your response/i })).toBeDisabled()
+
+      fire(ev('npc.final', { content: 'First sentence. Second one.' }, 3))
+      await waitFor(() => expect(screen.queryByTestId('streaming-turn')).not.toBeInTheDocument())
+      expect(screen.getByText('First sentence. Second one.')).toBeInTheDocument()
+      // The line is complete: the player can type again while the core finishes.
+      expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      // No emotion was claimed before the commit reported one.
+      expect(screen.queryByTestId('npc-emotion')).not.toBeInTheDocument()
+      expect(screen.getByTestId('turn-finishing-indicator')).toHaveTextContent(/updating the scene/i)
+    })
+
+    it('applies the emotion, flags and meters from scenario.state_delta onto the committed row', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ show_state_meters: true })
+      await submitFirst()
+
+      fire(ev('npc.token', { text: 'Interesting.' }, 1))
+      fire(ev('npc.final', { content: 'Interesting.' }, 2))
+      fire(ev('scenario.state_delta', {
+        delta: { trust: 5 },
+        state_vars: { trust: 55, patience: 75, rapport: 50, openness: 50, objective_progress: 0 },
+        turn_number: 1,
+        emotion: 'impressed',
+        event_flags: ['honesty_demonstrated'],
+        triggered_scenario_events: [],
+        ending_type: null,
+      }, 3))
+
+      await waitFor(() => expect(screen.getByTestId('npc-emotion')).toHaveTextContent(/impressed/i))
+      expect(screen.getByTestId('turn-mood')).toHaveTextContent(/impressed/i)
+      const trust = screen.getByRole('meter', { name: /trust/i })
+      expect(trust).toHaveAttribute('aria-valuenow', '55')
+    })
+
+    it('queues a message sent before the commit and delivers it exactly once when the turn lands', async () => {
+      const { fire } = connectWith()
+      let resolveFirst: ((r: { ok: true; data: TurnResponse }) => void) | null = null
+      mockApi.submitTurn
+        .mockReturnValueOnce(new Promise((r) => { resolveFirst = r }))
+        .mockResolvedValue({ ok: true, data: turnResponse })
+      renderConversation()
+      await submitFirst('Opening question.')
+
+      fire(ev('npc.token', { text: 'Here is the reply.' }, 1))
+      fire(ev('npc.final', { content: 'Here is the reply.' }, 2))
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled(),
+      )
+
+      // The player answers before the core has saved the turn.
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), { target: { value: 'My follow-up.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByTestId('queued-message')).toHaveTextContent('My follow-up.'))
+      expect(mockApi.submitTurn).toHaveBeenCalledTimes(1)
+
+      // The first turn commits; the queued message goes out once.
+      await act(async () => {
+        resolveFirst!({ ok: true, data: turnResponse })
+      })
+      await waitFor(() => expect(mockApi.submitTurn).toHaveBeenCalledTimes(2))
+      expect(mockApi.submitTurn).toHaveBeenLastCalledWith(SESSION_ID, 'My follow-up.', false)
+      await waitFor(() => expect(screen.queryByTestId('queued-message')).not.toBeInTheDocument())
+      // Both messages are in the transcript, numbered as two whole turns.
+      await waitFor(() => expect(screen.getByText('My follow-up.')).toBeInTheDocument())
+      // The label is two spans ("Turn 2" · "You"); the follow-up opened whole turn 2.
+      expect(screen.getAllByText('Turn 2').length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('lets the player remove a queued message instead of sending it', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await submitFirst()
+      fire(ev('npc.final', { content: 'Reply.' }, 1))
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), { target: { value: 'Never mind.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByTestId('queued-message')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: /remove queued message/i }))
+      expect(screen.queryByTestId('queued-message')).not.toBeInTheDocument()
+      expect(mockApi.submitTurn).toHaveBeenCalledTimes(1)
+    })
+
+    it('applies the REST snapshot when the row was committed over the socket', async () => {
+      const { fire } = connectWith()
+      let resolveTurn: ((r: { ok: true; data: TurnResponse }) => void) | null = null
+      mockApi.submitTurn.mockReturnValueOnce(new Promise((r) => { resolveTurn = r }))
+      renderConversation({ show_state_meters: true })
+      await submitFirst()
+      fire(ev('npc.final', { content: 'Hello there. I am a simulated NPC.' }, 1))
+      await act(async () => {
+        resolveTurn!({
+          ok: true,
+          data: {
+            ...turnResponse,
+            events: [
+              turnResponse.events[0],
+              {
+                ...turnResponse.events[1],
+                payload: {
+                  ...turnResponse.events[1].payload,
+                  emotion: 'curious',
+                  event_flags: ['asked_a_question'],
+                  visible_state: { trust: 61, patience: 75, rapport: 50, openness: 50, objective_progress: 0 },
+                },
+              },
+            ],
+          },
+        })
+      })
+      // One row, not two; and the REST state landed on it.
+      await waitFor(() => expect(screen.getByTestId('npc-emotion')).toHaveTextContent(/curious/i))
+      expect(screen.getAllByText('Hello there. I am a simulated NPC.')).toHaveLength(1)
+      expect(screen.getByRole('meter', { name: /trust/i })).toHaveAttribute('aria-valuenow', '61')
+    })
+
+    it('records the stage the core reports while the turn runs', async () => {
+      const { fire } = connectWith()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await submitFirst()
+      fire(ev('turn.progress', { stage: 'reading', prompt: { processed: 256, total: 2034, cached: 0 }, output_tokens: 0, elapsed_ms: 3000 }, 1))
+      await waitFor(() => expect(screen.getByTestId('conversation-page')).toHaveAttribute('data-turn-stage', 'reading'))
+      fire(ev('turn.progress', { stage: 'writing', prompt: null, output_tokens: 3, elapsed_ms: 9000 }, 2))
+      await waitFor(() => expect(screen.getByTestId('conversation-page')).toHaveAttribute('data-turn-stage', 'writing'))
+      // Writing counts as streaming for the panel even before a sentence lands.
+      expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent(/replying/i)
+    })
+  })
+
+  describe('live turn progress (issue #539)', () => {
+    const namedScenario: ScenarioInfo = { ...mockScenario, npc_name: 'Dana Whitfield' }
+
+    function connect(): { fire: (event: WsEvent) => void } {
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getScenario.mockResolvedValue({ ok: true, data: namedScenario })
+      return { fire: (event) => act(() => wsCallback?.(event)) }
+    }
+    const progress = (stage: TurnStage, prompt: { processed: number; total: number; cached: number } | null, seq: number): WsEvent =>
+      ({ type: 'turn.progress', seq, session_id: SESSION_ID, ts: 't', payload: { stage, prompt, output_tokens: 0, elapsed_ms: seq * 1000 } }) as WsEvent
+
+    async function submitFirst() {
+      await waitFor(() => expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument())
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), { target: { value: 'Hello.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    }
+
+    it('opens a connected turn at getting ready, not at the no-socket fallback, before the first report', async () => {
+      // Between submit and the core's first turn.progress event the panel has
+      // no stage. With the socket open that is the start of getting ready: it
+      // used to show the no-socket fallback ("thinking", the whole-turn
+      // median) and step back to "getting ready" when the event came, with an
+      // announcement for each.
+      recordTurnSample(MODEL_NAME, 40_000)
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 6.5, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb, opts) => {
+        wsCallback = cb
+        opts?.onStatus?.('open')
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getScenario.mockResolvedValue({ ok: true, data: namedScenario })
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await waitFor(() => expect(mockApi.getRollingSpeeds).toHaveBeenCalled())
+      await submitFirst()
+      const status = screen.getByTestId('npc-turn-progress-status')
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Dana Whitfield is getting ready…'))
+      expect(screen.getByTestId('npc-turn-progress-clock')).not.toHaveTextContent('~')
+      const before = status.textContent
+      expect(before).toBe('Dana Whitfield is getting ready… Reply starts in about 20–35 s.')
+      // The core's first report says the same thing, so nothing is re-announced.
+      act(() => wsCallback?.(progress('waiting', null, 1)))
+      expect(status.textContent).toBe(before)
+    })
+
+    it('falls back to the whole-turn clock when an open socket sends no stages', async () => {
+      // An older core over an open socket: no report by the first tick means
+      // none is coming, and the PR #513 behaviour stands.
+      recordTurnSample(MODEL_NAME, 40_000)
+      mockApi.connectSession.mockImplementation((_id, _cb, opts) => {
+        opts?.onStatus?.('open')
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await submitFirst()
+        await vi.advanceTimersByTimeAsync(2_000)
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('2s / ~40s')
+        expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Thinking…')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('shows the stages in order, in the fiction, with the character\'s name, and the thinking bar as read ÷ total', async () => {
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      const heading = () => screen.getByTestId('npc-turn-progress-heading')
+
+      fire(progress('waiting', null, 1))
+      await waitFor(() => expect(heading()).toHaveTextContent('Dana Whitfield is getting ready…'))
+      fire(progress('reading', { processed: 509, total: 2036, cached: 0 }, 2))
+      await waitFor(() => expect(heading()).toHaveTextContent('Dana Whitfield is thinking…'))
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
+      fire(progress('reading', { processed: 2036, total: 2036, cached: 0 }, 3))
+      await waitFor(() => expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100'))
+      fire(progress('writing', null, 4))
+      await waitFor(() => expect(heading()).toHaveTextContent('Dana Whitfield is replying…'))
+      // Focus rests on the panel during the wait, never on the page body.
+      expect(document.activeElement).toBe(screen.getByTestId('npc-turn-progress'))
+    })
+
+    it('estimates when the reply will start from this machine\'s speeds, and drops it once words arrive', async () => {
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 6.5, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      // Before any progress report: the measured time to first words, as a range.
+      fire(progress('waiting', null, 1))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about 20–35 s\./))
+      // 1,527 unread tokens at 87 tokens/s plus one short sentence at 6.5 tokens/s ≈ 21 s.
+      fire(progress('reading', { processed: 509, total: 2036, cached: 0 }, 2))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about 15–25 s\./))
+      // Words arriving: no estimate.
+      fire({ type: 'npc.token', seq: 3, session_id: SESSION_ID, ts: 't', payload: { text: 'Well.' } })
+      await waitFor(() => expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument())
+    })
+
+    it('announces each stage once, however many progress reports the read takes', async () => {
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 6.5, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      const status = () => screen.getByTestId('npc-turn-progress-status').textContent
+      const detail = () => screen.queryByTestId('npc-turn-progress-detail')?.textContent ?? ''
+      fire(progress('waiting', null, 1))
+      await waitFor(() => expect(status()).toMatch(/getting ready… Reply starts/))
+      const heard = new Set([status()])
+      const captions = new Set<string>()
+      // A 2,036-token prompt reported in 509-token batches, the way
+      // llama-server reports it.
+      for (const [i, processed] of [509, 1018, 1527].entries()) {
+        fire(progress('reading', { processed, total: 2036, cached: 0 }, i + 2))
+        heard.add(status())
+        captions.add(detail())
+      }
+      // The caption followed the read …
+      expect(captions.size).toBe(3)
+      // … and the status region spoke once for getting ready and once for
+      // thinking, not once per batch.
+      expect([...heard]).toEqual([
+        'Dana Whitfield is getting ready… Reply starts in about 20–35 s.',
+        'Dana Whitfield is thinking… Reply starts in about 15–25 s.',
+      ])
+    })
+
+    it('quotes a CPU-speed read in minutes, not in three-digit seconds', async () => {
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 20, writing_tps: 3, first_token_ms: 90000, first_words_ms: 100000, total_ms: 180000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      // 2,000 unread tokens at 20 tokens/s plus one short sentence at 3: 108 s.
+      fire(progress('reading', { processed: 200, total: 2200, cached: 0 }, 1))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent('Reply starts in about 1–2 min.'))
+    })
+
+    it('counts the measured time to first words down with the clock, and withdraws it once it has passed', async () => {
+      // An engine that reports no reading progress (Ollama, or a llama-server
+      // that refuses the progress field) leaves only this machine's median
+      // time to first words. That median runs from the moment the turn went
+      // out, so it is a whole-wait figure: quoted unchanged, it promised the
+      // full 27 s again at 20 s and at 40 s.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'ollama', model_id: 'm', samples: 5, reading_tps: null, writing_tps: null, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await submitFirst()
+        const detail = () => screen.queryByTestId('npc-turn-progress-detail')
+        fire(progress('waiting', null, 1))
+        await waitFor(() => expect(detail()).toHaveTextContent('Reply starts in about 20–35 s.'))
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(detail()).toHaveTextContent('Reply starts in about 15–20 s.')
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(detail()).toHaveTextContent('Reply starts in about 6–9 s.')
+        // Past the median there is nothing honest left to quote: the stage and
+        // the clock carry on alone.
+        await vi.advanceTimersByTimeAsync(20_000)
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('40s')
+        expect(detail()).not.toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('counts a reading estimate down from the report it was built from', async () => {
+      // The last report of a read can be the last word for a while: once the
+      // prompt is read, nothing more arrives until the first sentence does.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 2, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await submitFirst()
+        const detail = () => screen.queryByTestId('npc-turn-progress-detail')
+        // Fully read: one short sentence at 2 tokens/s, 12 s from this report.
+        fire(progress('reading', { processed: 2036, total: 2036, cached: 0 }, 1))
+        await waitFor(() => expect(detail()).toHaveTextContent('Reply starts in about 10–15 s.'))
+        await vi.advanceTimersByTimeAsync(6_000)
+        expect(detail()).toHaveTextContent('Reply starts in about 5–8 s.')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('shows no estimate when the expected wait is under the threshold', async () => {
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 2000, writing_tps: 60, first_token_ms: 900, first_words_ms: 1200, total_ms: 6000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      fire(progress('reading', { processed: 100, total: 300, cached: 0 }, 1))
+      await waitFor(() => expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '33'))
+      expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument()
+    })
+
+    it('quotes no estimate while a failed reply is tried again', async () => {
+      // The repair is a second, unstreamed generation. Neither the first one's
+      // progress report nor this machine's time to first words says when it
+      // will be done, so the panel names the stage and quotes nothing.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 87, writing_tps: 6.5, first_token_ms: 24000, first_words_ms: 27000, total_ms: 62000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      fire(progress('reading', { processed: 509, total: 2036, cached: 0 }, 1))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/Reply starts in about/))
+      fire(progress('checking', null, 2))
+      await waitFor(() => expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Dana Whitfield is trying that again…'))
+      expect(screen.queryByTestId('npc-turn-progress-detail')).not.toBeInTheDocument()
+      expect(screen.getByTestId('npc-turn-progress-status')).not.toHaveTextContent(/Reply starts/)
+    })
+
+    it('carries no estimate into the half-minute announcement once a retry has begun', async () => {
+      // The half-minute announcement samples the estimate when its slot opens.
+      // A slow read that crosses 30 s, a reply that fails its check before any
+      // words are released, and the retry can all fall within one slot, and
+      // the retry is a stage no estimate applies to.
+      mockApi.getRollingSpeeds.mockResolvedValue({
+        ok: true,
+        data: { runtime_id: 'llama_cpp', model_id: 'm', samples: 5, reading_tps: 20, writing_tps: 3, first_token_ms: 90000, first_words_ms: 100000, total_ms: 180000 },
+      })
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation({ scenario_id: SCENARIO_ID })
+        await waitFor(() => expect(mockApi.getRollingSpeeds).toHaveBeenCalled())
+        await submitFirst()
+        const announcement = screen.getByTestId('npc-turn-progress-announcement')
+        await vi.advanceTimersByTimeAsync(1_000)
+        fire(progress('waiting', null, 1))
+        await vi.advanceTimersByTimeAsync(1_000)
+        fire(progress('reading', { processed: 200, total: 2200, cached: 0 }, 2))
+        await vi.advanceTimersByTimeAsync(29_000)
+        // Still reading past 30 s: the announcement carries the estimate.
+        expect(announcement).toHaveTextContent(/30s so far\. The reply is not lost\. Reply starts in about/)
+        fire(progress('writing', null, 3))
+        await vi.advanceTimersByTimeAsync(4_000)
+        fire(progress('checking', null, 4))
+        await vi.advanceTimersByTimeAsync(2_000)
+        expect(screen.getByTestId('npc-turn-progress-heading')).toHaveTextContent('Dana Whitfield is trying that again…')
+        expect(announcement).toHaveTextContent('Still waiting on Dana Whitfield — 30s so far. The reply is not lost.')
+        expect(announcement).not.toHaveTextContent(/Reply starts/)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('keeps the finishing stage visible with the meters hidden', async () => {
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID, show_state_meters: false })
+      await submitFirst()
+      fire({ type: 'npc.final', seq: 1, session_id: SESSION_ID, ts: 't', payload: { content: 'Done talking.' } })
+      fire(progress('finishing', null, 2))
+      await waitFor(() => expect(screen.getByTestId('turn-finishing-indicator')).toHaveTextContent('Updating the scene…'))
+      expect(screen.queryByTestId('state-meters')).not.toBeInTheDocument()
+    })
+
+    it('never puts engine jargon on the screen, in any state', async () => {
+      const { fire } = connect()
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation({ scenario_id: SCENARIO_ID })
+      await submitFirst()
+      for (const stage of ['waiting', 'reading', 'writing', 'checking', 'voice'] as const) {
+        fire(progress(stage, stage === 'reading' ? { processed: 1, total: 2, cached: 0 } : null, 1))
+        const text = document.body.textContent ?? ''
+        expect(text).not.toMatch(/first token|GPU layers|context length/i)
+      }
+    })
+  })
+
   describe('debug drawer', () => {
     afterEach(() => {
       localStorage.removeItem('convsim.devMode')
@@ -1888,13 +2377,20 @@ describe('Conversation screen', () => {
         await submitAndWait(6_000)
         // The clock runs from the first second of the turn (issue #488) …
         expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('6s')
-        // … and the hardware hint arrives at five seconds, without a second clock.
+        // … and no second notice repeats it in other words: issue #539 folded
+        // the fixed 5 s "taking longer than usual" row into the panel, whose
+        // heading already says who the player is waiting on. What the panel
+        // adds at five seconds is the reply-speed footnote from issue #501, and
+        // only that.
+        expect(screen.queryByText(/taking longer than usual/i)).not.toBeInTheDocument()
         expect(screen.getByTestId('slow-response-indicator')).toBeInTheDocument()
-        expect(screen.queryByTestId('slow-response-reassurance')).not.toBeInTheDocument()
 
         await vi.advanceTimersByTimeAsync(60_000)
         expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('1m 06s')
-        expect(screen.getByTestId('slow-response-reassurance')).toHaveTextContent(/not lost/i)
+        // The "not lost" reassurance is the panel's half-minute announcement
+        // now; the old second-stage row under the notice went with the notice.
+        expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent(/not lost/i)
+        expect(screen.queryByTestId('slow-response-reassurance')).not.toBeInTheDocument()
       } finally {
         vi.useRealTimers()
       }
@@ -1902,11 +2398,12 @@ describe('Conversation screen', () => {
 
     // Issue #501 §1: the playtester hit a slow turn, went to Settings to speed
     // the model up, "was a little unclear on how to do that", and lost the
-    // session. This notice is where that detour starts, so it names the setting
-    // instead of saying "you can adjust settings" — but as text, not a link:
-    // the notice only exists while a turn is in flight, and leaving then loses
-    // the pending message on resume and puts the turn numbering one behind the
-    // server (issue #501 §4).
+    // session. The slow-state footnote is where that detour starts, so it names
+    // the setting instead of saying "you can adjust settings" — but as text,
+    // not a link: the footnote only exists while a turn is in flight, and
+    // leaving then loses the pending message on resume and puts the turn
+    // numbering one behind the server (issue #501 §4). Since issue #539 it is
+    // part of the turn panel rather than a notice of its own.
     it('names the reply-speed setting without a link away from the in-flight turn', async () => {
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       vi.useFakeTimers({ shouldAdvanceTime: true })
@@ -1918,8 +2415,10 @@ describe('Conversation screen', () => {
         expect(hint).toHaveTextContent(/settings/i)
         // Honest about the timing: changing it now does not shorten this reply.
         expect(hint).toHaveTextContent(/once this reply arrives/i)
-        expect(within(notice).queryByRole('link')).not.toBeInTheDocument()
+        expect(within(notice).queryByRole('link', { hidden: true })).not.toBeInTheDocument()
         expect(screen.queryByText(/you can adjust settings/i)).not.toBeInTheDocument()
+        // It reads with the panel, not beside it.
+        expect(within(screen.getByTestId('npc-turn-progress')).getByTestId('slow-response-indicator')).toBe(notice)
       } finally {
         vi.useRealTimers()
       }
@@ -1938,7 +2437,7 @@ describe('Conversation screen', () => {
         const notice = screen.getByTestId('slow-response-indicator')
         expect(notice).toHaveTextContent(/closing other apps usually helps/i)
         expect(screen.getByTestId('slow-response-speed-hint')).toHaveTextContent(/reply speed/i)
-        expect(within(notice).queryByRole('link')).not.toBeInTheDocument()
+        expect(within(notice).queryByRole('link', { hidden: true })).not.toBeInTheDocument()
       } finally {
         vi.useRealTimers()
         vi.unstubAllEnvs()
@@ -1991,6 +2490,26 @@ describe('Conversation screen', () => {
         expect(screen.getByText('Opening')).toBeInTheDocument()
         expect(screen.getAllByText('Turn 1')).toHaveLength(2)
         expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('counts an adopted reply as a landed turn: "Your turn." and fresh speeds', async () => {
+      // The adopted turn is not timed on the client (its wait measures the
+      // polling), but it did land and the core did record it. Skipping the
+      // count left a screen-reader player with no "Your turn." on the first
+      // turn of a screen, and the reply-start estimate on stale speeds.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(DEADLINE_MS)
+        await waitFor(() =>
+          expect(screen.getByText('Committed by the server while the UI waited.')).toBeInTheDocument(),
+        )
+        await waitFor(() => expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent('Your turn.'))
+        // Once on opening the screen, and again for the turn that landed.
+        await waitFor(() => expect(mockApi.getRollingSpeeds).toHaveBeenCalledTimes(2))
       } finally {
         vi.useRealTimers()
       }
@@ -2390,7 +2909,7 @@ describe('Conversation screen', () => {
         renderConversation()
         await submit()
         await vi.advanceTimersByTimeAsync(20_000)
-        expect(screen.getByTestId('npc-turn-progress')).toHaveTextContent('NPC is thinking…')
+        expect(screen.getByTestId('npc-turn-progress')).toHaveTextContent('Thinking…')
 
         act(() => {
           wsCallback?.({
@@ -2404,8 +2923,8 @@ describe('Conversation screen', () => {
 
         // The words are visibly arriving; the clock still covers the round trip.
         const panel = screen.getByTestId('npc-turn-progress')
-        expect(panel).toHaveTextContent('NPC is replying…')
-        expect(panel).not.toHaveTextContent('NPC is thinking…')
+        expect(panel).toHaveTextContent('Replying…')
+        expect(panel).not.toHaveTextContent('Thinking…')
         expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('20s / ~30s')
       } finally {
         vi.useRealTimers()
@@ -2428,7 +2947,6 @@ describe('Conversation screen', () => {
         await submit()
         await vi.advanceTimersByTimeAsync(40_000)
         expect(screen.getByTestId('npc-turn-progress')).toBeInTheDocument()
-        expect(screen.getByTestId('slow-response-indicator')).toBeInTheDocument()
 
         act(() => {
           wsCallback?.({
@@ -2447,12 +2965,11 @@ describe('Conversation screen', () => {
 
         expect(screen.getByText('Here is my answer.')).toBeInTheDocument()
         expect(screen.queryByTestId('npc-turn-progress')).not.toBeInTheDocument()
-        expect(screen.queryByTestId('slow-response-indicator')).not.toBeInTheDocument()
-        // The composer stays disabled until the request carrying the state delta
-        // answers, so the screen says what it is still doing — without claiming
-        // the NPC is working on a reply that is already there.
+        // Until the request carrying the state delta answers, the screen says
+        // what it is still doing — without claiming the NPC is working on a
+        // reply that is already there.
         expect(screen.getByTestId('turn-finishing-indicator')).toHaveTextContent(
-          'Finishing the turn…',
+          'Updating the scene…',
         )
       } finally {
         vi.useRealTimers()
@@ -2470,7 +2987,7 @@ describe('Conversation screen', () => {
         await vi.advanceTimersByTimeAsync(4_000)
 
         expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent(
-          'NPC is thinking…',
+          'Thinking…',
         )
         expect(screen.queryByTestId('turn-finishing-indicator')).not.toBeInTheDocument()
       } finally {
@@ -2495,7 +3012,7 @@ describe('Conversation screen', () => {
 
       await submit()
       expect(screen.getByTestId('npc-turn-progress-status')).toBe(status)
-      expect(status).toHaveTextContent('NPC is thinking…')
+      expect(status).toHaveTextContent('Thinking…')
     })
 
     it('keeps the ticking panel out of the transcript live region', async () => {
@@ -2517,6 +3034,7 @@ describe('Conversation screen', () => {
         'npc-turn-progress-clock',
         'npc-turn-progress-status',
         'npc-turn-progress-announcement',
+        'npc-turn-progress-hint',
       ]) {
         expect(transcript).not.toContainElement(screen.getByTestId(testId))
       }

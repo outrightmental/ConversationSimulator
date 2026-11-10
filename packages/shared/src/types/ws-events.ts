@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { SessionState, EndingType } from './session.js';
+import type { TurnStage, TurnTiming } from './metrics.js';
 
 /** Base fields present on every WebSocket event. */
 export interface WsEventBase {
@@ -21,7 +22,29 @@ export interface WsSessionStateEvent extends WsEventBase {
   };
 }
 
-/** A single streamed token from the NPC text generation. */
+/**
+ * Which stage a running turn is in (issue #538), and how far the engine has
+ * read the prompt when it says so. Sent on every stage change and on every
+ * prompt-reading progress report. `elapsed_ms` is measured from the moment
+ * the turn request reached the core.
+ */
+export interface WsTurnProgressEvent extends WsEventBase {
+  type: 'turn.progress';
+  payload: {
+    stage: TurnStage;
+    /** Prompt tokens processed of total, and how many came from cache; null when the engine gave no count. */
+    prompt: { processed: number | null; total: number | null; cached: number | null } | null;
+    output_tokens: number;
+    elapsed_ms: number;
+  };
+}
+
+/**
+ * One checked sentence of the NPC's line (issue #538). Each `text` is an exact
+ * slice of the line, released only once the line so far has passed the output
+ * check; concatenating every `npc.token` of a turn reproduces the committed
+ * line, and nothing shown is ever withdrawn.
+ */
 export interface WsNpcTokenEvent extends WsEventBase {
   type: 'npc.token';
   payload: {
@@ -29,23 +52,36 @@ export interface WsNpcTokenEvent extends WsEventBase {
   };
 }
 
-/** The NPC has finished generating its response. */
+/**
+ * The NPC's spoken line is complete. The turn is still being written — its
+ * state change, emotion and flags arrive on `scenario.state_delta` at commit —
+ * but the player can read (and reply to) the whole line now.
+ */
 export interface WsNpcFinalEvent extends WsEventBase {
   type: 'npc.final';
   payload: {
     content: string;
-    emotion: string;
-    state_delta: Record<string, number>;
-    event_flags: string[];
+    /** Not known when the line closes; present only on events from older servers. */
+    emotion?: string;
+    state_delta?: Record<string, number>;
+    event_flags?: string[];
   };
 }
 
-/** Scenario state variables changed as a result of the turn. */
+/** The turn committed: the state change the reply produced, and the rest of the turn's bookkeeping. */
 export interface WsScenarioStateDeltaEvent extends WsEventBase {
   type: 'scenario.state_delta';
   payload: {
     delta: Record<string, number>;
     state_vars: Record<string, number>;
+    turn_number?: number;
+    emotion?: string;
+    event_flags?: string[];
+    triggered_scenario_events?: string[];
+    ending_type?: EndingType | null;
+    /** True when the turn was built from released words plus whatever bookkeeping completed (#538). */
+    salvaged?: boolean;
+    timing?: TurnTiming | null;
   };
 }
 
@@ -121,6 +157,7 @@ export interface WsTtsAudioChunkEvent extends WsEventBase {
 /** Union of all WebSocket event shapes. */
 export type WsEvent =
   | WsSessionStateEvent
+  | WsTurnProgressEvent
   | WsNpcTokenEvent
   | WsNpcFinalEvent
   | WsScenarioStateDeltaEvent

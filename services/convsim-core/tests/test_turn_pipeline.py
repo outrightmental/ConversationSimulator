@@ -289,6 +289,12 @@ class TestTurnInputValidation:
             json={"content": "   "},
         )
         assert res.status_code == 422
+        # The 422 summary prefixes the field path, so the validator must not
+        # repeat it — "content: Turn content cannot be blank" is what the error
+        # card showed and what "Copy diagnostics" pasted (issue #508).
+        message = res.json()["error"]["message"]
+        assert message == "Request validation failed \u2014 content: cannot be blank"
+        assert message.count("content") == 1
 
     def test_oversized_content_returns_422(self, client):
         session_id = _create_and_start(client)
@@ -298,6 +304,13 @@ class TestTurnInputValidation:
             json={"content": oversized},
         )
         assert res.status_code == 422
+        message = res.json()["error"]["message"]
+        assert message == (
+            f"Request validation failed \u2014 content: cannot exceed {MAX_TURN_CONTENT_CHARS} characters"
+        )
+        # The rejected turn is the player's own words; it must not ride along
+        # into a clipboard report.
+        assert oversized not in res.text
 
     def test_max_length_content_accepted(self, client):
         session_id = _create_and_start(client)
@@ -605,6 +618,27 @@ class TestEngineTimeout:
         message = res.json()["error"]["message"]
         assert "CONVSIM_" not in message
         assert "try again" in message.lower()
+        # Nor engine vocabulary: "GPU layers" meant nothing to a player (#539).
+        assert "gpu" not in message.lower()
+        assert "layers" not in message.lower()
+        assert "not recorded" in message
+        # The full app gets both levers: the setting and a smaller model.
+        assert "Quick replies" in message and "Reply speed" in message
+        assert "smaller model" in message
+
+    def test_timeout_message_sends_the_demo_only_where_it_can_go(self):
+        """The demo cannot change models, so it hears about Reply speed alone."""
+        from convsim_core.routers.sessions import turn_timeout_message
+
+        for demo in (False, True):
+            message = turn_timeout_message(demo=demo)
+            assert "gpu" not in message.lower()
+            assert "layers" not in message.lower()
+            assert "not recorded" in message
+            assert "try again" in message.lower()
+            assert "Quick replies" in message and "Reply speed" in message
+        assert "smaller model" in turn_timeout_message(demo=False)
+        assert "smaller model" not in turn_timeout_message(demo=True)
 
     def test_session_stays_retryable_and_records_nothing(self, tmp_config):
         """The pipeline persists only after the model answers, so the turn is free to retry."""

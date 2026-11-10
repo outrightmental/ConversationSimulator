@@ -174,27 +174,39 @@ async def test_stop_all_suppresses_individual_errors():
 
 
 @pytest.mark.asyncio
-async def test_stop_all_is_concurrent(monkeypatch):
-    """stop_all() runs all stops concurrently, not sequentially."""
-    order: list[str] = []
+async def test_stop_all_is_concurrent():
+    """stop_all() runs all stops concurrently, not sequentially.
 
-    class _SlowSidecar(_FakeSidecar):
+    Concurrency is shown by a rendezvous, not by the clock. Each fake stop
+    waits until the other one has also started; only two stops running at the
+    same time can both get past that wait. Run one after the other, the first
+    would wait alone until its timeout, which stop_all swallows, and only the
+    second would finish. The earlier form of this test timed two 50 ms sleeps
+    and required them to finish in under 90 ms, which a loaded CI runner
+    cannot promise.
+    """
+    arrived: list[str] = []
+    finished: list[str] = []
+    both_here = asyncio.Event()
+
+    class _RendezvousSidecar(_FakeSidecar):
         async def stop(self) -> None:
-            await asyncio.sleep(0.05)
-            order.append(self._id)
+            arrived.append(self._id)
+            if len(arrived) == 2:
+                both_here.set()
+            await asyncio.wait_for(both_here.wait(), timeout=2.0)
+            finished.append(self._id)
 
     sup = ProcessSupervisor()
-    sup.register(_SlowSidecar("a"))
-    sup.register(_SlowSidecar("b"))
+    sup.register(_RendezvousSidecar("a"))
+    sup.register(_RendezvousSidecar("b"))
 
-    import time
-    t0 = time.monotonic()
     await sup.stop_all()
-    elapsed = time.monotonic() - t0
 
-    # Both run concurrently so total time is ~0.05s, not ~0.10s.
-    assert elapsed < 0.09, f"stop_all took {elapsed:.3f}s — expected concurrent execution"
-    assert set(order) == {"a", "b"}
+    assert both_here.is_set(), "the two stops never ran at the same time"
+    assert set(finished) == {"a", "b"}, (
+        f"only {finished} got past the rendezvous: stop_all ran the stops one after the other"
+    )
 
 
 # ---------------------------------------------------------------------------

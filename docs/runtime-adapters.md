@@ -63,15 +63,35 @@ class ChatRequest(BaseModel):
     json_schema: dict | None          # if set and json_schema=True, enforce it
 ```
 
-**Streaming contract.** `chat_stream` must yield zero or more `ChatToken`
-objects followed by exactly one `ChatFinal`. `ChatFinal.text` is the
-authoritative complete response; callers may build a preview from tokens
-but must not append to `ChatFinal.text`.
+**Streaming contract.** `chat_stream` must yield zero or more `ChatProgress`
+and `ChatToken` objects, in the order the engine produced them, followed by
+exactly one `ChatFinal`. `ChatFinal.text` is the authoritative complete
+response; callers may build a preview from tokens but must not append to
+`ChatFinal.text`. Progress chunks are optional: an adapter emits one only when
+the engine sent a real signal, and callers that only want text ignore them.
 
 ```python
 class ChatToken(BaseModel):
     type: Literal["token"] = "token"
     text: str
+
+class ChatProgress(BaseModel):
+    type: Literal["progress"] = "progress"
+    stage: Literal["waiting", "reading", "writing"]
+    processed: int | None      # prompt tokens read so far
+    total: int | None          # prompt tokens in all
+    cached: int | None         # of which reused from the engine's cache
+
+class ChatTimings(BaseModel):          # what the engine itself reported
+    prompt_tokens: int | None          # evaluated + cached
+    cached_tokens: int | None
+    evaluated_tokens: int | None
+    output_tokens: int | None
+    prompt_ms: float | None            # engine wall time reading
+    generation_ms: float | None        # engine wall time writing
+    load_ms: float | None              # model load attributed to the request (Ollama)
+    reading_tps: float | None
+    writing_tps: float | None
 
 class ChatFinal(BaseModel):
     type: Literal["final"] = "final"
@@ -80,7 +100,20 @@ class ChatFinal(BaseModel):
     input_tokens: int
     output_tokens: int
     structured: dict | None    # parsed JSON when json_schema was set
+    timings: ChatTimings | None             # None when the engine said nothing
+    finish_reason: Literal["stop", "length", "cancelled"] | None
 ```
+
+**What a turn cost.** The turn pipeline times each stage of a turn with a
+monotonic clock — `waiting`, `reading`, `writing`, `finishing`, `checking`,
+`voice`, defined once in `convsim_core/services/turn_timing.py` — and
+combines it with the engine's `ChatTimings` into one `TurnTiming` record per
+NPC turn (mirrored as `TurnTiming` in `packages/shared`). The record is
+persisted as a `turn_timing` event, returned on the turn's `npc_turn` event
+and by the debug and transcript endpoints, and summarised by
+`GET /api/performance/rolling`. A field an engine cannot supply is `null`;
+nothing is estimated silently. Adapters must therefore never invent a count or
+a duration — report what the engine said, or `None`.
 
 **`RuntimeHealth`** — returned by `health()`:
 
@@ -164,12 +197,95 @@ HTTP 503 → STARTING (model still loading); connection error → UNAVAILABLE.
 llama-server --port 7356 --model /path/to/model.gguf
 ```
 
+**Managed engine launch settings.** When the app launches `llama-server`
+itself — `LlamaCppSidecar.start()` in `convsim_core/runtime/sidecar.py`,
+reached from the autostart in `runtime/active.py`, the install pipeline's
+warmup stage, and `POST /api/sidecar/start` — it does not accept the engine's
+defaults. Those defaults suit a shared inference server, not one player having
+one conversation on an 8 GB machine. The log in issue #489 showed what they
+cost: four slots, the model's full trained context (40,960 tokens where the
+registry says 8,192), 6,759 MiB of projected memory for a 2.5 GB model, an
+8 GiB prompt cache in host memory, and a single progress update for a
+22-second prompt because the default batch is 2,048 tokens.
+
+One helper, `convsim_core/runtime/launch.py`, builds the launch configuration
+— `LaunchConfig`, `resolve_launch_config(model_path, conn)` and
+`launch_env(config)` — and all three start sites use it, so they cannot drift
+apart (issue #523). Issue #529 turns it into a player-configurable launch
+profile.
+
+| Setting | Value | Passed as | Why |
+|---------|-------|-----------|-----|
+| Context size | the loaded model's `context_length` from the model registry; a player-supplied GGUF uses the context stated when it was registered, or 8192 | `--ctx-size` on the command line | The KV cache is sized from it. The model file's trained length is far more than one conversation needs, and loading it is what blew the memory budget in #489. |
+| Slots | 1 | `LLAMA_ARG_N_PARALLEL=1` | One player has one conversation. Every extra slot divides the context between slots and multiplies KV-cache memory. No `id_slot` is sent in any request. |
+| Batch size | 256 tokens | `LLAMA_ARG_BATCH=256` | Prompt processing reports progress and checks for cancellation once per batch. At the CPU rate seen in #489 (87 tokens/s) that is about every 3 s, instead of once for the whole prompt. |
+| Host prompt cache | 1024 MiB | `LLAMA_ARG_CACHE_RAM=1024` | Bounds the prompt cache the server keeps in host memory; the default on the #489 machine was 8 GiB. |
+| Reasoning | off | `LLAMA_ARG_REASONING=off` | NPC turns need in-character JSON, not visible chain-of-thought, which blows the turn token budget and multiplies latency. |
+
+Why two mechanisms: `--ctx-size` goes on the command line because every
+`llama-server` build has the flag, and an engine too old to read `LLAMA_ARG_*`
+would otherwise load the model's full trained context — the memory problem
+itself. The rest travel as `LLAMA_ARG_*` environment variables, which
+`llama-server` reads as if the flag had been given (its `common/arg.cpp` binds
+`--parallel` to `LLAMA_ARG_N_PARALLEL`, `--batch-size` to `LLAMA_ARG_BATCH`,
+`--cache-ram` to `LLAMA_ARG_CACHE_RAM`). An engine build that lacks one of
+them starts anyway: an unknown flag is fatal, an unknown variable is ignored.
+
+Every variable is applied with `setdefault`, so a value already in the app's
+environment is an operator override that wins — start the app with
+`LLAMA_ARG_N_PARALLEL=2` and the engine runs two slots. `LLAMA_ARG_CTX_SIZE`
+is honoured the same way: when it is set and nothing states a context size
+for this start, `--ctx-size` is left off the command line so the flag cannot
+silently beat the variable. An explicit `context_length` in the
+`POST /api/sidecar/start` body is such a statement: it goes on the command
+line as `--ctx-size` and wins over both the registry value and the variable.
+
+None of this changes sampling: the adapter sends the same request body as
+before. It applies only to an engine the app launches; a `llama-server` the
+player runs by hand is configured by the player. Each launch writes the command
+line and the effective `LLAMA_ARG_*` variables under the
+`--- llama-server start` marker in `runtime.log`, so a log excerpt shows how
+the engine was launched.
+
+*What to measure.* These settings exist for memory and responsiveness, so a
+change to them is recorded as a before/after on one machine with the same
+model:
+
+- resident memory of the `llama-server` process once `/health` returns 200
+  (Task Manager, or `ps -o rss -p <pid>`);
+- the projected memory the engine logs while loading (the KV-cache and
+  compute-buffer size lines after the `--- llama-server start` marker in
+  `runtime.log`);
+- `GET /props` on the engine: `total_slots` and
+  `default_generation_settings.n_ctx` should read 1 and the registry's
+  context length;
+- for one long prompt, how many progress updates the UI shows and how long a
+  cancel takes to act (one batch — about 3 s on the #489 machine).
+
 **JSON schema enforcement.** When `json_schema` is set on the request,
 the adapter wraps it in the `response_format.json_schema` OpenAI field.
 `strict` is set to `False` to avoid rejecting slightly out-of-spec responses.
 The adapter attempts `json.loads(full_text)` and sets `ChatFinal.structured`
 on success; parse failure leaves `structured=None` (the pipeline uses its
 own fallback logic).
+
+**Timings and progress.** Every request also carries
+`stream_options: {"include_usage": true}`, `return_progress: true` and
+`timings_per_token: true`. llama-server then streams `prompt_progress`
+chunks while it reads the prompt (surfaced as `ChatProgress`, stage
+`reading`), attaches its `timings` block (tokens read, tokens reused from
+cache, both speeds) and ends with a `usage` chunk whose `choices` is empty —
+the adapter reads `usage` and `timings` before skipping chunks without
+choices. None of these fields change what the model generates. A server that
+rejects the request because of those fields (HTTP 422, or a 400 whose error
+names one of them) gets the same request once more without them; the turn
+completes and the timing fields stay `null` for the life of that adapter
+instance. Any other 400, such as a prompt over the context size or a chat
+template that cannot format the messages, is reported as the request error it
+is, and the fields stay on. Raw streams the
+adapter is tested against live under `services/convsim-core/tests/fixtures/`;
+a file named `synthetic_*` was written from the documented wire format rather
+than captured, and its README says how to replace it with a capture.
 
 ---
 
@@ -201,6 +317,16 @@ and `/api/tags`). Does **not** depend on the `ollama` PyPI package, keeping
 
 The Ollama port (11434) is Ollama's default and is separate from the
 Conversation Simulator port range.
+
+**Timings.** The final `done` chunk is the only place Ollama reports what a
+request cost. The adapter keeps `prompt_eval_count`, `prompt_eval_cached_count`
+(present from Ollama v0.34.0), `prompt_eval_duration`, `eval_count`,
+`eval_duration` and `load_duration` — durations are nanoseconds and are
+converted to milliseconds — and `done_reason` becomes `finish_reason`. Without
+the cached count, the cached and evaluated token counts and the reading speed
+stay `None`: a prompt mostly served from cache would otherwise read as
+impossibly fast. Ollama sends no progress while reading, so the adapter emits
+no `ChatProgress`.
 
 **Model selection.** If `ChatRequest.model_id` is `None`, the adapter
 calls `list_models()` and picks the first available model. If Ollama is
@@ -252,6 +378,11 @@ for running the UI without any LLM installed.
   `safety`, and `session_control`.
 - Streams tokens word-by-word with `asyncio.sleep(0)` between each
   (yields control, no actual delay).
+- Reports deterministic timings: two `reading` progress chunks before the
+  first token, and a `ChatTimings` block of one millisecond per prompt token
+  read and two per token written (1 000 and 500 tokens/s), nothing cached,
+  `finish_reason: "stop"`. The scripted tutorial runtime does the same, so
+  tests of the turn-timing record have fixed figures to assert against.
 - Health always returns READY with `latency_ms=0.0`.
 
 **Models exposed:** `fake-small` (4 096 context) and `fake-large` (32 768 context).
