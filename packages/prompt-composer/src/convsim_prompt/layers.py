@@ -319,7 +319,7 @@ def _conversation_rules(scenario: ScenarioData) -> List[str]:
     On the starter model the NPC echoed or mirrored the player, flipped roles
     (the seller asking the buyer for a price), asked for what it had just been
     told, contradicted what it had said, and greeted on every line. Kept to
-    about 100 tokens: it is read on every turn. It changes only with the
+    about 130 tokens: it is read on every turn. It changes only with the
     scenario, so it belongs in the stable system prompt; the per-turn
     "don't reuse your last line" rule is PREVIOUS_NPC_LINE, in the user turn.
     """
@@ -330,11 +330,17 @@ def _conversation_rules(scenario: ScenarioData) -> List[str]:
     sides = f"You are {who}; the player is the {player}." if player else f"You are {who}."
     return [
         "Conversation rules:",
-        "- Reply to what the player just said; answer any question they asked first.",
+        # The exception keeps this rule from pushing against the private
+        # goals: Ray must not answer "what's your floor?" with his floor.
+        "- Reply to what the player just said; answer any question they asked first, "
+        "unless your private goals say to keep it to yourself.",
         "- Never ask for what the player has just told you.",
         f"- {sides} Never speak or bargain from the player's side.",
         "- Stay consistent with facts you have stated; if the player gets one wrong, correct it lightly.",
-        "- Greet only in your first line.",
+        # The opening line is authored, so the model never writes the first
+        # line itself; "greet only in your first line" read as "greet at the
+        # start of each reply" (Rosa's "¡Hola!" on every turn).
+        "- You already opened the conversation; do not greet the player again.",
     ]
 
 

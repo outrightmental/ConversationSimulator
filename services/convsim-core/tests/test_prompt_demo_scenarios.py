@@ -92,7 +92,7 @@ def test_conversation_rules_stay_short(pack_id, scenario_id):
     assert f"You are {data.npc.display_name} (" in rules
     assert f"the player is the {data.player_role_label}." in rules
     # The composer's four-characters-per-token estimate.
-    assert len(rules) // 4 <= 110
+    assert len(rules) // 4 <= 135
 
 
 def test_a_preset_without_a_description_carries_none(tmp_path):

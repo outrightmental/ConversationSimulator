@@ -106,7 +106,24 @@ class TestConversationRules:
         assert "answer any question they asked first" in style
         assert "Never ask for what the player has just told you." in style
         assert "Stay consistent with facts you have stated" in style
-        assert "Greet only in your first line." in style
+        assert "do not greet the player again." in style
+
+    def test_answer_first_rule_yields_to_the_private_goals(self):
+        """Answering first must not mean handing over what the goals keep back:
+        a seller asked for his floor price keeps it (issue #580)."""
+        rules = _rules_text(make_interview_scenario())
+        assert (
+            "- Reply to what the player just said; answer any question they asked first, "
+            "unless your private goals say to keep it to yourself."
+        ) in rules
+
+    def test_greeting_rule_says_the_conversation_is_already_open(self):
+        """The opening line is authored, so the NPC never writes its first line;
+        "greet only in your first line" let it greet at the start of every
+        reply (issue #580)."""
+        rules = _rules_text(make_interview_scenario())
+        assert "- You already opened the conversation; do not greet the player again." in rules
+        assert "first line" not in rules
 
     def test_rules_name_both_sides(self):
         style = compose_turn_prompt(make_interview_input()).layer_map["RESPONSE_STYLE"]
@@ -120,9 +137,10 @@ class TestConversationRules:
         assert rules_pos < sp.index("LAYER:OUTPUT_SCHEMA")
 
     def test_rule_block_stays_short(self):
-        # Read on every turn: keep it near 100 tokens at the composer's
-        # four-characters-per-token estimate.
-        assert len(_rules_text(make_interview_scenario())) // 4 <= 110
+        # Read on every turn: keep it near 130 tokens at the composer's
+        # four-characters-per-token estimate. It sits in the stable system
+        # prompt, so a prompt cache pays for it once a session (issue #524).
+        assert len(_rules_text(make_interview_scenario())) // 4 <= 135
 
     def test_a_long_occupation_contributes_only_its_first_clause(self):
         scenario = make_interview_scenario()
@@ -134,7 +152,7 @@ class TestConversationRules:
         rules = _rules_text(scenario)
         assert "(Used car sales representative at Riverside Auto)" in rules
         assert "eleven years" not in rules
-        assert len(rules) // 4 <= 110
+        assert len(rules) // 4 <= 135
 
     def test_short_role(self):
         assert _short_role("Barista at Café Sol, a neighbourhood coffee bar.") == "Barista at Café Sol"
