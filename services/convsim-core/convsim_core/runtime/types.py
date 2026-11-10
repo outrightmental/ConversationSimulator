@@ -4,7 +4,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class RuntimeStatus(str, Enum):
@@ -50,10 +50,43 @@ class ChatRequest(BaseModel):
     model_id: str | None = None
     max_tokens: int = 512
     temperature: float = 0.8
+    #: Nucleus-sampling cut-off for this request, or None to leave it to the
+    #: adapter's own setting (the llama.cpp adapter's CONVSIM_LLAMA_CPP_TOP_P,
+    #: 0.95 unless set). Turns and debriefs set it, with the temperature, from
+    #: the model registry when the model's entry declares one (issue #580); see
+    #: SamplingDefaults. Only the llama.cpp adapter reads it, because only
+    #: llama.cpp registry entries declare it.
+    top_p: float | None = None
     json_schema: dict[str, Any] | None = None
     # 1-based game turn number; set by the turn pipeline so scripted adapters can
     # return the correct sequential response without parsing the system prompt.
     scripted_turn_index: int | None = None
+
+
+class SamplingDefaults(BaseModel):
+    """The sampling a model's registry entry declares for its requests (issue #580).
+
+    ``model-registry/registry.yaml`` gives each llama.cpp model a
+    ``temperature_default`` and a ``top_p_default``. A field is None when the
+    entry declares no value, or when the model has no entry at all (a
+    player-supplied GGUF, an Ollama model); the request then keeps its own
+    default for it. Built by
+    ``convsim_core.services.model_registry_service.active_model_sampling``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    temperature: float | None = None
+    top_p: float | None = None
+
+    def request_fields(self) -> dict[str, float]:
+        """The ChatRequest fields to set: only the ones the registry declared."""
+        fields: dict[str, float] = {}
+        if self.temperature is not None:
+            fields["temperature"] = self.temperature
+        if self.top_p is not None:
+            fields["top_p"] = self.top_p
+        return fields
 
 
 class ChatToken(BaseModel):

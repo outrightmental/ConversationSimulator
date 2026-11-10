@@ -38,6 +38,7 @@ from convsim_prompt.types import ScenarioData
 
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
+from convsim_core.services.model_registry_service import active_model_sampling
 
 logger = logging.getLogger(__name__)
 
@@ -586,9 +587,12 @@ async def generate_debrief(
             ChatMessage(role="system", content=prompt.system_prompt),
             ChatMessage(role="user", content=prompt.user_prompt),
         ]
+        # Same model, same sampling as the session's turns: the registry's
+        # temperature and top_p when its entry declares them (issue #580).
         request = ChatRequest(
             messages=messages,
             json_schema=DEBRIEF_NARRATIVE_SCHEMA,
+            **active_model_sampling(conn, runtime.id).request_fields(),
         )
         logger.debug(
             "Calling runtime %s for debrief of session %s (~%d tokens)",

@@ -662,6 +662,46 @@ async def test_chat_stream_sends_top_p_and_repeat_penalty_from_config():
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_sends_the_request_top_p_over_the_config():
+    """A request's top_p is the model's registry default (issue #580) and wins
+    over the adapter's configured value; repeat_penalty stays the config's."""
+    cfg = LlamaCppConfig(base_url="http://127.0.0.1:7356", top_p=0.7, repeat_penalty=1.3)
+    rt = LlamaCppRuntime(cfg)
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(
+        messages=[ChatMessage(role="user", content="hi")], temperature=0.6, top_p=0.85
+    )
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in rt.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert sent_payload["temperature"] == 0.6
+    assert sent_payload["top_p"] == 0.85
+    assert sent_payload["repeat_penalty"] == 1.3
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_without_a_request_top_p_sends_the_default(runtime):
+    """No registry top_p: the request goes out at today's 0.8 / 0.95."""
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert sent_payload["temperature"] == 0.8
+    assert sent_payload["top_p"] == 0.95
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_never_pins_a_slot(runtime):
     """The app launches the engine with one slot (issue #523) and leaves slot
     choice to the engine: no request names a slot, so a player who runs their

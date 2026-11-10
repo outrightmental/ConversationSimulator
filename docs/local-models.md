@@ -80,7 +80,7 @@ The engine the app starts runs with one slot, the context size from the model's 
 
 ## Recommended models
 
-The app's screens install only the starter model. The other three are in the registry, but to use one at this release you download its file yourself (the registry lists the pinned URL and SHA-256) and select it as a [custom GGUF model](#using-a-custom-gguf-model). A file selected that way is not matched to its registry entry, so the engine starts it with the default 8 192-token context, not the context length listed below. If the engine is already running, as it is after **Set me up**, the new file is used after you quit and reopen the app (see [How the model manager works](#how-the-model-manager-works)).
+The app's screens install only the starter model. The other three are in the registry, but to use one at this release you download its file yourself (the registry lists the pinned URL and SHA-256) and select it as a [custom GGUF model](#using-a-custom-gguf-model). A file selected that way is not matched to its registry entry, so the engine starts it with the default 8 192-token context, not the context length listed below, and its conversations are sent at temperature 0.8 and top-p 0.95 instead of the entry's `temperature_default` and `top_p_default`, which a model the app installed is sent at. If the engine is already running, as it is after **Set me up**, the new file is used after you quit and reopen the app (see [How the model manager works](#how-the-model-manager-works)).
 
 ### Qwen3 4B Instruct Q4_K_M — starter
 

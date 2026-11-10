@@ -49,7 +49,14 @@ from convsim_core.input_router import (
     route_player_input,
 )
 from convsim_core.runtime.base import ChatRuntime
-from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatProgress, ChatRequest, ChatToken
+from convsim_core.runtime.types import (
+    ChatFinal,
+    ChatMessage,
+    ChatProgress,
+    ChatRequest,
+    ChatToken,
+    SamplingDefaults,
+)
 from convsim_core.scenario_state import (
     ScenarioEvent,
     apply_state_delta,
@@ -59,6 +66,7 @@ from convsim_core.scenario_state import (
     initialize_state,
     partition_state_by_visibility,
 )
+from convsim_core.services.model_registry_service import active_model_sampling
 from convsim_core.services.reply_speed import (
     load_reply_speed,
     profile_for,
@@ -242,9 +250,13 @@ class _SyncRuntimeBridge:
         runtime: ChatRuntime,
         timing: Optional[TurnTimingBuilder] = None,
         parse_events: Optional[List[TurnEvent]] = None,
+        sampling: Optional[SamplingDefaults] = None,
     ) -> None:
         self._runtime = runtime
         self._timing = timing
+        # The turn's registry sampling (issue #580): a repair or retry is the
+        # same model answering the same turn, so it samples the same way.
+        self._sampling = sampling or SamplingDefaults()
         # The same list the parser appends its events to, read at call time to
         # tell the two kinds of extra call apart (see _call_kind).
         self._parse_events = parse_events if parse_events is not None else []
@@ -270,6 +282,7 @@ class _SyncRuntimeBridge:
         async def _call() -> str:
             request = ChatRequest(
                 messages=[ChatMessage(role="user", content=prompt)],
+                **self._sampling.request_fields(),
             )
             text, _, final = await _collect_runtime_output_timed(self._runtime, request)
             if final is not None:
@@ -728,7 +741,10 @@ async def process_turn(
         relationship_recap=relationship_recap,
     ))
 
-    # 7. Call runtime.
+    # 7. Call runtime. The model's registry entry sets the temperature and
+    #    top_p when it declares them (issue #580); otherwise the request keeps
+    #    ChatRequest's temperature and the adapter's top_p, as before.
+    sampling = active_model_sampling(conn, runtime.id)
     messages = [
         ChatMessage(role="system", content=prompt.system_prompt),
         ChatMessage(role="user", content=prompt.user_prompt),
@@ -744,6 +760,7 @@ async def process_turn(
         # budget costs nothing when unused. "balanced" keeps the 1024 this was
         # hardcoded to before reply speed became a setting.
         max_tokens=profile_for(reply_speed).max_tokens,
+        **sampling.request_fields(),
     )
     logger.debug(
         "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",
@@ -859,7 +876,7 @@ async def process_turn(
 
         # Wrap the runtime so parse_turn_output can make synchronous repair calls.
         # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
-        runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events)
+        runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events, sampling)
         turn_output = parse_turn_output(
             parse_input,
             runtime=runtime_bridge,
