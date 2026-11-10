@@ -74,12 +74,14 @@ CHECKS: Tuple[CheckSpec, ...] = (
 )
 CHECKS_BY_LETTER: Dict[str, CheckSpec] = {c.letter: c for c in CHECKS}
 
-# (c) fails until the engine wires authored state (fix 4 of issue #580), so it
-# reports as a warning unless --strict. (d) is hard: the engine scores a
-# scenario with a rubric on the rubric's dimensions only (fix 3, issue #578),
-# and every demo scenario has one.
+# Every check is hard by default. (d): the engine scores a scenario with a
+# rubric on the rubric's dimensions only (fix 3, issue #578), and every demo
+# scenario has one. (c): the turn schema requires each of the scenario's own
+# variables in state_delta and the prompt says what each means (fix 4, issue
+# #580), so a run in which none of them moves is the model ignoring its state.
+# ``--warn`` makes a check a warning again.
 DEFAULT_SEVERITY: Dict[str, str] = {
-    "a": HARD, "b": HARD, "c": WARN, "d": HARD, "e": HARD, "f": HARD,
+    "a": HARD, "b": HARD, "c": HARD, "d": HARD, "e": HARD, "f": HARD,
 }
 
 

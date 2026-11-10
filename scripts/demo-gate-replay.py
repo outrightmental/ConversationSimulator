@@ -23,12 +23,12 @@ each, and asserts on every turn and every run:
   (e) debrief         the debrief generated (HTTP 200), used_fallback false
   (f) turn_fallback   no NPC reply was the engine's canned safe fallback line
 
-By default (a), (b), (d), (e) and (f) are hard failures and (c) is a
-warning: the engine does not wire authored state into play yet (fix 4 of
-issue #580), so it fails on every run today. (d) became hard when the engine
+By default all six are hard failures. (d) became hard when the engine
 started scoring a scenario on its rubric's dimensions only (fix 3, issue
-#578). ``--strict`` makes all six hard; ``--hard`` and ``--warn`` set one
-check at a time.
+#578), and (c) when the turn schema started requiring each of the scenario's
+own variables in state_delta, with the prompt saying what each means (fix 4,
+issue #580). ``--warn`` makes one check (letter or name) a warning;
+``--strict`` makes all six hard whatever ``--warn`` says.
 
 It does not start anything. Start convsim-core on the real runtime first (the
 desktop app, or ``scripts/dev.sh`` with a model installed) and point ``--api``

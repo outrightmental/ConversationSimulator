@@ -13,8 +13,8 @@ these tests pin the harness instead:
     canned fallback turn), and the boundaries are where the issue puts them
     (a 6-word repeat, a 4-word closing question, a 5-word agenda run, a
     3-digit agenda number);
-  * severities: (a), (b), (d), (e), (f) hard and (c) a warning by default,
-    ``--strict`` and per-check overrides, and the exit status that follows;
+  * severities: all six hard by default, ``--strict`` and per-check
+    overrides, and the exit status that follows;
   * the facts the checks read come from the files that own them: the five
     conversations from ``edition.py``, the baseline variables from
     ``scenario_state.py``, the fallback line from the prompt composer, the
@@ -487,8 +487,14 @@ class TestTurnFallback:
 class TestSeverity:
     def test_defaults(self) -> None:
         assert checks.resolve_severity() == {
-            "a": "hard", "b": "hard", "c": "warn", "d": "hard", "e": "hard", "f": "hard",
+            "a": "hard", "b": "hard", "c": "hard", "d": "hard", "e": "hard", "f": "hard",
         }
+
+    def test_authored_state_check_is_hard_now_the_schema_requires_it(self) -> None:
+        # The turn schema requires each of the scenario's own variables in
+        # state_delta (issue #580), so a run that moves none of them fails.
+        assert checks.DEFAULT_SEVERITY["c"] == checks.HARD
+        assert checks.resolve_severity(warn=["authored_state"])["c"] == checks.WARN
 
     def test_rubric_check_is_hard_now_the_engine_scores_the_rubric(self) -> None:
         # The engine scores a scenario on its rubric's dimensions only (issue
@@ -503,6 +509,8 @@ class TestSeverity:
     def test_per_check_overrides_by_letter_or_name(self) -> None:
         sev = checks.resolve_severity(hard=["authored_state"], warn=["a", "d"])
         assert sev["c"] == "hard" and sev["a"] == "warn" and sev["d"] == "warn"
+        sev = checks.resolve_severity(warn=["c", "rubric_ids"])
+        assert sev["c"] == "warn" and sev["d"] == "warn" and sev["a"] == "hard"
 
     def test_conflicts_and_unknown_checks_are_errors(self) -> None:
         with pytest.raises(ValueError, match="both hard and warn"):
@@ -522,14 +530,15 @@ class TestSeverity:
 
     def test_verdicts(self) -> None:
         assert checks.run_verdict(self._results("")) == "pass"
-        assert checks.run_verdict(self._results("c")) == "warn"
+        assert checks.run_verdict(self._results("c")) == "fail"
+        assert checks.run_verdict(self._results("c", checks.resolve_severity(warn=["c"]))) == "warn"
         assert checks.run_verdict(self._results("cd")) == "fail"
         assert checks.run_verdict(self._results("a")) == "fail"
         assert checks.run_verdict(self._results("cd", checks.resolve_severity(strict=True))) == "fail"
         assert checks.run_verdict(self._results(""), error="turn 2: HTTP 504") == "fail"
 
     def test_status_labels(self) -> None:
-        by_letter = {r.letter: r for r in self._results("ac")}
+        by_letter = {r.letter: r for r in self._results("ac", checks.resolve_severity(warn=["c"]))}
         assert by_letter["a"].status == "FAIL"
         assert by_letter["c"].status == "warn"
         assert by_letter["b"].status == "pass"
@@ -557,7 +566,7 @@ class TestEvaluateRun:
             rubric_ids=["clarity", "preparation", "empathy", "holding_firm", "outcome_framing"],
         )
         status = {r.letter: r.status for r in results}
-        assert status == {"a": "FAIL", "b": "pass", "c": "warn", "d": "FAIL", "e": "pass", "f": "pass"}
+        assert status == {"a": "FAIL", "b": "pass", "c": "FAIL", "d": "FAIL", "e": "pass", "f": "pass"}
         assert checks.run_verdict(results) == "fail"
 
     def test_a_clean_run_passes(self) -> None:
@@ -903,9 +912,11 @@ class TestMain:
         return ScriptedApi(TestPlayConversation.lines, scores={"comprehension": 55.0}, **kw)
 
     def test_warnings_only_exit_zero_and_strict_exits_one(self, tmp_path: Path) -> None:
-        # Baseline-only deltas: (c) fails, which is a warning unless --strict.
-        assert self._run(tmp_path / "default", self._clean_api()) == 0
-        assert self._run(tmp_path / "strict", self._clean_api(), "--strict") == 1
+        # Baseline-only deltas: (c) fails, which is hard by default (issue
+        # #580) and a warning only when asked.
+        assert self._run(tmp_path / "default", self._clean_api()) == 1
+        assert self._run(tmp_path / "warn-c", self._clean_api(), "--warn", "c") == 0
+        assert self._run(tmp_path / "strict", self._clean_api(), "--warn", "c", "--strict") == 1
         assert self._run(tmp_path / "hard-c", self._clean_api(), "--hard", "c") == 1
 
     def test_writes_records_and_summary(self, tmp_path: Path) -> None:
@@ -1013,7 +1024,10 @@ class TestNpcMemory:
         )
 
     def _api(self, **kw: Any) -> ScriptedApi:
-        return ScriptedApi(TestPlayConversation.lines, rubric_scores=True, **kw)
+        # Each turn moves an authored variable of both conversations, so the
+        # authored-state check, hard by default (#580), passes.
+        moves = [{"comprehension": 5, "leverage": 5}] * len(TestPlayConversation.lines)
+        return ScriptedApi(TestPlayConversation.lines, rubric_scores=True, deltas=moves, **kw)
 
     def test_every_run_starts_without_a_recap_and_none_is_left(self, tmp_path: Path) -> None:
         api = self._api()
@@ -1167,6 +1181,9 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
             assert by_letter["a"]["status"] == "FAIL"
             assert by_letter["a"]["findings"][0]["turn"] == 2
             assert by_letter["f"]["status"] == "pass"
+            # The fake runtime moves no variable, so the authored-state check,
+            # hard by default since the schema requires them (#580), fails.
+            assert by_letter["c"]["status"] == "FAIL"
             assert record["verdict"] == "fail"
             # The demo plays the pack, so the debrief carries the pack
             # rubric's names (issue #578), and scores nothing off it. The
