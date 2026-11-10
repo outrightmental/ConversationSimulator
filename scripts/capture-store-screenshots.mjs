@@ -119,10 +119,14 @@ async function waitForTurn(page, before) {
     before,
     { timeout: 300_000 },
   )
-  await page
-    .locator('[data-testid="npc-turn-progress"]')
-    .waitFor({ state: 'detached', timeout: 300_000 })
-    .catch(() => log('WARNING: the turn panel was still up'))
+  // The staged panel, then "Updating the scene…" while the state delta is still
+  // out: the turn is committed only when both are gone.
+  for (const id of ['npc-turn-progress', 'turn-finishing-indicator']) {
+    await page
+      .locator(`[data-testid="${id}"]`)
+      .waitFor({ state: 'detached', timeout: 300_000 })
+      .catch(() => log(`WARNING: ${id} was still up`))
+  }
   await page.waitForTimeout(1200)
 }
 

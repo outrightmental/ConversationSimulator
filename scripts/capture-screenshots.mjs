@@ -531,17 +531,22 @@ async function main() {
         before,
         { timeout: 300_000 },
       )
-      // The reply streams in before the turn commits (#538): the staged panel
-      // stays up through "Updating the scene…" until the state deltas land, and
-      // only then do the meters move. Moving on as soon as the reply text shows
-      // captures 03 mid-commit with last turn's meters, and ends the hero before
-      // the meters it is meant to show have moved — on a slower machine that
-      // stage is seconds long. Wait for the panel to go; a panel that never
-      // leaves is logged and the capture carries on with what is on screen.
-      await page
-        .locator('[data-testid="npc-turn-progress"]')
-        .waitFor({ state: 'detached', timeout: 300_000 })
-        .catch(() => log('WARNING: the turn panel was still up — capturing the turn as rendered'))
+      // The reply streams in before the turn commits (#538). Once the whole
+      // line is on screen the staged panel goes, but the request carrying the
+      // state delta can still be out: the transcript says "Updating the
+      // scene…" until it answers, and only then do the meters move (the
+      // composer unlocks early so a message typed then is queued). Moving on
+      // as soon as the reply text shows captures 03 mid-commit with last
+      // turn's meters, ends the hero before its meters move, and clicks "End
+      // session" while it is disabled — on a slower machine that stage lasts
+      // many seconds. Wait for both to go; one that never leaves is logged and
+      // the capture carries on with what is on screen.
+      for (const id of ['npc-turn-progress', 'turn-finishing-indicator']) {
+        await page
+          .locator(`[data-testid="${id}"]`)
+          .waitFor({ state: 'detached', timeout: 300_000 })
+          .catch(() => log(`WARNING: ${id} was still up — capturing the turn as rendered`))
+      }
       // Let the meters animate to their new values and the banner land.
       await page.waitForTimeout(isHero ? 2600 : 800)
       if (isHero) mark('heroEnd')
