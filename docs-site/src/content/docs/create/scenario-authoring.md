@@ -434,6 +434,15 @@ A `max_delta_per_turn` that lets a variable reach an ending in one or two
 turns ends the conversation before it has started: count how many turns at
 the limit each ending needs.
 
+The same timing decides whether an event that leads into an ending (a
+closing offer before `success`, a polite no before `failure`) ever speaks.
+A turn that crosses both thresholds ends the conversation before the event
+fires, so keep the event's threshold at least one `max_delta_per_turn` short
+of the ending's: with `deal_progress` moving 20 a turn and success above
+70, fire the closing offer above 50, not 60. A warning the player is meant
+to answer before the ending needs two steps: it speaks on the turn after it
+fires, and the player answers on the turn after that.
+
 ---
 
 ## Step 6: Edit the rubric
