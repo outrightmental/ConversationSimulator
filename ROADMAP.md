@@ -85,7 +85,7 @@ Auto-update (#461), the accessibility audit (#462), performance targets on refer
 - [x] Screenshots and the README demo recording recaptured from a real local-model session on the v0.4 conversation screen (#554)
 - [x] The free demo edition — one model, five curated conversations, its own Steam app — is built from this release (#495)
 
-### Done — shipped in v0.3.0
+### Done — the v0.3 onboarding overhaul (shipped through v0.2.x; v0.3.0 was never tagged)
 
 - [x] Onboarding overhaul — first conversation in 60 seconds, zero error walls (#388)
   - Welcome screen: "Set me up" vs "Try it right now" (two-card, one decision)

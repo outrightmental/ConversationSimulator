@@ -90,7 +90,10 @@ scenario, player turns and seed are constants at the top of the file.
 `--hero-speed=N` (1 to 16, default 1) plays the hero recording back N times faster and
 draws "Played at Nx speed — this turn took S s on the capture machine" on every frame.
 Use it only where a real-time turn would make the recording minutes long; on the
-recommended hardware the default real-time recording fits the GIF budget.
+recommended hardware the default real-time recording fits the GIF budget. The label needs
+ffmpeg's `drawtext` filter (libfreetype) and the Inter font through fontconfig; with an
+ffmpeg that has no fontconfig, set `CONVSIM_HERO_FONTFILE` to a `.ttf`/`.otf` file. The
+script renders the label once before the playthrough and stops if it cannot.
 
 Two things that cost a run: `./scripts/dev.sh` serves convsim-core with `--reload`, so
 editing anything under `services/convsim-core/` mid-capture restarts the core and its

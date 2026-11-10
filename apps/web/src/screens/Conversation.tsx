@@ -159,6 +159,17 @@ function npcStatusLabel(sessionState: string, phase: Phase, isPlain: boolean): s
   return ''
 }
 
+/**
+ * The flow states a session has finished in — the same set as
+ * ENDED_FLOW_STATES in convsim-core. A turn that lands after the player ended
+ * the session reports the state the session kept (Ended, or the debrief's
+ * DebriefGenerating / DebriefReady / Error), not a listening state, so the
+ * screen must read any of them as the conversation being over.
+ */
+function isFinishedFlowState(state: string | null | undefined): boolean {
+  return state === 'Ended' || state === 'DebriefGenerating' || state === 'DebriefReady' || state === 'Error'
+}
+
 export default function Conversation() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -866,7 +877,7 @@ export default function Conversation() {
     recordInterval('full_response_ms', 'turn_submit')
     const flowState = last.flow_state_after ?? 'PlayerTurnListening'
     setSessionState(flowState)
-    setPhase(flowState === 'Ended' ? 'ended' : 'active')
+    setPhase(isFinishedFlowState(flowState) ? 'ended' : 'active')
     return 'adopted'
   }
 
@@ -909,7 +920,7 @@ export default function Conversation() {
       // loop this would poll to the ceiling and then report a timeout over a
       // reply the player is looking at.
       if (npcTurnCommittedRef.current) {
-        setPhase(sessionStateRef.current === 'Ended' ? 'ended' : 'active')
+        setPhase(isFinishedFlowState(sessionStateRef.current) ? 'ended' : 'active')
         return true
       }
       if (askTheTranscript) {
@@ -1172,7 +1183,7 @@ export default function Conversation() {
     lineCompleteRef.current = false
     setLineComplete(false)
 
-    if (turnData.state === 'Ended') {
+    if (isFinishedFlowState(turnData.state)) {
       const npcPayload = npcEvent?.payload
       setEndingType((npcPayload?.['ending_type'] as string | null | undefined) ?? null)
       setPhase('ended')

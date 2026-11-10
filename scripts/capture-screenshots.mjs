@@ -57,6 +57,7 @@
  *   CONVSIM_API_URL     default http://127.0.0.1:7355
  *   CONVSIM_SHOT_DIR    default docs/assets/screenshots
  *   CONVSIM_CAPTURE_SEED  variation seed typed into scenario setup (default 455)
+ *   CONVSIM_HERO_FONTFILE font file for the --hero-speed label when ffmpeg has no fontconfig
  */
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
@@ -248,8 +249,37 @@ async function preflight() {
         '       the screenshots without it.',
     )
   }
+  // A sped-up hero is honest only with its label, and drawtext needs an
+  // ffmpeg built with libfreetype plus a font it can find: through fontconfig
+  // (`font=Inter`), or a file named by CONVSIM_HERO_FONTFILE. Prove it on one
+  // frame now, not after a playthrough that took a real model an hour.
+  if (CAPTURE_HERO && HERO_SPEED > 1) {
+    try {
+      await run('ffmpeg', [
+        '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=320x240:d=1',
+        '-vf', `drawtext=${heroFontOption()}:text='label check':fontsize=18:fontcolor=white`,
+        '-frames:v', '1', '-f', 'null', '-',
+      ])
+    } catch (err) {
+      fail(
+        `--hero-speed=${HERO_SPEED} needs ffmpeg's drawtext filter to label the recording, ` +
+          'and the label check failed:\n' +
+          `       ${err.message.split('\n').slice(0, 3).join('\n       ')}\n` +
+          '       Use an ffmpeg built with libfreetype and fontconfig, or set\n' +
+          '       CONVSIM_HERO_FONTFILE to a .ttf/.otf file (e.g. Inter), or drop --hero-speed.',
+      )
+    }
+  }
   log(`runtime ${runtimeId} ready — model: ${health.runtime.llm_model_name}`)
   return health
+}
+
+/** drawtext's font option: a font file when CONVSIM_HERO_FONTFILE names one, else Inter via fontconfig. */
+function heroFontOption() {
+  const file = process.env.CONVSIM_HERO_FONTFILE
+  if (!file) return 'font=Inter'
+  // Filter-graph syntax: forward slashes, and the drive colon escaped.
+  return `fontfile='${file.replace(/\\/g, '/').replace(/:/g, '\\:')}'`
 }
 
 function run(cmd, cmdArgs) {
@@ -717,7 +747,7 @@ async function encodeHero(webm, marks) {
   const pts = speed > 1 ? `setpts=PTS/${speed},` : ''
   const label =
     speed > 1
-      ? `,drawtext=font=Inter:text='Played at ${speed}x speed — this turn took ${Math.round(duration)} s on the capture machine'` +
+      ? `,drawtext=${heroFontOption()}:text='Played at ${speed}x speed — this turn took ${Math.round(duration)} s on the capture machine'` +
         ':fontsize=18:fontcolor=white:box=1:boxcolor=black@0.7:boxborderw=8:x=12:y=h-th-20'
       : ''
   log(

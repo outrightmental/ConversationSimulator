@@ -39,6 +39,13 @@ _CLAIM_FILES = (
     "docs/STEAM_BETA_VERIFICATION_REPORT.md",
     "docs-site/src/content/docs/dev/qa-steam-platform-matrix.md",
     "docs-site/src/content/docs/dev/steam-beta-verification.md",
+    "docs/platform-notes.md",
+    "docs-site/src/content/docs/play/platform-notes.md",
+    "docs/release-checklist.md",
+    "docs-site/src/content/docs/dev/release-checklist.md",
+    "docs/STEAM_ROADMAP.md",
+    "docs-site/src/content/docs/dev/steam-roadmap.md",
+    "docs/release-notes-template.md",
 )
 
 # Phrasings that promise an Intel Mac can run the Steam build. Deliberately
@@ -51,6 +58,11 @@ _INTEL_CLAIMS = (
     re.compile(r"macOS \(Intel\)", re.I),
     re.compile(r"macOS \(Universal\)", re.I),
     re.compile(r"universal binary", re.I),
+    re.compile(r"Apple Silicon[^|\n]{0,24}\bor Intel\b", re.I),
+    re.compile(r"Apple M\d+\s*/\s*Intel\b", re.I),
+    re.compile(r"\bmacOS\s*[—–-]\s*Intel\b", re.I),
+    re.compile(r"\bIntel\s*=\s*x64\b", re.I),
+    re.compile(r"_x64\.dmg\b", re.I),
 )
 
 

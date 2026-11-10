@@ -16,7 +16,8 @@
 # `project`). Without it every run says so and exits green — the same shape as
 # the Steam job without its credentials.
 #
-#   Scheduled run   audit only: reports drift in the job summary, changes nothing.
+#   Scheduled run   audit only: reports drift in the job summary, changes nothing,
+#                   and fails the run when there is drift or the audit could not run.
 #   Run workflow    mode=audit (default) or mode=apply to converge the board.
 
 name: Project board sync
@@ -103,8 +104,8 @@ jobs:
             tail -n 200 sync.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          # Exit 1 means drift (audit) or work left for a human (apply): worth a
-          # red run on a manual dispatch, noise on the daily audit.
-          if [ "$status" -ne 0 ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            exit "$status"
-          fi
+          # project-structure.py exits 1 for drift, for work left to a human,
+          # and for a failed gh call or a crash alike, so a non-zero exit cannot
+          # be waved through as drift: the run goes red and the summary above
+          # says which it was. A red daily audit means "run apply, or look".
+          exit "$status"

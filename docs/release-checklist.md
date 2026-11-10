@@ -369,7 +369,6 @@ Mark which platforms were manually tested for this release.
 | Platform | Source / dev | Desktop build | Tester | Date |
 |---|---|---|---|---|
 | macOS (Apple Silicon) | ☐ | ☐ | | |
-| macOS (Intel) | ☐ | ☐ | | |
 | Linux x86_64 | ☐ | ☐ | | |
 | Windows x86_64 | ☐ | ☐ | | |
 
@@ -427,7 +426,8 @@ Select **Job Interview Basics → Behavioral Interview** and run a session.
 - [ ] Player can submit a text turn; NPC responds with no timeout error (a CPU-only turn can take several minutes — the app waits for it)
 - [ ] Session ends cleanly via the Stop / End Session button
 - [ ] Debrief screen loads with rubric scores and an export option
-- [ ] Exporting the transcript hands you a download named `session-<id>.json`
+- [ ] On the debrief, *Export session JSON* downloads `session-<id>.json` and *Export transcript (Markdown)* downloads
+  `session-<id>-transcript.md`
   (convsim-core writes nothing to the data folder's `exports\`)
 
 ### E.4 Log verification
@@ -683,8 +683,8 @@ Run this checklist on a **clean macOS machine** (fresh Steam library, no prior
 Conversation Simulator data) before declaring the macOS Stage 3 gate open.
 It is the macOS equivalent of Part E.
 
-Minimum hardware: macOS 14 Sonoma or newer, Apple Silicon (arm64) or Intel
-(x86-64).  See `docs/platform-notes.md` for system requirements.
+Minimum hardware: macOS 14 Sonoma or newer, Apple Silicon (arm64); the Steam
+build has no Intel slice (#563).  See `docs/platform-notes.md` for system requirements.
 
 ### G.1 Gatekeeper and notarization
 
@@ -768,7 +768,8 @@ Select **Job Interview Basics → Behavioral Interview** and run a session.
 - [ ] Player can submit a text turn; NPC responds with no timeout error (a CPU-only turn can take several minutes — the app waits for it)
 - [ ] Session ends cleanly via the Stop / End Session button
 - [ ] Debrief screen loads with rubric scores and an export option
-- [ ] Exporting the transcript hands you a download named `session-<id>.json`
+- [ ] On the debrief, *Export session JSON* downloads `session-<id>.json` and *Export transcript (Markdown)* downloads
+  `session-<id>-transcript.md`
   (convsim-core writes nothing to the data folder's `exports/`)
 
 ### G.5 Offline play after model download
@@ -897,7 +898,8 @@ Select **Job Interview Basics → Behavioral Interview** and run a session.
 - [ ] Session starts; NPC opening line delivered
 - [ ] Player text turn submitted; NPC responds with no timeout error (a CPU-only turn can take several minutes)
 - [ ] Session ends cleanly; debrief screen loads with rubric scores and export option
-- [ ] Exporting the transcript hands you a download named `session-<id>.json`
+- [ ] On the debrief, *Export session JSON* downloads `session-<id>.json` and *Export transcript (Markdown)* downloads
+  `session-<id>-transcript.md`
   (convsim-core writes nothing to the data folder's `exports/`)
 
 ### H.5 Offline play after model download
@@ -1100,7 +1102,6 @@ be on each required platform.
 |----------|-----------------|--------|
 | Windows 10 / 11 (x86-64) | ≥ 2 | TBD |
 | macOS — Apple Silicon | ≥ 1 | TBD |
-| macOS — Intel | ≥ 1 | TBD |
 | Linux (x86-64) | ≥ 1 | TBD |
 | Steam Deck (SteamOS 3.x, Gaming Mode) | ≥ 1 | TBD for G4-02 |
 
@@ -1266,7 +1267,7 @@ Release version  : vX.Y.Z-alpha.N
 Date             : YYYY-MM-DD
 Tester           :
 Platform         : macOS 14.x / Ubuntu 22.04.x / Windows 11
-CPU              : Apple M2 / Intel Core i7-xxxx / AMD Ryzen xxxx
+CPU              : Apple M2 (macOS) / AMD Ryzen xxxx / Intel Core i7-xxxx
 RAM              : xx GB
 VRAM             : xx GB (or "none — CPU only")
 Model tested     : Qwen3 4B Q4_K_M / (none — fake runtime only)
