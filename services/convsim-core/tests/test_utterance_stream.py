@@ -269,26 +269,32 @@ class TestSentenceGateRepetition:
         assert out == ["Sure."]
         assert gate.repeated is not None
 
-    @pytest.mark.parametrize("previous, line", [
-        # One sentence: nothing is released before the line is done.
-        ("Coffee or tea for you today?", "Coffee or tea for you?"),
-        # The splitter starts a sentence only at a capital or a quote, so
-        # Rosa's "¡Hola! ¿...?" is one sentence too.
-        ("¡Hola! ¿Qué te pongo hoy?", "¡Hola! ¿Qué te pongo?"),
-    ])
-    def test_whole_line_similarity_holds_a_line_nothing_of_which_is_out(self, previous, line):
+    def test_whole_line_similarity_holds_a_line_nothing_of_which_is_out(self):
+        # One sentence: nothing is released before the line is done. Its two
+        # clauses swapped share no 6-word run, only trigrams.
+        previous = "The brakes are all fresh, we put new tires on."
+        line = "We put new tires on, the brakes are all fresh."
         gate = SentenceGate(checker=_safe, previous_lines=[previous])
         assert _stream(gate, line) == []
         assert [m.kind for m in gate.repeated.matches] == ["similar"]
 
     def test_similarity_does_not_shorten_a_line_already_on_screen(self):
-        previous = "Hi. Coffee or tea today?"
-        line = "Hi. Coffee or tea?"
+        previous = "We have new tires. The brakes are fresh too."
+        line = "The brakes are fresh too. We have new tires."
         from convsim_prompt.repetition import check_repetition
 
         assert [m.kind for m in check_repetition(line, [previous]).matches] == ["similar"]
         gate = SentenceGate(checker=_safe, previous_lines=[previous])
-        assert _stream(gate, line) == ["Hi.", " Coffee or tea?"]
+        assert _stream(gate, line) == ["The brakes are fresh too.", " We have new tires."]
+        assert gate.repeated is None
+
+    @pytest.mark.parametrize("previous, line", [
+        ("Great, thanks for sharing that with me.", "Great, thanks for sharing that."),
+        ("Son cuatro euros con cincuenta, por favor.", "Son cuatro euros con cincuenta."),
+    ])
+    def test_a_short_line_is_not_held_for_similarity(self, previous, line):
+        gate = SentenceGate(checker=_safe, previous_lines=[previous])
+        assert _stream(gate, line) == [line]
         assert gate.repeated is None
 
     def test_a_fresh_line_streams_as_before(self):

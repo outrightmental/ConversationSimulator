@@ -463,12 +463,13 @@ class TestStreamedLines:
     @pytest.mark.asyncio
     async def test_a_repeat_only_the_whole_line_shows_is_noted_once_part_is_out(self):
         streamer = _Streamer()
-        runtime = _Replies("Hi. Coffee or tea?")
+        runtime = _Replies("The brakes are fresh too. We have new tires.")
         result, conn = await _play(
-            runtime, ("npc_opening", "Hi. Coffee or tea today?"), streamer=streamer, player="Hello!",
+            runtime, ("npc_opening", "We have new tires. The brakes are fresh too."),
+            streamer=streamer, player="Hello!",
         )
-        assert streamer.tokens == ["Hi.", " Coffee or tea?"]
-        assert result.npc_utterance == "Hi. Coffee or tea?"
+        assert streamer.tokens == ["The brakes are fresh too.", " We have new tires."]
+        assert result.npc_utterance == "The brakes are fresh too. We have new tires."
         assert len(runtime.requests) == 1
         assert _kinds(conn) == ["repetition_detected", "repetition_retry_skipped"]
 

@@ -15,8 +15,11 @@ A line repeats an earlier one when it:
     words, as the previous line (a short tag such as "Okay?" said twice is a
     tic, not a loop);
   * or has a word-trigram Jaccard similarity above ``SIMILARITY_THRESHOLD``
-    (0.5) with it, which catches short near-copies that no 6-word run can
-    ("¡Hola! ¿Qué te pongo?" after "¡Hola! ¿Qué te pongo hoy?").
+    (0.5) with it, when both lines have ``SIMILARITY_MIN_WORDS`` (6) or more
+    words. It catches a near-copy built from runs too short for the first
+    test, such as the same short sentences in another order ("The brakes are
+    fresh too. We have new tires." after "We have new tires. The brakes are
+    fresh too.", 0.56).
 
 Words are compared case- and punctuation-insensitively: text is NFKC
 normalised and case-folded, apostrophes are dropped (so "What's" and
@@ -38,9 +41,13 @@ REPEAT_RUN_WORDS = 6
 SAME_QUESTION_MIN_WORDS = 4
 #: Word-trigram Jaccard similarity above this is a repeat.
 SIMILARITY_THRESHOLD = 0.5
-#: A line needs this many words (two trigrams) before its similarity counts:
-#: "Sí, claro." twice in a row is a tic, like a short closing question.
-SIMILARITY_MIN_WORDS = SAME_QUESTION_MIN_WORDS
+#: Both lines need this many words (four trigrams) before their similarity
+#: counts. On shorter lines one added word swings the score past the
+#: threshold: "That's a fair point." after "That's a fair point, honestly."
+#: scores 0.67, "Son cuatro euros con cincuenta." after the same price "por
+#: favor" 0.60, and each hit costs the player a whole extra generation. From
+#: six words a score above the threshold needs at least three shared trigrams.
+SIMILARITY_MIN_WORDS = 6
 #: How many of the NPC's most recent lines a reply is compared with.
 GUARD_WINDOW = 2
 
@@ -228,7 +235,7 @@ def check_repetition(
             and closing == ending_question(previous)
         ):
             matches.append(RepetitionMatch(kind=QUESTION, against=index, words=closing))
-        if similarity and len(line_words) >= SIMILARITY_MIN_WORDS:
+        if similarity and min(len(line_words), len(previous_words)) >= SIMILARITY_MIN_WORDS:
             score = trigram_similarity(line_words, previous_words)
             if score > SIMILARITY_THRESHOLD:
                 matches.append(RepetitionMatch(kind=SIMILAR, against=index, similarity=score))

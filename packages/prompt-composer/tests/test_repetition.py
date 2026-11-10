@@ -5,7 +5,8 @@ for word, and said "We do have new tires on hand" three turns running; Diane's
 question from her first turn came back in her third. The engine compares each
 reply with the NPC's last two lines and retries once with the repeated line
 quoted. These tests pin what counts as a repeat (a 6-word run, the same 4+
-word closing question, trigram similarity above 0.5), which earlier lines are
+word closing question, trigram similarity above 0.5 between lines of 6+
+words), which earlier lines are
 read, how two replies are ranked, and the retry prompt: the turn's system
 prompt unchanged, the repeated line quoted as untrusted data, the player's
 line still last.
@@ -33,6 +34,7 @@ from convsim_prompt.repetition import (
     RUN,
     SAME_QUESTION_MIN_WORDS,
     SIMILAR,
+    SIMILARITY_MIN_WORDS,
     SIMILARITY_THRESHOLD,
     RepetitionMatch,
     RepetitionReport,
@@ -140,25 +142,48 @@ class TestCheckRepetition:
         # The same question two lines back is not "the previous line's".
         assert not check_repetition(line4, ["Okay then.", prev4]).flagged
 
-    def test_a_short_near_copy_is_caught_by_similarity(self):
-        prev = "¡Hola! ¿Qué te pongo hoy?"
-        line = "¡Hola! ¿Qué te pongo?"
+    def test_a_near_copy_no_run_shows_is_caught_by_similarity(self):
+        """The same two short sentences in another order: no 6-word run."""
+        prev = "We have new tires. The brakes are fresh too."
+        line = "The brakes are fresh too. We have new tires."
         report = check_repetition(line, [prev])
         assert [m.kind for m in report.matches] == [SIMILAR]
-        assert report.similarity == pytest.approx(2 / 3)
+        assert report.similarity == pytest.approx(5 / 9)
         assert not check_repetition(line, [prev], similarity=False).flagged
 
     def test_similarity_must_be_above_the_threshold(self):
         assert SIMILARITY_THRESHOLD == 0.5
-        # a b c d vs a b c x: one shared trigram of three: 1/3.
-        assert not check_repetition("one two three four", ["one two three five"]).flagged
+        # Two of four trigrams shared, against six in all: 1/3.
+        assert not check_repetition(
+            "one two three four five six", ["one two three four nine ten"], runs=False,
+        ).flagged
         # Exactly one half is not above it.
-        half = check_repetition("one two three four", ["one two three four five six"])
-        assert trigram_similarity(words("one two three four"), words("one two three four five six")) == 0.5
-        assert not half.flagged
+        a, b = "one two three four five six seven eight", "one two three four five six nine ten"
+        assert trigram_similarity(words(a), words(b)) == 0.5
+        assert not check_repetition(a, [b], runs=False).flagged
 
-    def test_lines_under_four_words_are_not_judged_by_similarity(self):
-        assert not check_repetition("Sí, claro, adelante.", ["Sí, claro, adelante."]).flagged
+    def test_similarity_counts_from_six_words_on_both_lines(self):
+        assert SIMILARITY_MIN_WORDS == 6
+        six = "Okay, so what's your number then?"
+        assert [m.kind for m in check_repetition(six, ["Okay, so what's your number now?"]).matches] == [SIMILAR]
+        # Five words on either side: not judged, whichever line is shorter.
+        five = "Okay, so what's your number?"
+        assert trigram_similarity(words(five), words(six)) == 0.75
+        assert not check_repetition(five, [six]).flagged
+        assert not check_repetition(six, [five]).flagged
+
+    @pytest.mark.parametrize("previous, line", [
+        # Short acknowledgements: one word more or less swings the score.
+        ("Great, thanks for sharing that with me.", "Great, thanks for sharing that."),  # 0.60
+        ("That's a fair point, honestly.", "That's a fair point."),  # 0.67
+        # The player asked the price again.
+        ("Son cuatro euros con cincuenta, por favor.", "Son cuatro euros con cincuenta."),  # 0.60
+        ("Son cuatro euros con cincuenta.", "Son cuatro euros con cincuenta, por favor."),
+        ("Sí, claro, adelante.", "Sí, claro, adelante."),
+    ])
+    def test_short_lines_are_not_judged_by_similarity(self, previous, line):
+        assert trigram_similarity(words(line), words(previous)) > SIMILARITY_THRESHOLD
+        assert not check_repetition(line, [previous]).flagged
 
     def test_a_fresh_reply_is_not_flagged(self):
         report = check_repetition(

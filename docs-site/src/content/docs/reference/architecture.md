@@ -302,7 +302,7 @@ nothing, and the turn behaves as it did before streaming.
 The engine retries once, with the repeated line quoted and the temperature
 0.1 higher, a reply that repeats one of the NPC's last two lines (a shared run
 of 6+ words, the same closing question of 4+ words as the previous line, or
-word-trigram similarity above 0.5; the opening counts), and keeps whichever
+word-trigram similarity above 0.5 between lines of 6+ words; the opening counts), and keeps whichever
 reply repeats less. The retry is a `repetition_retry` extra call in the turn's
 `timing`. Streaming keeps the contract above: a sentence is released only if
 the line up to it, taken as the whole line, shares no 6-word run with those
