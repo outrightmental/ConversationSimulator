@@ -2,7 +2,10 @@
 # Conversation Simulator v0.4.0 — Release Notes
 
 > **Minor release (2026-11-10).** This is the release the free demo edition
-> is built from. The character's reply reaches the screen a sentence at a time
+> is built from. The characters hold a conversation: they answer what was
+> said, stay in their role and their story, stop repeating themselves, and
+> are scored on each scenario's own rubric, on a new starter model. The
+> character's reply reaches the screen a sentence at a time
 > while the model writes it. The wait says what the turn is doing and, once
 > turns have been measured on this machine, when the reply will start. The
 > first session explains itself, the Conversation Brief leads with the
@@ -12,6 +15,52 @@
 > reached players through the v0.2.x patch releases.
 
 ## What's new in v0.4.0
+
+### The characters hold a conversation (#580, #578)
+
+A pre-check of demo gate D-05 played the five demo conversations to the
+debrief and found four of them failing on the character. Ray, the car
+dealer, asked the buyer for the buyer's lowest price; Rosa offered back the
+coffee just ordered; Diane asked the same question four turns running;
+Jordan adopted the player's slip as their own research. Every debrief scored
+dimensions the model made up, around 50. Most of it was engine wiring that
+no model would fix, and it is now wired:
+
+- The turn prompt names who is speaking in the transcript, tells the
+  character to answer what was just said, never to ask for what it was just
+  told, never to speak from the player's side and not to greet again, and
+  quotes its previous line as one not to reuse. The difficulty preset's own
+  description reaches the prompt.
+- The five demo characters are rewritten as do and never rules: Ray's
+  counter ladder, Diane's market-rate probe and her answer about the
+  process, Jordan's fixed research topic, Rosa's confirmations, prices and
+  pastry case, and Dana's concrete answers about the role.
+- **Each scenario is scored on its own rubric.** The rubric is loaded with
+  the scenario, its dimensions are in the turn prompt, and the turn's
+  output schema allows only their ids. The debrief places each dimension in
+  a low, medium or high band, moves it by the turn notes, applies the
+  rubric's weights, and labels the scorecard with the rubric's own names.
+  Hidden variables stay out of its telemetry.
+- **The scenario's own state and events drive the turn.** Each variable the
+  scenario plays is listed with what it means, the state change is limited
+  to them, meters the scenario does not play are hidden, and an event that
+  fires injects its instruction into the next turn, so Ray counters, Diane
+  probes and the endings can be reached.
+- A reply that repeats one of the character's last two lines is generated
+  once more, unless the player asked to hear it again. On the conversation
+  screen, which streams the reply, that applies to its first sentence.
+- The registry's sampling defaults (temperature 0.75, top-p 0.9) reach the
+  runtime; turns went out at 0.8 and 0.95 before.
+- **The starter model is Qwen3 4B Instruct 2507** (2.5 GB, Apache-2.0), the
+  non-thinking instruct release of Qwen3 4B. Played on the same code, it was
+  more coherent than the hybrid Qwen3 4B in all five conversations. The
+  demo's one-click set-up installs it.
+
+`scripts/demo-gate-replay.py` replays the five against a running engine with
+scripted player turns and checks each turn for repetition, the hidden agenda
+said aloud, state that never moves, debriefs off the rubric or on the
+template, and canned fallback lines. It is a pre-check: the manual D-05 run
+on reference hardware still judges each conversation.
 
 ### The reply arrives as it is written (#538)
 
@@ -213,8 +262,8 @@ install and returned by the install status API, and a `NETWORK` failure shows
   session, and the debrief read the export in a shape convsim-core does not
   produce; both are fixed, so *Export session JSON* works too.
 - A debrief scores one rubric dimension once however the model spells its id
-  (`self-awareness`, `Self Awareness`); the turn prompt does not yet give the
-  model the rubric's own ids (#578).
+  (`self-awareness`, `Self Awareness`), and the turn schema now allows only
+  the rubric's own ids (#578, above).
 - The README, website and docs no longer state an official-pack count (it had
   drifted to four, five and six in different places), no longer call the Steam
   edition Steam Deck Verified, name the files the build actually produces, and
@@ -230,6 +279,13 @@ install and returned by the install status API, and a `NETWORK` failure shows
 
 ## Upgrade notes
 
+- The starter model is now Qwen3 4B Instruct 2507
+  (`qwen3-4b-instruct-2507-q4_k_m`). An install of the earlier starter,
+  Qwen3 4B Instruct Q4_K_M (`qwen3-4b-instruct-q4_k_m`), keeps working under
+  its own name; to switch, install the new starter from the model manager.
+- The five demo packs' versions go up (Dating, Difficult Conversations,
+  Everyday Negotiation, Job Interview, Language Café), so an installed copy
+  is replaced by the bundled one at the next start.
 - One database migration, `0019_install_error_code`, runs when convsim-core
   starts. It adds a nullable `error_code` column to `installed_models` and
   `setup_install_jobs`. Rows written before it keep no code, and the
@@ -259,7 +315,11 @@ install and returned by the install status API, and a `NETWORK` failure shows
   from Steam (#575). A source build at a release tag still runs on an Intel
   Mac.
 - Model names are shown as the registry writes them, for example "Qwen3 4B
-  Instruct Q4_K_M" (#555).
+  Instruct 2507 Q4_K_M" (#555).
+- In the full app, three of the five demo conversations (The Behavioral
+  Interview, The Used Car Deal, Coffee at Café Sol) and three other scenarios
+  still play their built-in catalog versions, which have neither the rubric
+  nor the rewritten characters. The demo plays the pack versions (#582).
 - The reply-start estimate needs turns measured on this machine with the same
   engine and model before it can appear. The first turn on a fresh machine, or
   on a newly chosen model, shows the stages and the clock without one.
