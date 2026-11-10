@@ -98,7 +98,11 @@ from convsim_core.services.turn_timing import (
     TurnClock,
     TurnTimingBuilder,
 )
-from convsim_core.services.utterance_stream import SentenceGate, UtteranceStreamExtractor
+from convsim_core.services.utterance_stream import (
+    SentenceGate,
+    UtteranceStreamExtractor,
+    first_sentence_repeats,
+)
 from convsim_core.storage.repositories.relationship_repo import get_relationship_recap
 
 logger = logging.getLogger(__name__)
@@ -817,6 +821,9 @@ def _debug_parse_events(events: List[TurnEvent], *, save_transcript: bool) -> Li
 #: Why a repeat was kept without a retry, for the debug drawer.
 _ALREADY_RELEASED = "the line had already been released to the player"
 _REPEAT_REQUESTED = "the player asked for the line again"
+#: What repeated, when only a streamed line's first sentence did.
+_FIRST_SENTENCE = "its first sentence "
+_HELD_FIRST_SENTENCE = "its first sentence, held back from the stream, "
 
 
 def _player_asked_for_repeat(player_line: str) -> bool:
@@ -927,6 +934,7 @@ async def _guard_repetition(
     events: List[TurnEvent],
     streamer: Optional[TurnStreamer],
     first_call_s: float,
+    held: Optional[RepetitionReport] = None,
 ) -> Optional[_RetryReply]:
     """The repetition guard on a line nobody has seen yet.
 
@@ -936,14 +944,24 @@ async def _guard_repetition(
     repeat, one retry (see ``_retry_repetitive_reply``); the retry is kept
     only if it repeats strictly less. Never raises: on any error the first
     reply is kept.
+
+    ``held`` is why the sentence gate held the streamed line's first sentence
+    back, when it did. A first sentence that ends with the previous line's
+    closing question is held even when the whole line ends otherwise and is
+    no repeat; nothing but this guard will ever commit a held line, so it
+    counts as one and is retried. The retry is then judged the same way, by
+    its whole line and then by its first sentence as the gate would have.
     """
     try:
         if not previous_lines or not _is_model_line(turn_output):
             return None
         report = check_repetition(turn_output.npc_utterance, previous_lines)
+        why = report.describe()
+        if not report.flagged and held is not None:
+            report, why = held, _HELD_FIRST_SENTENCE + held.describe()
         if not report.flagged:
             return None
-        events.append(_repetition_event("repetition_detected", report.describe()))
+        events.append(_repetition_event("repetition_detected", why))
         if streamer is not None:
             await streamer.progress("checking")
         retry, why_not = await _retry_repetitive_reply(
@@ -959,12 +977,16 @@ async def _guard_repetition(
             events.append(_repetition_event("repetition_retry_discarded", why_not))
             return None
         retry_report = check_repetition(retry.output.npc_utterance, previous_lines)
+        retry_why = retry_report.describe()
+        if not retry_report.flagged and held is not None:
+            retry_report = first_sentence_repeats(retry.output.npc_utterance, previous_lines)
+            retry_why = _FIRST_SENTENCE + retry_report.describe()
         if less_repetitive(retry_report, report):
             events.append(_RetryKeptEvent(
                 event_type="repetition_retry_kept",
                 category="repetition",
                 reason=(
-                    f"the retry repeats less: {retry_report.describe()}" if retry_report.flagged
+                    f"the retry repeats less: {retry_why}" if retry_report.flagged
                     else "the retry does not repeat an earlier line"
                 ),
                 discarded_raw_output=raw_text,
@@ -972,7 +994,7 @@ async def _guard_repetition(
             return retry
         events.append(_repetition_event(
             "repetition_retry_discarded",
-            f"the retry repeats as much or more: {retry_report.describe()}",
+            f"the retry repeats as much or more: {retry_why}",
         ))
         return None
     except Exception as exc:  # noqa: BLE001 — the guard must never cost the player a turn
@@ -1323,6 +1345,9 @@ async def process_turn(
             events=turn_parse_events,
             streamer=streamer,
             first_call_s=(observation.final_at or time.perf_counter()) - observation.sent_at,
+            # A first sentence the gate held back makes the line a repeat
+            # even when the whole line, which ends otherwise, does not.
+            held=gate.repeated,
         )
         if kept_retry is not None:
             # The retry is the turn: the row stores its output, which the

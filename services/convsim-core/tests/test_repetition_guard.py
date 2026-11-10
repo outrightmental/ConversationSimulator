@@ -17,7 +17,8 @@ repeats less. These tests pin:
     reply the player got;
   * a player who asks for the line again gets the repeat, unretried;
   * streaming (#538): released text is committed text. A first sentence that
-    would repeat is never shown, so the line can still be retried; a repeat
+    would repeat is never shown, so the line can still be retried, and is,
+    even when the whole line ends otherwise; a repeat
     after the first sentence streams with the line and is noted, never cut
     (a cut left the player an answer without its question), and the rest of
     the line is still held to the output check.
@@ -60,6 +61,10 @@ _REPEAT_AT_END = "I hear you, and I respect that. What's the smallest you'd be o
 # Starts by repeating _NPC_1's first sentence.
 _REPEAT_AT_START = "That's a solid offer, and I see your point. Twelve is close, though."
 _FRESH = "Twelve is close. Sign today and I can throw in floor mats."
+
+# A reply that opens with the previous line's closing question, then moves on.
+_GREETING = "Good to hear it. What brings you here?"
+_ASKS_BACK = "What brings you here? Twelve is close and I can work with it."
 
 
 def _turn(line: str, **fields: Any) -> dict:
@@ -557,6 +562,51 @@ class TestStreamedLines:
         assert result.npc_utterance == _FRESH
         assert result.streamed_line is None
         assert _kinds(conn) == ["repetition_detected", "repetition_retry_kept"]
+
+    @pytest.mark.asyncio
+    async def test_a_first_sentence_held_for_its_question_alone_is_retried(self):
+        """The gate holds "What brings you here?": as a whole line it ends with
+        the previous line's closing question. The whole reply ends otherwise,
+        so only the held first sentence makes it a repeat, and the guard must
+        still retry it: nothing else would ever commit the held line."""
+        streamer = _Streamer()
+        runtime = _Replies(_ASKS_BACK, _FRESH)
+        result, conn = await _play(runtime, ("npc_opening", _GREETING), streamer=streamer, player="Hello!")
+        assert streamer.tokens == [] and streamer.finals == []
+        assert "checking" in streamer.stages
+        assert len(runtime.requests) == 2
+        assert f'"{_GREETING}"' in runtime.requests[1].messages[1].content
+        assert [c.kind for c in result.timing.extra_calls] == ["repetition_retry"]
+        assert result.npc_utterance == _stored_npc_line(conn) == _FRESH
+        assert result.streamed_line is None
+        assert _kinds(conn) == ["repetition_detected", "repetition_retry_kept"]
+        detected = _parse_events(conn)[0]
+        assert detected["reason"].startswith("its first sentence, held back from the stream,")
+        assert "the same 4-word question as the previous NPC line" in detected["reason"]
+
+    @pytest.mark.asyncio
+    async def test_a_retry_whose_first_sentence_would_be_held_too_keeps_the_first_reply(self):
+        """The retry is judged as the held line was: its first sentence would
+        be held for the same question, so it repeats as much."""
+        streamer = _Streamer()
+        again = "What brings you here? I can do twelve, and not a dollar more."
+        runtime = _Replies(_ASKS_BACK, again)
+        result, conn = await _play(runtime, ("npc_opening", _GREETING), streamer=streamer, player="Hello!")
+        assert streamer.tokens == [] and streamer.finals == []
+        assert len(runtime.requests) == 2
+        assert result.npc_utterance == _stored_npc_line(conn) == _ASKS_BACK
+        assert _kinds(conn) == ["repetition_detected", "repetition_retry_discarded"]
+        assert "question" in _parse_events(conn)[1]["reason"]
+
+    @pytest.mark.asyncio
+    async def test_the_same_reply_unstreamed_is_not_a_repeat(self):
+        """Without a streamer nothing is held, and the whole line ends with
+        its own sentence, not the previous question: no retry."""
+        runtime = _Replies(_ASKS_BACK)
+        result, conn = await _play(runtime, ("npc_opening", _GREETING), player="Hello!")
+        assert len(runtime.requests) == 1
+        assert result.npc_utterance == _ASKS_BACK
+        assert not any(k.startswith("repetition") for k in _kinds(conn))
 
     @pytest.mark.asyncio
     async def test_a_repeat_after_the_first_sentence_streams_whole_and_is_noted(self):
