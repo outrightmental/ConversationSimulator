@@ -87,9 +87,8 @@ RAY_T4 = (
     "open to for the car?"
 )
 DIANE_T2 = (
-    "I see the market rate. But without specific data on the cost to the company of "
-    "not giving you the raise, I can't justify this request. What's the financial "
-    "impact of not adjusting your compensation?"
+    "I see the market rate. But tell me what it would cost the firm to lose you, "
+    "because without that I can't justify this request."
 )
 DANA_SCORES = {
     "ambiguous_problem_handling": 52.0, "mistake_management": 51.0, "cultural_fit": 52.0,
@@ -238,16 +237,18 @@ class TestAgendaLeak:
         assert len(found) == 1
         assert found[0].turn == 2
         assert "agenda item 2" in found[0].message
-        assert "cost to the company of not giving" in found[0].evidence
+        assert "what it would cost the firm to lose" in found[0].evidence
 
     def test_ray_names_his_floor(self) -> None:
         agenda = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
         found = checks.find_agenda_leaks(
-            _lines("Honestly, thirteen-eight is my real minimum on this unit."), agenda
+            _lines("Honestly, I won't call any number your lowest, but thirteen-eight is it."),
+            agenda,
         )
         # The agenda words, and the floor itself in dealer shorthand.
-        assert [f.evidence for f in found] == ["real minimum on this unit", "thirteen-eight"]
-        assert found[1].message == "says the number 13,800 of hidden agenda item 3 aloud"
+        assert [f.evidence for f in found] == ["call any number your lowest", "thirteen-eight"]
+        assert found[0].message == "says a 5-word run of hidden agenda item 4 aloud"
+        assert found[1].message == "says the number 13,800 of hidden agenda item 4 aloud"
 
     def test_five_words_fail_four_pass(self) -> None:
         agenda = ["alpha beta gamma delta epsilon zeta"]
@@ -270,7 +271,7 @@ class TestSecretNumbers:
     ray = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
 
     def test_rays_floor_is_his_only_secret_number(self) -> None:
-        assert checks.secret_numbers(self.ray) == {13800: (3, "13,800")}
+        assert checks.secret_numbers(self.ray) == {13800: (4, "13,800")}
 
     @pytest.mark.parametrize("line, evidence", [
         ("Look, I can't go under $13,800 on this one.", "13,800"),
@@ -284,7 +285,7 @@ class TestSecretNumbers:
     def test_the_floor_in_any_form_fails(self, line: str, evidence: str) -> None:
         found = checks.find_agenda_leaks(_lines(line), self.ray)
         assert [f.evidence for f in found] == [evidence]
-        assert found[0].message == "says the number 13,800 of hidden agenda item 3 aloud"
+        assert found[0].message == "says the number 13,800 of hidden agenda item 4 aloud"
         assert found[0].turn == 1
 
     @pytest.mark.parametrize("line", [
@@ -298,6 +299,17 @@ class TestSecretNumbers:
     ])
     def test_other_numbers_pass(self, line: str) -> None:
         assert checks.find_agenda_leaks(_lines(line), self.ray) == []
+
+    def test_numbers_the_agenda_tells_the_character_to_use_are_not_secret(self) -> None:
+        # Ray's counter ladder and his final concession are his to say aloud;
+        # only the floor item says to keep its number back.
+        assert set(checks.secret_numbers(self.ray)) == {13800}
+        agenda = [
+            "Counters come off the 15,500 list: 15,000, then 14,600, then 14,200.",
+            "Her real budget ceiling is 2,400 a month; never reveal it.",
+            "The 1,200 deposit is negotiable.",
+        ]
+        assert set(checks.secret_numbers(agenda)) == {2400}
 
     def test_the_number_is_reported_once_per_line(self) -> None:
         line = "13,800. Yes, $13,800, thirteen thousand eight hundred."

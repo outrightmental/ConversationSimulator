@@ -359,10 +359,29 @@ def numbers_in(text: str) -> List[Tuple[int, str]]:
     return found
 
 
+# An agenda item whose number is the NPC's to keep: it says not to say, state,
+# reveal or hint at it, or names it a floor, minimum or bottom line. Numbers in
+# other items are the character's to use aloud — Ray's counter ladder
+# ("15,000, then 14,600, then 14,200") is meant to be spoken; his floor is not.
+_KEEP_BACK = re.compile(
+    r"\b(?:never|not|don't|do not)\b[^.;]{0,40}?\b(?:say|state|reveal|mention|tell|"
+    r"hint|disclose|share|admit|quote)\b"
+    r"|\b(?:floor|minimum|bottom line|walk-away|secret|ceiling|budget|reserve)\b",
+    re.IGNORECASE,
+)
+
+
 def secret_numbers(hidden_agenda: Sequence[str]) -> Dict[int, Tuple[int, str]]:
-    """``value -> (agenda item, as written)`` for each 3+ digit agenda number."""
+    """``value -> (agenda item, as written)`` for each 3+ digit number the agenda keeps back.
+
+    Only items that say the number must not be said (``_KEEP_BACK``) contribute;
+    an agenda that lists prices for the character to quote does not turn every
+    price into a leak.
+    """
     secrets: Dict[int, Tuple[int, str]] = {}
     for index, item in enumerate(hidden_agenda, start=1):
+        if not _KEEP_BACK.search(item):
+            continue
         for value, written in numbers_in(item):
             if value >= SECRET_NUMBER_MIN and value not in secrets:
                 secrets[value] = (index, written)
