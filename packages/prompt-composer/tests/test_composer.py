@@ -25,16 +25,17 @@ from convsim_prompt import (
     TranscriptEntry,
     compose_turn_prompt,
     LAYER_ORDER,
+    OPTIONAL_SYSTEM_LAYERS,
     SYSTEM_LAYER_ORDER,
     UNTRUSTED_CONTENT_BEGIN,
     UNTRUSTED_CONTENT_END,
 )
 from _helpers import (
     DEFAULT_SAFETY_POLICY,
+    make_full_interview_input,
     make_hiring_manager_npc,
     make_interview_input,
     make_interview_scenario,
-    make_rubric_interview_input,
 )
 
 
@@ -152,8 +153,8 @@ class TestLayerOrdering:
 
     def test_output_schema_is_final_system_layer(self):
         """OUTPUT_SCHEMA must appear after every other system layer."""
-        # With a rubric, so the optional RUBRIC layer is in the prompt too.
-        bundle = compose_turn_prompt(make_rubric_interview_input())
+        # With every optional layer in the prompt too: a rubric, state, an event.
+        bundle = compose_turn_prompt(make_full_interview_input())
         sp = bundle.system_prompt
         schema_pos = _layer_pos(sp, "OUTPUT_SCHEMA")
         for name in SYSTEM_LAYER_ORDER[:-1]:
@@ -182,19 +183,22 @@ class TestLayerOrdering:
         assert "LAYER:PLAYER_UTTERANCE" in bundle.user_prompt
 
     def test_all_system_layers_present_in_system_prompt(self):
-        bundle = compose_turn_prompt(make_rubric_interview_input())
+        bundle = compose_turn_prompt(make_full_interview_input())
         for name in SYSTEM_LAYER_ORDER:
             assert f"LAYER:{name}" in bundle.system_prompt, f"Missing layer: {name}"
 
-    def test_rubric_is_the_only_system_layer_a_scenario_can_lack(self):
-        """A scenario with no rubric (the hardcoded catalog) has no RUBRIC layer;
-        every other system layer is always there."""
+    def test_only_the_optional_layers_can_be_missing(self):
+        """A scenario with no rubric and no state of its own (the hardcoded
+        catalog), on a turn no event fired, has no RUBRIC, STATE_VARIABLES or
+        SCENARIO_EVENTS layer; every other system layer is always there."""
+        assert OPTIONAL_SYSTEM_LAYERS == {"RUBRIC", "STATE_VARIABLES", "SCENARIO_EVENTS"}
         bundle = compose_turn_prompt(make_interview_input())
-        assert bundle.layer_map["RUBRIC"] == ""
         for name in SYSTEM_LAYER_ORDER:
-            if name != "RUBRIC":
+            if name in OPTIONAL_SYSTEM_LAYERS:
+                assert bundle.layer_map[name] == ""
+                assert f"LAYER:{name}" not in bundle.system_prompt
+            else:
                 assert f"LAYER:{name}" in bundle.system_prompt, f"Missing layer: {name}"
-        assert "LAYER:RUBRIC" not in bundle.system_prompt
 
     def test_system_layer_order_ends_with_output_schema(self):
         assert SYSTEM_LAYER_ORDER[-1] == "OUTPUT_SCHEMA"
@@ -520,7 +524,7 @@ class TestPromptBudget:
             TranscriptEntry(speaker="npc", text="B " * 300, turn_number=i)
             for i in range(20)
         ]
-        inp = make_rubric_interview_input(transcript=long_transcript)
+        inp = make_full_interview_input(transcript=long_transcript)
         inp.token_budget = 400
         bundle = compose_turn_prompt(inp)
         for name in SYSTEM_LAYER_ORDER:

@@ -101,8 +101,11 @@ Player text (HTTP POST /api/sessions/{id}/turn)
         │     (NSFW, criminal, etc.) into ok | redirect | refuse | stop |
         │     stop_with_resource_message. It is not yet wired into this pipeline.
         │
-        ▼ 3. Build prompt  (convsim_prompt.compose_turn_prompt)
-        │     scenario context, NPC persona, state variables,
+        ▼ 3. Evaluate event triggers, then build the prompt
+        │     (scenario_state.evaluate_event_triggers, on the state the previous
+        │     turn left; convsim_prompt.compose_turn_prompt)
+        │     scenario context, NPC persona, the scenario's state variables
+        │     with their meanings, the instructions of the events that fired,
         │     last 12 transcript turns, safety policy, player utterance
         │
         ▼ 4. Call ChatRuntime  (runtime.chat_stream)
@@ -113,11 +116,11 @@ Player text (HTTP POST /api/sessions/{id}/turn)
         │     "I'm not sure what to say right now. Could you repeat that?"
         │
         ▼ 6. Apply bounded state deltas  (scenario_state.apply_state_delta)
-        │     reject unknown keys, clamp per-turn delta, clamp to [min,max]
+        │     reject unknown keys and any the session's schema does not name,
+        │     clamp per-turn delta, clamp to [min,max]
         │
-        ▼ 7. Evaluate event triggers & ending conditions
-        │     (scenario_state.evaluate_event_triggers / evaluate_ending_condition)
-        │     variable_above / variable_below / max_turns / flag conditions
+        ▼ 7. Evaluate ending conditions  (scenario_state.evaluate_ending_condition)
+        │     variable_above / variable_below / max_turns conditions
         │     ending priority: safety_stop → player_exit → success → failure → timeout
         │
         ▼ 8. Persist atomically  (SQLite transaction)
@@ -382,6 +385,21 @@ the `state.variables` block in the scenario YAML. Each variable also carries
 `max_delta_per_turn` (default 20) which caps how much the LLM can move it
 per turn. Unknown variable names proposed by the LLM are rejected silently
 and logged at WARNING.
+
+A scenario that declares variables of its own plays exactly those, plus any
+baseline its events or ending conditions read (`played_variable_names`).
+The turn prompt's `STATE_VARIABLES` layer gives each its range, per-turn
+limit and authored `description` (or, without one, what the scenario's
+events on it say), and the turn output schema the runtime is sent makes
+`state_delta` an object with each of them a required integer and no other
+key; the engine clamps each to its `max_delta_per_turn`. A baseline nothing
+in the scenario reads is left out of the prompt and cannot be moved. A scenario that
+configures no state (most of the hardcoded catalog) plays every baseline
+with a free-form `state_delta`, as before.
+
+Scenario events are evaluated at the start of a turn, on the state the
+previous turn left; each one that fires puts its `npc_instruction` into that
+turn's prompt (the `SCENARIO_EVENTS` layer) and is recorded on that turn.
 
 ---
 

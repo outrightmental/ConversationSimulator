@@ -18,6 +18,8 @@ from .layers import (
     build_rubric_layer,
     build_safety_policy_layer,
     build_scenario_brief_layer,
+    build_scenario_events_layer,
+    build_state_variables_layer,
 )
 from .types import PromptBundle, PromptComposerInput, turn_output_schema_for
 
@@ -31,12 +33,18 @@ _CHARS_PER_TOKEN = 4
 #   - OUTPUT_SCHEMA is always the final system-prompt section so it cannot be
 #     displaced or overridden by anything in the scenario or player input.
 #   - The UNTRUSTED_CONTENT_BEGIN / UNTRUSTED_CONTENT_END sentinels (inserted by
-#     the scenario brief and response style layers respectively) bracket items 3–10
-#     (SCENARIO_BRIEF through RESPONSE_STYLE, now including RELATIONSHIP_MEMORY),
-#     making the untrusted region verifiable by adapters.
-#   - RUBRIC is constant for a session, so it sits with the stable layers,
-#     ahead of CURRENT_STATE, where a prompt cache can reuse it (issue #524).
-#     It is empty, and left out of the prompt, for a scenario with no rubric.
+#     the scenario brief and response style layers respectively) bracket
+#     SCENARIO_BRIEF through RESPONSE_STYLE (every layer below between them,
+#     RELATIONSHIP_MEMORY and SCENARIO_EVENTS included), making the untrusted
+#     region verifiable by adapters.
+#   - RUBRIC and STATE_VARIABLES are constant for a session, so they sit with
+#     the stable layers, ahead of CURRENT_STATE, where a prompt cache can reuse
+#     them (issue #524). Everything from CURRENT_STATE on can change per turn.
+#   - SCENARIO_EVENTS changes per turn, so it sits after CURRENT_STATE, inside
+#     the untrusted region with the other authored text (issue #580).
+#   - RUBRIC, STATE_VARIABLES and SCENARIO_EVENTS are empty, and left out of
+#     the prompt, when there is nothing to say: no rubric, no state of the
+#     scenario's own, no event fired for this turn (OPTIONAL_SYSTEM_LAYERS).
 SYSTEM_LAYER_ORDER: List[str] = [
     "GLOBAL_RULES",
     "SAFETY_POLICY",
@@ -44,13 +52,18 @@ SYSTEM_LAYER_ORDER: List[str] = [
     "NPC_PUBLIC_PERSONA",
     "NPC_PRIVATE_PERSONA",
     "RUBRIC",                  # the scenario rubric's dimension ids (issue #578)
-    "CURRENT_STATE",
+    "STATE_VARIABLES",         # what each variable means; update them every turn (issue #580)
+    "CURRENT_STATE",           # first per-turn layer
     "RECENT_TRANSCRIPT",
     "MEMORY_SUMMARY",
     "RELATIONSHIP_MEMORY",     # bounded cross-session player recap (issue #314)
+    "SCENARIO_EVENTS",         # instructions of the events that fired for this turn (issue #580)
     "RESPONSE_STYLE",          # untrusted region closes here (END sentinel appended by this layer)
     "OUTPUT_SCHEMA",           # always last in system prompt
 ]
+
+# System layers a prompt may leave out because they have nothing to say.
+OPTIONAL_SYSTEM_LAYERS = frozenset({"RUBRIC", "STATE_VARIABLES", "SCENARIO_EVENTS"})
 
 # User-turn layer ordering. Text that changes every turn goes here, after every
 # system layer, so it never sits in front of stable text (issue #524).
@@ -78,7 +91,8 @@ def _build_layers(inp: PromptComposerInput, max_transcript_turns: int) -> Dict[s
         "NPC_PUBLIC_PERSONA": build_npc_public_persona_layer(inp.scenario),
         "NPC_PRIVATE_PERSONA": build_npc_private_persona_layer(inp.scenario),
         "RUBRIC": build_rubric_layer(inp.scenario),
-        "CURRENT_STATE": build_current_state_layer(inp.session_state),
+        "STATE_VARIABLES": build_state_variables_layer(inp.scenario),
+        "CURRENT_STATE": build_current_state_layer(inp.session_state, inp.scenario),
         "RECENT_TRANSCRIPT": build_recent_transcript_layer(
             inp.recent_transcript,
             max_turns=max_transcript_turns,
@@ -87,6 +101,7 @@ def _build_layers(inp: PromptComposerInput, max_transcript_turns: int) -> Dict[s
         ),
         "MEMORY_SUMMARY": build_memory_summary_layer(inp.memory_summary),
         "RELATIONSHIP_MEMORY": build_relationship_memory_layer(inp.relationship_recap),
+        "SCENARIO_EVENTS": build_scenario_events_layer(inp.scenario_event_instructions),
         "RESPONSE_STYLE": build_response_style_layer(inp.scenario),
         "PREVIOUS_NPC_LINE": build_previous_npc_line_layer(
             inp.recent_transcript,

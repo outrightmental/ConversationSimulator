@@ -17,6 +17,8 @@ from convsim_prompt import (
     ScenarioData,
     ScenarioRubric,
     SessionState,
+    StateVariable,
+    StateVariableCue,
     TranscriptEntry,
 )
 
@@ -147,4 +149,38 @@ def make_rubric_interview_input(**kwargs) -> PromptComposerInput:
     """make_interview_input with the scenario's rubric loaded, as a pack scenario has."""
     inp = make_interview_input(**kwargs)
     inp.scenario.rubric = make_interview_rubric()
+    return inp
+
+
+def make_interview_state_variables() -> list:
+    """State variables shaped like behavioral_interview's: two authored, one baseline it declares."""
+    return [
+        StateVariable(
+            name="impression", min=0, max=100, max_delta_per_turn=6,
+            description="Maya's overall read of the candidate as a hire.",
+        ),
+        StateVariable(
+            name="specificity_score", min=0, max=100, max_delta_per_turn=15,
+            cues=[StateVariableCue(
+                direction="above", threshold=75,
+                text="The candidate just gave a specific answer. Follow up on it.",
+            )],
+        ),
+        StateVariable(name="rapport", min=0, max=100, max_delta_per_turn=10),
+    ]
+
+
+def make_stateful_interview_input(**kwargs) -> PromptComposerInput:
+    """make_interview_input with state variables of the scenario's own (issue #580)."""
+    inp = make_interview_input(**kwargs)
+    inp.scenario.state_variables = make_interview_state_variables()
+    inp.session_state.variables.update({"impression": 50, "specificity_score": 50})
+    return inp
+
+
+def make_full_interview_input(**kwargs) -> PromptComposerInput:
+    """An input with every optional system layer filled: a rubric, state, a fired event."""
+    inp = make_stateful_interview_input(**kwargs)
+    inp.scenario.rubric = make_interview_rubric()
+    inp.scenario_event_instructions = ["Maya is losing confidence. Begin wrapping up."]
     return inp

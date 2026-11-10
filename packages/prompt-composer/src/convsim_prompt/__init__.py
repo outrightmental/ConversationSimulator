@@ -1,6 +1,12 @@
 """convsim_prompt — Layered prompt composer for Conversation Simulator NPC turns."""
 
-from .composer import LAYER_ORDER, SYSTEM_LAYER_ORDER, USER_LAYER_ORDER, compose_turn_prompt
+from .composer import (
+    LAYER_ORDER,
+    OPTIONAL_SYSTEM_LAYERS,
+    SYSTEM_LAYER_ORDER,
+    USER_LAYER_ORDER,
+    compose_turn_prompt,
+)
 from .debrief_composer import DebriefComposerInput, DebriefTurnRecord, compose_debrief_prompt
 from .debrief_output import (
     DEBRIEF_NARRATIVE_SCHEMA,
@@ -48,15 +54,19 @@ from .types import (
     ScenarioData,
     ScenarioRubric,
     SessionState,
+    StateVariable,
+    StateVariableCue,
     TranscriptEntry,
     build_npc_turn_output_schema,
     rubric_ids_in_schema,
+    state_variables_in_schema,
     turn_output_schema_for,
 )
 
 __all__ = [
     "compose_turn_prompt",
     "LAYER_ORDER",
+    "OPTIONAL_SYSTEM_LAYERS",
     "SYSTEM_LAYER_ORDER",
     "USER_LAYER_ORDER",
     "UNTRUSTED_CONTENT_BEGIN",
@@ -75,11 +85,15 @@ __all__ = [
     "ScenarioData",
     "ScenarioRubric",
     "SessionState",
+    "StateVariable",
+    "StateVariableCue",
     "TranscriptEntry",
     # Per-session output schemas and rubric id matching (issue #578)
     "build_npc_turn_output_schema",
     "turn_output_schema_for",
     "rubric_ids_in_schema",
+    # The scenario's state variables in the turn schema (issue #580)
+    "state_variables_in_schema",
     "RubricIdMatcher",
     "normalize_dimension_id",
     "filter_rubric_observations",

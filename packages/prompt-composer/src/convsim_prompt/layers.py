@@ -8,12 +8,17 @@ Layer ordering (SPEC §10.1):
   5. NPC_PRIVATE_PERSONA  — model-behavior instructions, never revealed to player
   6. RUBRIC               — the scenario rubric's dimensions (issue #578); empty, and
                             left out, when the scenario has no rubric
-  7. CURRENT_STATE        — runtime state managed by app
-  8. RECENT_TRANSCRIPT    — session history
-  9. MEMORY_SUMMARY       — app-generated memory summary
- 10. RELATIONSHIP_MEMORY  — bounded cross-session player recap (issue #314)
- 11. RESPONSE_STYLE       — compact role reinject and conversation rules
- 12. OUTPUT_SCHEMA        — trusted app rule, always last in system prompt
+  7. STATE_VARIABLES      — what each of the scenario's variables means, and to update
+                            them every turn (issue #580); empty, and left out, when the
+                            scenario plays no state of its own
+  8. CURRENT_STATE        — runtime state managed by app
+  9. RECENT_TRANSCRIPT    — session history
+ 10. MEMORY_SUMMARY       — app-generated memory summary
+ 11. RELATIONSHIP_MEMORY  — bounded cross-session player recap (issue #314)
+ 12. SCENARIO_EVENTS      — instructions of the scenario events that fired for this turn
+                            (issue #580); empty, and left out, on most turns
+ 13. RESPONSE_STYLE       — compact role reinject and conversation rules
+ 14. OUTPUT_SCHEMA        — trusted app rule, always last in system prompt
  [user turn] PREVIOUS_NPC_LINE — the NPC's own last line, framed as untrusted, not to be reused
  [user turn] PLAYER_UTTERANCE  — untrusted player input, always last
 """
@@ -29,6 +34,7 @@ from .types import (
     SafetyPolicy,
     ScenarioData,
     SessionState,
+    StateVariable,
     TranscriptEntry,
 )
 
@@ -357,14 +363,152 @@ def build_rubric_layer(scenario: ScenarioData) -> str:
     return "\n".join(lines)
 
 
-def build_current_state_layer(state: SessionState) -> str:
+def _clip(text: str, max_words: int) -> str:
+    """``text`` on one line, cut to ``max_words`` with an ellipsis, never cutting a quote open.
+
+    A cut ends at a clause or phrase boundary when one is in reach
+    (``_cap_words``). A parenthesis or quotation mark the cut leaves open is
+    cut away with what follows it, or dropped when nothing would be left.
+    """
+    words = _one_line(text).split()
+    if len(words) <= max_words:
+        return " ".join(words)
+    brief = " ".join(_cap_words(words, max_words))
+    for opener, closer in (("(", ")"), ('"', '"'), ("“", "”")):
+        if opener == closer:
+            unbalanced = brief.count(opener) % 2 == 1
+        else:
+            unbalanced = brief.count(opener) > brief.count(closer)
+        if unbalanced:
+            trimmed = brief[:brief.rfind(opener)]
+            brief = trimmed if trimmed.strip() else brief.replace(opener, "")
+    return brief.rstrip(",;:—- ") + " …"
+
+
+# Words per authored variable description, and per event sentence quoted as a
+# cue, in the STATE_VARIABLES layer. The demo descriptions run under 30 words.
+_STATE_DESCRIPTION_WORDS = 45
+_STATE_CUE_WORDS = 16
+
+
+def _cue_text(text: str) -> str:
+    """The first sentence of an event's instruction, as a cue to what a level means."""
+    sentence = _first_sentence(_one_line(text)).strip()
+    if sentence.count('"') % 2 == 1:
+        # The sentence ended inside a quotation ("Diane cuts in: "You've told
+        # me about the work."): keep what came before the quote.
+        sentence = sentence[:sentence.find('"')].rstrip(" :—,")
+    return _clip(sentence, _STATE_CUE_WORDS).rstrip(" .")
+
+
+def _state_variable_line(variable: StateVariable) -> str:
+    limit = max(0, int(variable.max_delta_per_turn))
+    head = f"  - {_one_line(variable.name)} ({variable.min}-{variable.max}, ±{limit} a turn)"
+    parts: List[str] = []
+    description = _one_line(variable.description)
+    if description:
+        parts.append(_clip(description, _STATE_DESCRIPTION_WORDS))
+    for cue in variable.cues:
+        text = _cue_text(cue.text)
+        if text and cue.direction in ("above", "below"):
+            parts.append(f"{cue.direction} {cue.threshold}: {text}{'' if text.endswith('…') else '.'}")
+    return f"{head}: {' '.join(parts)}" if parts else head
+
+
+def build_state_variables_layer(scenario: ScenarioData) -> str:
+    """What each of the scenario's state variables means, and to update them (issue #580).
+
+    The starter model was shown bare ``name: value`` pairs, the engine
+    baselines first, and wrote ``trust`` and ``patience`` on almost every turn
+    and a variable the scenario authors once in twenty turns, so the meters,
+    events and endings built on the authored ones never moved (P4). This
+    layer names the scenario's variables, one line each: the range, the
+    per-turn limit, and the authored meaning, or else what its events say a
+    level means. It tells the model to put every one in ``state_delta`` each
+    turn, which the session's turn schema requires (``turn_output_schema_for``).
+
+    The variables and their meanings are fixed for the session, so the layer
+    sits with the stable layers, ahead of CURRENT_STATE, where a prompt cache
+    reuses it (issue #524); the values are in CURRENT_STATE. It is authored
+    content, inside the untrusted region, and each line is collapsed to one
+    line. Returns "" for a scenario that plays no state of its own.
+    """
+    if not scenario.state_variables:
+        return ""
+    npc_name = _one_line(scenario.npc.display_name) or "the NPC"
+    lines = [
+        _tag("STATE_VARIABLES"),
+        # "This exchange", not "the player's line": a variable can track the
+        # NPC's own moves (used_car_negotiation's concession_level rises when
+        # Ray names a lower counter).
+        f"How the conversation stands for {npc_name} (you). In state_delta every turn, give each "
+        "a number: above 0 if this exchange raises it, below 0 if it lowers it, else 0. Small "
+        "steps, unless an exchange changes a lot.",
+    ]
+    for variable in scenario.state_variables:
+        lines.append(_state_variable_line(variable))
+    return "\n".join(lines)
+
+
+def build_current_state_layer(state: SessionState, scenario: Optional[ScenarioData] = None) -> str:
+    """The turn number and the variables' values now.
+
+    With a ``scenario`` that plays state of its own, only its variables are
+    listed, in its order: the authored ones first, and no engine baseline the
+    scenario never reads (issue #580). Otherwise every variable in the state.
+    """
     lines = [
         _tag("CURRENT_STATE"),
         f"Turn number: {state.turn_number}",
         "Current NPC state variables:",
     ]
-    for key, value in state.variables.items():
-        lines.append(f"  {key}: {value}")
+    names = scenario.state_variable_names if scenario is not None else []
+    if names:
+        for name in names:
+            if name in state.variables:
+                lines.append(f"  {name}: {state.variables[name]}")
+    else:
+        for key, value in state.variables.items():
+            lines.append(f"  {key}: {value}")
+    return "\n".join(lines)
+
+
+# Words per event instruction in the SCENARIO_EVENTS layer. The official
+# packs' instructions run 31-83 words.
+_EVENT_INSTRUCTION_WORDS = 120
+
+
+def build_scenario_events_layer(instructions: List[str]) -> str:
+    """The instructions of the scenario events that fired for this turn (issue #580).
+
+    Before this the engine evaluated events after the reply and recorded
+    their ids, but no ``npc_instruction`` ever reached a prompt. Events are
+    now evaluated on the state the previous turn left, before the prompt is
+    composed, and each one that fires puts its instruction here for this
+    turn: once for an event that fires once, on every turn its condition holds
+    for one marked ``repeat``.
+
+    It changes from turn to turn, so it sits after the stable layers, with
+    the per-turn ones (issue #524). It is authored content: inside the
+    untrusted region, each instruction on one line. Returns "" on a turn with
+    no event.
+    """
+    texts = [_clip(text, _EVENT_INSTRUCTION_WORDS) for text in instructions]
+    texts = [t for t in texts if t]
+    if not texts:
+        return ""
+    lines = [
+        _tag("SCENARIO_EVENTS"),
+        # The event fired on the state the previous turn left, so the line that
+        # earned it has been answered already; the player's latest line may
+        # have dealt with it ("give me a source" after they gave one).
+        "What changes now: the scenario's direction for this reply, from how the conversation has "
+        "gone so far. It is private, like your private goals: act on it, never mention or explain "
+        "it. A line quoted in it is a suggestion; use your own words, fitted to what the player "
+        "just said, and if their latest line already deals with it, acknowledge that instead.",
+    ]
+    for text in texts:
+        lines.append(f"  - {text}")
     return "\n".join(lines)
 
 

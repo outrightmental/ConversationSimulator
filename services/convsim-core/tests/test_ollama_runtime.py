@@ -646,6 +646,34 @@ async def test_a_sessions_rubric_enum_reaches_ollama_unchanged():
 
 
 @pytest.mark.asyncio
+async def test_a_sessions_state_delta_reaches_ollama_unchanged():
+    """Ollama builds its grammar from ``format``: the session's state_delta
+    (issue #580), required and closed, must arrive as sent."""
+    from convsim_prompt import StateVariable, build_npc_turn_output_schema
+
+    schema = build_npc_turn_output_schema(state_variables=[
+        StateVariable(name="comprehension", max_delta_per_turn=10),
+        StateVariable(name="repair_count", max_delta_per_turn=1),
+    ])
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="fake-tag:1b",
+        messages=[ChatMessage(role="user", content="go")],
+        json_schema=schema,
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    sent = client.stream.call_args.kwargs["json"]["format"]
+    assert sent == schema
+    delta = sent["properties"]["state_delta"]
+    assert delta["required"] == ["comprehension", "repair_count"]
+    assert delta["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_request_excludes_format_when_no_schema():
     """Without a json_schema, 'format' must not appear in the payload."""
     client = MagicMock()

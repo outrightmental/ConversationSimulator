@@ -23,10 +23,64 @@ from convsim_prompt.types import (
     RubricDimension,
     ScenarioData,
     ScenarioRubric,
+    StateVariable,
+    StateVariableCue,
 )
-from convsim_core.scenario_state import ScenarioEvent
+from convsim_core.scenario_state import (
+    BASELINE_DESCRIPTIONS,
+    ScenarioEvent,
+    build_variable_defs,
+    played_variable_names,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def prompt_state_variables(
+    overrides: Optional[Dict[str, Any]],
+    events: Optional[List[ScenarioEvent]],
+    ending_conditions: Optional[Dict[str, Any]],
+) -> List[StateVariable]:
+    """The state variables a scenario's turn prompt and turn schema name (issue #580).
+
+    The variables ``played_variable_names`` picks, in its order, each with its
+    range, per-turn clamp and meaning: the description the scenario authored,
+    or else the engine's own line for a baseline plus what each of the
+    scenario's events on the variable says its level means (the event's
+    instruction, of which the prompt quotes the first sentence). [] for a
+    scenario that configures no state of its own.
+    """
+    defs = build_variable_defs(overrides)
+    variables: List[StateVariable] = []
+    for name in played_variable_names(overrides, events, ending_conditions):
+        definition = defs[name]
+        description = definition.description
+        cues: List[StateVariableCue] = []
+        if not description:
+            description = BASELINE_DESCRIPTIONS.get(name, "")
+            for event in events or []:
+                when = event.when if isinstance(event.when, dict) else {}
+                threshold = when.get("threshold")
+                kind = when.get("type")
+                if (
+                    when.get("variable") == name
+                    and kind in ("variable_above", "variable_below")
+                    and isinstance(threshold, int) and not isinstance(threshold, bool)
+                ):
+                    cues.append(StateVariableCue(
+                        direction="above" if kind == "variable_above" else "below",
+                        threshold=threshold,
+                        text=event.npc_instruction,
+                    ))
+        variables.append(StateVariable(
+            name=name,
+            min=definition.min,
+            max=definition.max,
+            max_delta_per_turn=definition.max_delta_per_turn,
+            description=description,
+            cues=cues,
+        ))
+    return variables
 
 
 @dataclass
@@ -43,7 +97,7 @@ class ScenarioInfo:
     ending_conditions: Optional[Dict[str, Any]] = None
 
     def get_scenario_data(self, difficulty: str) -> ScenarioData:
-        """Return a ScenarioData with difficulty settings applied."""
+        """Return a ScenarioData with difficulty settings and the played state applied."""
         diff_settings = self.difficulty_options.get(
             difficulty,
             self.difficulty_options.get("standard", DifficultySettings()),
@@ -60,7 +114,23 @@ class ScenarioInfo:
             opening_npc_says=self.opening_npc_says,
             player_visible_goals=self.scenario_data.player_visible_goals,
             rubric=self.scenario_data.rubric,
+            state_variables=self._prompt_state_variables(),
         )
+
+    def _prompt_state_variables(self) -> List[StateVariable]:
+        """``prompt_state_variables`` of this scenario; [] for a state block it cannot read.
+
+        A workbench draft need not validate. Its turns fail on a malformed
+        variable as they always have (``build_variable_defs`` in the turn
+        pipeline); resolving the scenario for its debrief must not.
+        """
+        try:
+            return prompt_state_variables(
+                self.state_variable_overrides, self.events, self.ending_conditions,
+            )
+        except (TypeError, ValueError, AttributeError) as exc:
+            logger.warning("State variables of %s could not be read: %s", self.scenario_data.scenario_id, exc)
+            return []
 
 
 SCENARIOS: Dict[str, ScenarioInfo] = {

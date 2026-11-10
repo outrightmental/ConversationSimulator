@@ -3,6 +3,8 @@
 
 Responsibilities:
   - Initialize state from baseline and custom variable definitions.
+  - Name the variables a scenario plays: the ones it declares, then the
+    baselines its events and endings read (``played_variable_names``).
   - Apply LLM-proposed deltas with clamping and unknown-key rejection.
   - Evaluate event trigger conditions (variable_above, variable_below, max_turns, flag).
   - Evaluate ending conditions (success, failure, timeout, safety_stop, player_exit).
@@ -13,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Collection, Dict, List, Optional, Set, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +36,9 @@ class ScenarioVariableDef:
     default: int = 50
     visibility: VariableVisibility = VariableVisibility.VISIBLE
     max_delta_per_turn: int = 20
+    # The authored one-line meaning (``state.variables.<name>.description``),
+    # which the turn prompt's STATE_VARIABLES layer shows the model (#580).
+    description: str = ""
 
 
 # Baseline variables present in every scenario unless overridden by custom defs.
@@ -61,6 +66,24 @@ BASELINE_VARIABLES: Dict[str, ScenarioVariableDef] = {
 }
 
 
+# What each baseline means, for a scenario that relies on one without saying
+# (issue #580): the turn prompt's STATE_VARIABLES layer shows it to the NPC,
+# hence the second person.
+BASELINE_DESCRIPTIONS: Dict[str, str] = {
+    "trust": "How much you trust the player's honesty and intentions.",
+    "patience": "How much patience you have left for this conversation.",
+    "pressure": "How pressured or cornered you feel.",
+    "rapport": "How warm and connected the conversation feels to you.",
+    "openness": "How willing you are to share and to consider the player's view.",
+    "objective_progress": "How far the conversation has moved toward the scenario's goal.",
+}
+
+
+def _description_of(spec: Dict[str, Any], fallback: str) -> str:
+    value = spec.get("description")
+    return " ".join(value.split()) if isinstance(value, str) else fallback
+
+
 def build_variable_defs(
     custom: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, ScenarioVariableDef]:
@@ -85,6 +108,7 @@ def build_variable_defs(
                     default=spec,
                     visibility=existing.visibility,
                     max_delta_per_turn=existing.max_delta_per_turn,
+                    description=existing.description,
                 )
             else:
                 defs[name] = ScenarioVariableDef(name=name, default=spec)
@@ -101,8 +125,70 @@ def build_variable_defs(
                 max_delta_per_turn=spec.get(
                     "max_delta_per_turn", existing.max_delta_per_turn
                 ),
+                description=_description_of(spec, existing.description),
             )
     return defs
+
+
+def _declares(name: str, spec: Any) -> bool:
+    """Whether a ``state.variables`` entry makes ``name`` a variable the scenario plays.
+
+    Every entry for a name of the scenario's own does. An entry for a
+    baseline does too, unless all it does is hide it: the First Words
+    tutorial hides every baseline so only its own two meters show.
+    """
+    if isinstance(spec, bool) or not isinstance(spec, (int, dict)):
+        return False
+    if name not in BASELINE_VARIABLES or isinstance(spec, int):
+        return True
+    return set(spec) != {"visibility"} or spec.get("visibility") != VariableVisibility.HIDDEN.value
+
+
+def _condition_variable(condition: Any) -> Optional[str]:
+    if not isinstance(condition, dict):
+        return None
+    if condition.get("type") not in ("variable_above", "variable_below"):
+        return None
+    variable = condition.get("variable")
+    return variable if isinstance(variable, str) and variable else None
+
+
+def played_variable_names(
+    custom: Optional[Dict[str, Any]] = None,
+    events: Optional[List["ScenarioEvent"]] = None,
+    ending_conditions: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """The variables a scenario plays, in the order the turn prompt lists them.
+
+    First every variable the scenario declares in ``state.variables``, in its
+    order, a baseline it re-declares (the_ask's ``rapport``) included; then
+    each baseline its events or ending conditions read without declaring it
+    (the catalog coworker_feedback's ``patience``), in baseline order. Issue
+    #580: the model is told to update exactly these, and the turn schema
+    takes no other, so a baseline nothing reads stops moving at random.
+
+    Returns [] for a scenario that configures no state at all (most of the
+    hardcoded catalog). Its only variables are the baselines, and it plays all
+    of them as it always has.
+    """
+    defs = build_variable_defs(custom)
+    names: List[str] = []
+    for name, spec in (custom or {}).items():
+        if name in defs and _declares(name, spec) and name not in names:
+            names.append(name)
+    read: Set[str] = set()
+    for event in events or []:
+        variable = _condition_variable(event.when)
+        if variable:
+            read.add(variable)
+    for condition in (ending_conditions or {}).values():
+        variable = _condition_variable(condition)
+        if variable:
+            read.add(variable)
+    for name in BASELINE_VARIABLES:
+        if name in read and name not in names:
+            names.append(name)
+    return names
 
 
 def initialize_state(
@@ -131,11 +217,16 @@ def apply_state_delta(
     current: Dict[str, int],
     delta: Dict[str, int],
     variable_defs: Dict[str, ScenarioVariableDef],
+    allowed: Optional[Collection[str]] = None,
 ) -> DeltaResult:
     """Apply an LLM-proposed delta to the current state.
 
     Rules enforced:
-    1. Keys absent from ``variable_defs`` are rejected (not applied).
+    1. Keys absent from ``variable_defs`` are rejected (not applied), and so
+       are keys outside ``allowed`` when it is given: the variables the
+       session's turn schema names (issue #580). A runtime that enforces the
+       schema never writes another; one that ignores it, and the parser's own
+       repair calls, can.
     2. Each applied delta is clamped to ±``max_delta_per_turn``.
     3. The resulting value is clamped to [min, max] for the variable.
 
@@ -147,7 +238,7 @@ def apply_state_delta(
     rejected_keys: List[str] = []
 
     for key, proposed in delta.items():
-        if key not in variable_defs:
+        if key not in variable_defs or (allowed is not None and key not in allowed):
             rejected_keys.append(key)
             continue
 
