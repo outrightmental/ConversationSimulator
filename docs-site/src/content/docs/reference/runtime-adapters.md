@@ -183,7 +183,7 @@ HTTP API. `llama-server` is the inference binary from the llama.cpp project.
 | `CONVSIM_LLAMA_CPP_BASE_URL`      | `http://127.0.0.1:7356`     | llama-server base URL              |
 | `CONVSIM_LLAMA_CPP_MODEL_ID`      | `None` (server default)     | Model id to pass in requests       |
 | `CONVSIM_LLAMA_CPP_CONTEXT_LENGTH`| `None`                      | Context length hint for `list_models` |
-| `CONVSIM_LLAMA_CPP_TEMPERATURE`   | `0.8`                       | Default temperature                |
+| `CONVSIM_LLAMA_CPP_TEMPERATURE`   | `0.8`                       | Not used: every request carries its own temperature (see **Sampling** below) |
 | `CONVSIM_LLAMA_CPP_TOP_P`         | `0.95`                      | top-p sampling, for a model whose registry entry declares no `top_p_default` |
 | `CONVSIM_LLAMA_CPP_REPEAT_PENALTY`| `1.1`                       | Repetition penalty                 |
 | `CONVSIM_LLAMA_CPP_THREADS`       | `None`                      | CPU thread count                   |
