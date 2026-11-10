@@ -305,3 +305,21 @@ class SentenceGate:
             self.released.append(slice_)
             out.append(slice_)
         return out
+
+
+def _passes(_text: str) -> OutputValidationResult:
+    return OutputValidationResult()
+
+
+def first_sentence_repeats(line: str, previous_lines: Sequence[str]) -> RepetitionReport:
+    """Why the gate would hold back the complete ``line``'s first sentence, if it would.
+
+    The repetition guard judges the retry of a line the gate held by this as
+    well as by the whole line (issue #580), so the retry is kept only if it
+    repeats less in the terms that held the first reply: a retry that opens
+    with the previous line's closing question again repeats as much. Only the
+    repetition test runs; the output check is the guard's, on the whole line.
+    """
+    gate = SentenceGate(previous_lines=previous_lines, checker=_passes)
+    gate.feed(line, True)
+    return gate.repeated or RepetitionReport()

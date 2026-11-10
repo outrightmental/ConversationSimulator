@@ -369,8 +369,10 @@ contract above, so only the first sentence is judged: it is released only if,
 taken as the whole line, it shares no 6-word run with those lines and does not
 end with the previous line's closing question (similarity counts only when it
 is the whole line). If it fails that, nothing has been shown, no `npc.final`
-is sent, the line is retried as above (`checking` stage), and the REST
-response carries the result. Once the first sentence is out, the rest of the
+is sent, and the line is retried as above (`checking` stage) even if the
+whole line ends otherwise and is no repeat; the retry is judged the same way,
+by its whole line and then its first sentence. The REST response carries the
+result. Once the first sentence is out, the rest of the
 line streams as usual, held back only by the output check: cutting it for a
 repeat would leave the player a stub, an answer without its question, that no
 retry could replace. A repeat there is kept and noted in the turn's debug

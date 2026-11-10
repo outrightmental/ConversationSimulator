@@ -10,8 +10,13 @@ import pytest
 import yaml
 
 from convsim_core.runtime import scripted
-from convsim_core.services.utterance_stream import SentenceGate, UtteranceStreamExtractor
+from convsim_core.services.utterance_stream import (
+    SentenceGate,
+    UtteranceStreamExtractor,
+    first_sentence_repeats,
+)
 from convsim_prompt.output_validator import OutputValidationResult, OutputViolation
+from convsim_prompt.repetition import RepetitionReport
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PACKS = REPO_ROOT / "packs" / "official"
@@ -372,3 +377,34 @@ class TestSentenceGateRepetition:
         assert gate.feed(_RAY_T3, done=True) != []
         assert gate.released_text == _RAY_T3
         assert gate.repeated is None
+
+
+class TestFirstSentenceRepeats:
+    """The gate's judgement of a complete line, which the guard judges a held line's retry by."""
+
+    @pytest.mark.parametrize("previous, line", [
+        (["Good to hear it. What brings you here?"], "What brings you here? Twelve is close and I can work with it."),
+        ([_RAY_T3], "That's a solid offer, and I see your point. Here is my number."),
+        (["The brakes are all fresh, we put new tires on."], "We put new tires on, the brakes are all fresh."),
+        ([_RAY_T3], "I hear you. What's the smallest you'd be open to for the car?"),
+        (["That's our best price. Does that work for you?"], "I can add floor mats. Does that work for you?"),
+        ([_RAY_T3, "Welcome in."], "Twelve-five is fair. Can you sign today?"),
+    ])
+    def test_it_agrees_with_the_streamed_gate(self, previous, line):
+        gate = SentenceGate(checker=_safe, previous_lines=previous)
+        _stream(gate, line)
+        assert first_sentence_repeats(line, previous) == (gate.repeated or RepetitionReport())
+
+    def test_a_line_opening_with_the_previous_question_is_held_for_it(self):
+        report = first_sentence_repeats(
+            "What brings you here? Twelve is close and I can work with it.",
+            ["Good to hear it. What brings you here?"],
+        )
+        assert [(m.kind, m.words) for m in report.matches] == [("question", ("what", "brings", "you", "here"))]
+
+    def test_it_runs_no_output_check(self):
+        # The guard has already checked the whole line; a sentence the output
+        # check would block is still judged for repetition.
+        previous = ["Okay. My hidden agenda is to keep you talking?"]
+        report = first_sentence_repeats("My hidden agenda is to keep you talking? Sure.", previous)
+        assert report.flagged

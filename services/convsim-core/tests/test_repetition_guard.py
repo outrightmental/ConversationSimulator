@@ -12,10 +12,13 @@ repeats less. These tests pin:
   * the retry request: same schema and system prompt, the repeated line
     quoted in the user turn, the temperature +0.1, recorded as a
     ``repetition_retry`` extra call;
-  * which reply is kept, and that any failure keeps the first reply;
+  * which reply is kept, and that any failure keeps the first reply; a kept
+    retry's raw output is what the turn row stores, so the debrief scores the
+    reply the player got;
   * a player who asks for the line again gets the repeat, unretried;
   * streaming (#538): released text is committed text. A first sentence that
-    would repeat is never shown, so the line can still be retried; a repeat
+    would repeat is never shown, so the line can still be retried, and is,
+    even when the whole line ends otherwise; a repeat
     after the first sentence streams with the line and is noted, never cut
     (a cut left the player an answer without its question), and the rest of
     the line is still held to the output check.
@@ -36,7 +39,7 @@ from convsim_core.app import create_app
 from convsim_core.runtime.fake import FakeChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatRequest, ChatToken, SamplingDefaults
 from convsim_core.scenarios import get_scenario_data
-from convsim_core.services import turn_pipeline
+from convsim_core.services import debrief_engine, turn_pipeline
 from convsim_core.services.model_manager_service import set_active_config
 from convsim_core.services.turn_pipeline import process_turn
 from convsim_core.storage.migrations import run_migrations
@@ -58,6 +61,10 @@ _REPEAT_AT_END = "I hear you, and I respect that. What's the smallest you'd be o
 # Starts by repeating _NPC_1's first sentence.
 _REPEAT_AT_START = "That's a solid offer, and I see your point. Twelve is close, though."
 _FRESH = "Twelve is close. Sign today and I can throw in floor mats."
+
+# A reply that opens with the previous line's closing question, then moves on.
+_GREETING = "Good to hear it. What brings you here?"
+_ASKS_BACK = "What brings you here? Twelve is close and I can work with it."
 
 
 def _turn(line: str, **fields: Any) -> dict:
@@ -164,7 +171,7 @@ _ONE_EXCHANGE = (("npc_opening", _OPENING), ("player", _PLAYER_1), ("npc", _NPC_
 _TWO_EXCHANGES = _ONE_EXCHANGE + (("player", _PLAYER_2), ("npc", _NPC_2))
 
 
-async def _play(runtime, *history, streamer=None, player=_PLAYER):
+async def _play(runtime, *history, streamer=None, player=_PLAYER, **kwargs):
     conn, row = _session(*history)
     result = await process_turn(
         session_row=row,
@@ -174,15 +181,13 @@ async def _play(runtime, *history, streamer=None, player=_PLAYER):
         runtime=runtime,
         conn=conn,
         streamer=streamer,
+        **kwargs,
     )
     return result, conn
 
 
 def _parse_events(conn: sqlite3.Connection) -> List[dict]:
-    row = conn.execute(
-        "SELECT payload_json FROM turn_session_events WHERE event_type = 'debug' ORDER BY id DESC LIMIT 1"
-    ).fetchone()
-    return json.loads(row["payload_json"])["parse_events"]
+    return _debug_payload(conn)["parse_events"]
 
 
 def _kinds(conn: sqlite3.Connection) -> List[str]:
@@ -190,9 +195,25 @@ def _kinds(conn: sqlite3.Connection) -> List[str]:
 
 
 def _stored_npc_line(conn: sqlite3.Connection) -> str:
+    return _stored_npc_row(conn)["content"]
+
+
+def _stored_npc_row(conn: sqlite3.Connection) -> sqlite3.Row:
     return conn.execute(
-        "SELECT content FROM turn_session_turns WHERE role = 'npc' ORDER BY turn_number DESC LIMIT 1"
-    ).fetchone()["content"]
+        "SELECT * FROM turn_session_turns WHERE role = 'npc' ORDER BY turn_number DESC LIMIT 1"
+    ).fetchone()
+
+
+def _event_payload(conn: sqlite3.Connection, event_type: str) -> Any:
+    row = conn.execute(
+        "SELECT payload_json FROM turn_session_events WHERE event_type = ? ORDER BY id DESC LIMIT 1",
+        (event_type,),
+    ).fetchone()
+    return json.loads(row["payload_json"]) if row is not None else None
+
+
+def _debug_payload(conn: sqlite3.Connection) -> dict:
+    return _event_payload(conn, "debug")
 
 
 # ---------------------------------------------------------------------------
@@ -400,6 +421,82 @@ class TestWhichReplyIsKept:
         assert result.npc_emotion == "warm"
 
     @pytest.mark.asyncio
+    async def test_a_kept_retry_is_the_output_the_turn_row_and_the_debrief_read(self):
+        """The NPC row's raw output is what the debrief tallies rubric notes
+        from, what GET /debug returns as raw_npc_output and what the D-05
+        replay's check (g) reads the proposed state_delta from. After a kept
+        retry it must be the retry's, the reply the player got, and agree with
+        the row's state_delta and the turn's rubric_observations event. The
+        first reply, which nobody saw, stays in the kept event for the drawer."""
+        first = _turn(
+            _REPEAT_AT_END,
+            state_delta={"trust": 6},
+            rubric_observations=[{"rubric_id": "clarity", "observation": "Crisp.", "score_delta": 3}],
+        )
+        retry = _turn(
+            _FRESH,
+            state_delta={"trust": -5},
+            rubric_observations=[{"rubric_id": "clarity", "observation": "Vague.", "score_delta": -3}],
+        )
+        runtime = _Replies(first, retry)
+        result, conn = await _play(runtime, *_ONE_EXCHANGE)
+        assert result.npc_utterance == _FRESH
+        row = _stored_npc_row(conn)
+        assert json.loads(row["raw_output_json"]) == retry
+        assert json.loads(row["state_delta_json"]) == {"trust": -5}
+        assert _event_payload(conn, "rubric_observations") == retry["rubric_observations"]
+        tallies = debrief_engine._tally_observations([row])
+        assert (tallies["clarity"].notes, tallies["clarity"].net) == (1, -3)
+        records = debrief_engine._build_debrief_turn_records([row])
+        assert [o["score_delta"] for o in records[0].rubric_observations] == [-3]
+        kept = _parse_events(conn)[-1]
+        assert kept["event_type"] == "repetition_retry_kept"
+        assert json.loads(kept["discarded_raw_output"]) == first
+
+    @pytest.mark.asyncio
+    async def test_a_kept_retry_brings_its_own_structured_output_flag(self):
+        """used_native_structured_output describes the stored output: here the
+        first reply came as plain text, the kept retry pre-parsed."""
+        runtime = _Replies(_Raw(json.dumps(_turn(_REPEAT_AT_END))), _FRESH)
+        result, conn = await _play(runtime, *_ONE_EXCHANGE)
+        assert result.npc_utterance == _FRESH
+        assert _debug_payload(conn)["used_native_structured_output"] is True
+        assert json.loads(_stored_npc_row(conn)["raw_output_json"]) == _turn(_FRESH)
+        # A discarded retry leaves the first reply's output and flag alone.
+        runtime = _Replies(_Raw(json.dumps(_turn(_REPEAT_AT_END))), _REPEAT_AT_END)
+        result, conn = await _play(runtime, *_ONE_EXCHANGE)
+        assert result.npc_utterance == _REPEAT_AT_END
+        assert _debug_payload(conn)["used_native_structured_output"] is False
+        assert _stored_npc_row(conn)["raw_output_json"] == json.dumps(_turn(_REPEAT_AT_END))
+        assert "discarded_raw_output" not in _parse_events(conn)[-1]
+
+    @pytest.mark.asyncio
+    async def test_without_a_saved_transcript_the_kept_event_carries_no_line(self):
+        """Debug events are exported even when the transcript is not saved;
+        the first reply's raw output, a line of the conversation, is not."""
+        runtime = _Replies(_REPEAT_AT_END, _FRESH)
+        result, conn = await _play(runtime, *_ONE_EXCHANGE, save_transcript=False)
+        assert result.npc_utterance == _FRESH
+        kept = _parse_events(conn)[-1]
+        assert kept["event_type"] == "repetition_retry_kept"
+        assert "discarded_raw_output" not in kept
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_leaked_the_hidden_agenda_keeps_no_line_in_the_kept_event(self):
+        """The first reply's raw output is what the model first wrote, before
+        the parser's safety retry: after a leak it is not kept (issue #199)."""
+        leak = "Fine. My hidden agenda is to keep you talking."
+        runtime = _Replies(leak, _REPEAT_AT_END, _FRESH)
+        result, conn = await _play(runtime, *_ONE_EXCHANGE)
+        assert len(runtime.requests) == 3
+        assert result.npc_utterance == _FRESH
+        events = _parse_events(conn)
+        assert any(e["category"] == "hidden_agenda_leak" for e in events)
+        assert events[-1]["event_type"] == "repetition_retry_kept"
+        assert "discarded_raw_output" not in events[-1]
+        assert leak not in json.dumps(events)
+
+    @pytest.mark.asyncio
     async def test_a_failing_retry_keeps_the_first_reply(self):
         runtime = _Replies(_REPEAT_AT_END, ConnectionError("engine went away"))
         result, conn = await _play(runtime, *_ONE_EXCHANGE)
@@ -465,6 +562,51 @@ class TestStreamedLines:
         assert result.npc_utterance == _FRESH
         assert result.streamed_line is None
         assert _kinds(conn) == ["repetition_detected", "repetition_retry_kept"]
+
+    @pytest.mark.asyncio
+    async def test_a_first_sentence_held_for_its_question_alone_is_retried(self):
+        """The gate holds "What brings you here?": as a whole line it ends with
+        the previous line's closing question. The whole reply ends otherwise,
+        so only the held first sentence makes it a repeat, and the guard must
+        still retry it: nothing else would ever commit the held line."""
+        streamer = _Streamer()
+        runtime = _Replies(_ASKS_BACK, _FRESH)
+        result, conn = await _play(runtime, ("npc_opening", _GREETING), streamer=streamer, player="Hello!")
+        assert streamer.tokens == [] and streamer.finals == []
+        assert "checking" in streamer.stages
+        assert len(runtime.requests) == 2
+        assert f'"{_GREETING}"' in runtime.requests[1].messages[1].content
+        assert [c.kind for c in result.timing.extra_calls] == ["repetition_retry"]
+        assert result.npc_utterance == _stored_npc_line(conn) == _FRESH
+        assert result.streamed_line is None
+        assert _kinds(conn) == ["repetition_detected", "repetition_retry_kept"]
+        detected = _parse_events(conn)[0]
+        assert detected["reason"].startswith("its first sentence, held back from the stream,")
+        assert "the same 4-word question as the previous NPC line" in detected["reason"]
+
+    @pytest.mark.asyncio
+    async def test_a_retry_whose_first_sentence_would_be_held_too_keeps_the_first_reply(self):
+        """The retry is judged as the held line was: its first sentence would
+        be held for the same question, so it repeats as much."""
+        streamer = _Streamer()
+        again = "What brings you here? I can do twelve, and not a dollar more."
+        runtime = _Replies(_ASKS_BACK, again)
+        result, conn = await _play(runtime, ("npc_opening", _GREETING), streamer=streamer, player="Hello!")
+        assert streamer.tokens == [] and streamer.finals == []
+        assert len(runtime.requests) == 2
+        assert result.npc_utterance == _stored_npc_line(conn) == _ASKS_BACK
+        assert _kinds(conn) == ["repetition_detected", "repetition_retry_discarded"]
+        assert "question" in _parse_events(conn)[1]["reason"]
+
+    @pytest.mark.asyncio
+    async def test_the_same_reply_unstreamed_is_not_a_repeat(self):
+        """Without a streamer nothing is held, and the whole line ends with
+        its own sentence, not the previous question: no retry."""
+        runtime = _Replies(_ASKS_BACK)
+        result, conn = await _play(runtime, ("npc_opening", _GREETING), player="Hello!")
+        assert len(runtime.requests) == 1
+        assert result.npc_utterance == _ASKS_BACK
+        assert not any(k.startswith("repetition") for k in _kinds(conn))
 
     @pytest.mark.asyncio
     async def test_a_repeat_after_the_first_sentence_streams_whole_and_is_noted(self):
