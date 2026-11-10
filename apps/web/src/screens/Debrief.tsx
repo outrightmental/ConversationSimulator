@@ -597,7 +597,12 @@ export default function Debrief() {
                 }}
               >
                 {Object.entries(debrief.scores).map(([dim, score]) => (
-                  <DimensionRow key={dim} dimension={dim} score={score} />
+                  <DimensionRow
+                    key={dim}
+                    dimension={dim}
+                    name={debrief.dimension_names?.[dim]}
+                    score={score}
+                  />
                 ))}
               </div>
             </section>
@@ -987,9 +992,17 @@ function OverallScore({ score }: { score: number }) {
   )
 }
 
-function DimensionRow({ dimension, score }: { dimension: string; score: number }) {
+/**
+ * One scorecard row. `name` is the rubric's own name for the dimension, which
+ * the debrief returns for a scenario with a rubric (issue #578) and which is
+ * shown as authored ("Self-awareness", "Vocabulary Use"). Without one — a
+ * scenario with no rubric, or a debrief stored before names were returned —
+ * the id is shown with its underscores as spaces, capitalised.
+ */
+function DimensionRow({ dimension, name, score }: { dimension: string; name?: string; score: number }) {
   const { t } = useTranslation()
-  const label = dimension.replace(/_/g, ' ')
+  const authored = name?.trim()
+  const label = authored || dimension.replace(/_/g, ' ')
   const barColor = score >= 70 ? '#22c55e' : score >= 40 ? '#f97316' : '#ef4444'
   const rounded = Math.round(score)
   return (
@@ -998,11 +1011,12 @@ function DimensionRow({ dimension, score }: { dimension: string; score: number }
       style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
     >
       <span
+        data-testid={`dimension-label-${dimension}`}
         style={{
           flex: '0 0 140px',
           fontSize: '0.85rem',
           color: '#a1a1aa',
-          textTransform: 'capitalize',
+          textTransform: authored ? 'none' : 'capitalize',
         }}
       >
         {label}
