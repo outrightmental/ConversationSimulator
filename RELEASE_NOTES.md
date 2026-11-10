@@ -250,10 +250,10 @@ install and returned by the install status API, and a `NETWORK` failure shows
   as an open gate (G4-02) for the public release.
 - With more than one model in Ollama, conversations and debriefs use the
   first model `ollama list` shows. The model chosen with *Use this model* is
-  used only by the benchmark, and is the name Home shows.
+  used only by the benchmark, and is the name Home shows (#528).
 - Choosing another llama.cpp model while the engine is running saves the
   choice, but the engine keeps the old model until the app is quit and
-  reopened.
+  reopened (#529).
 
 ---
 
