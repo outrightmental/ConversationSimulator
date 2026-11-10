@@ -347,6 +347,15 @@ def _scenario_texts(data: dict) -> list[tuple[str, str, bool]]:
                 for i, item in enumerate(items):
                     if isinstance(item, str):
                         results.append((item, f"/goals/{section}/{i}", False))
+    # Each difficulty preset's description is quoted in the NPC's scenario
+    # brief (issue #580), so it is prompt text like the fields above.
+    difficulty = data.get("difficulty")
+    options = difficulty.get("options") if isinstance(difficulty, dict) else None
+    if isinstance(options, dict):
+        for preset, knobs in options.items():
+            val = knobs.get("description") if isinstance(knobs, dict) else None
+            if isinstance(val, str):
+                results.append((val, f"/difficulty/options/{preset}/description", False))
     return results
 
 
@@ -484,8 +493,9 @@ def scan_pack_dir(pack_dir: Path) -> list[InjectionFinding]:
     """Scan all natural-language text fields in a pack directory.
 
     Scans the following locations:
-    - ``scenarios/*.yaml`` — scenario titles, summaries, player role briefs,
-      opening NPC lines, and player/hidden goal strings.
+    - ``scenarios/*.yaml`` — scenario titles, summaries, player role labels
+      and briefs, opening NPC lines, player/hidden goal strings, and each
+      difficulty preset's description.
     - ``npcs/*.yaml`` — NPC display names, public persona descriptions, and all
       private persona string fields.
     - ``rubrics/*.yaml`` — rubric titles, dimension names/descriptions, and

@@ -212,7 +212,8 @@ function analyzePackContent(
   for (const npc of npcs.values()) {
     const id = npc.npc_id;
     for (const [key, text] of Object.entries({
-      'public_persona.occupation':    npc.public_persona.occupation,
+      'display_name':                  npc.display_name,
+      'public_persona.occupation':     npc.public_persona.occupation,
       'public_persona.speaking_style': npc.public_persona.speaking_style,
       'public_persona.demeanor':       npc.public_persona.demeanor,
     })) {
@@ -244,7 +245,9 @@ function analyzePackContent(
   for (const { relPath, data } of scenarios) {
     const prefix = `scenarios/${relPath}`;
     for (const [key, text] of Object.entries({
+      'title':              data.title,
       'summary':            data.summary,
+      'player_role.label':  data.player_role.label,
       'player_role.brief':  data.player_role.brief,
       'opening.npc_says':   data.opening.npc_says,
     })) {
@@ -268,6 +271,19 @@ function analyzePackContent(
         add(scanTextForExternalUrl(g, field));
         add(scanTextForInjection(g, field));
       });
+    }
+    // Each difficulty preset's description is quoted in the NPC's scenario
+    // brief (issue #580), so it is prompt text like the fields above.
+    const options = data.difficulty?.options;
+    if (options && typeof options === 'object') {
+      for (const [preset, knobs] of Object.entries(options)) {
+        const description = (knobs as { description?: unknown } | null)?.description;
+        if (typeof description === 'string') {
+          const field = `${prefix}/difficulty.options.${preset}.description`;
+          add(scanTextForExternalUrl(description, field));
+          add(scanTextForInjection(description, field));
+        }
+      }
     }
   }
 
