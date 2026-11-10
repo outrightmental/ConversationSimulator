@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -224,6 +225,61 @@ class TestRepetition:
         found = checks.find_repetition(four)
         assert [f.evidence for f in found] == ["shall we talk numbers"]
         assert checks.SAME_QUESTION_MIN_WORDS == 4
+
+
+class TestEngineAgreement:
+    """Check (a) and the engine's repetition guard count a repeat the same way.
+
+    The engine retries a reply that repeats one of the NPC's last two lines
+    (issue #580); check (a) fails a line that repeats the previous one. Both
+    read their words from ``convsim_prompt.repetition``, so every line check
+    (a) fails is one the engine flagged and tried to replace: a D-05 failure
+    on (a) means the retry did not help, never that the two disagree.
+    """
+
+    def test_the_word_functions_are_the_engines(self) -> None:
+        from convsim_prompt import repetition
+
+        assert checks.words is repetition.words
+        assert checks.shared_runs is repetition.shared_runs
+        assert checks.ending_question is repetition.ending_question
+        assert checks.REPEAT_RUN_WORDS == repetition.REPEAT_RUN_WORDS == 6
+        assert checks.SAME_QUESTION_MIN_WORDS == repetition.SAME_QUESTION_MIN_WORDS == 4
+
+    @pytest.mark.parametrize("previous, line", [
+        (RAY_T3, RAY_T4),
+        ("one two three four five six alpha", "beta one two three four five six"),
+        ("one two three four five alpha", "beta one two three four five"),
+        ("We do have new tires on hand.", "Well -- WE DO have new tires, on hand!"),
+        ("Hey there! So, what were you thinking? Shall we talk numbers?", "Sure thing. Shall we talk numbers?"),
+        ("The tires are new. Okay?", "Service records are in the file. Okay?"),
+        ("The tires are new. Does that work for you?", "Service records are in the file. Does that work for you?"),
+        ("¡Hola! Buenos días. ¿Qué vas a tomar hoy?", "¡Hola! Marchando un café con leche. ¿Algo para comer?"),
+        (DIANE_T2, "Fair enough. Walk me through the numbers again, slowly."),
+    ])
+    def test_every_line_check_a_fails_the_engine_flags(self, previous: str, line: str) -> None:
+        from convsim_prompt.repetition import check_repetition
+
+        failed = bool(checks.find_repetition(_lines(previous, line)))
+        flagged = check_repetition(line, [previous]).flagged
+        assert flagged or not failed
+        # On the run and the closing question alone, the two give one verdict;
+        # the engine also counts a near-copy by trigram similarity.
+        assert check_repetition(line, [previous], similarity=False).flagged == failed
+
+    def test_the_checks_still_need_only_the_standard_library(self) -> None:
+        """``-I -S``: no site-packages and no PYTHONPATH, so nothing installed."""
+        code = (
+            "import sys; sys.path.insert(0, sys.argv[1]); import demo_gate_checks, convsim_prompt; "
+            "print(convsim_prompt.__file__)"
+        )
+        done = subprocess.run(
+            [sys.executable, "-I", "-S", "-B", "-c", code, str(_SCRIPTS)],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert done.returncode == 0, done.stderr
+        expected = _REPO_ROOT / "packages" / "prompt-composer" / "src" / "convsim_prompt" / "__init__.py"
+        assert Path(done.stdout.strip()) == expected
 
 
 # ---------------------------------------------------------------------------

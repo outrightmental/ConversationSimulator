@@ -17,6 +17,12 @@ from .output_validator import (
     OutputViolation,
     validate_npc_output,
 )
+from .repetition import (
+    RepetitionMatch,
+    RepetitionReport,
+    check_repetition,
+    less_repetitive,
+)
 from .turn_output import (
     RubricObservation,
     RuntimeProtocol,
@@ -81,6 +87,11 @@ __all__ = [
     "validate_npc_output",
     "OutputValidationResult",
     "OutputViolation",
+    # Repetition guard (issue #580)
+    "check_repetition",
+    "less_repetitive",
+    "RepetitionMatch",
+    "RepetitionReport",
     # Debrief prompt composer and output parser
     "compose_debrief_prompt",
     "DebriefComposerInput",

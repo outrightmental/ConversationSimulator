@@ -98,7 +98,9 @@ Exit codes
    that cannot be read or already holds a recap.
 130  Interrupted; the summary covers the runs that finished.
 
-Standard library and PyYAML only.
+Standard library and PyYAML only. The checks read this checkout's prompt
+composer (``packages/prompt-composer``, standard library only) for the
+engine's own repetition word functions; nothing needs installing for it.
 """
 from __future__ import annotations
 
