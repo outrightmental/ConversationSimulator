@@ -22,7 +22,7 @@ import logging
 import secrets
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -280,7 +280,9 @@ class EventEntry(BaseModel):
     id: int
     turn_number: Optional[int] = None
     event_type: str
-    payload: Dict[str, Any]
+    # The stored payload as written: an object for most events, but a list for
+    # ``rubric_observations`` (one entry per observation, see turn_pipeline).
+    payload: Union[Dict[str, Any], List[Any]]
     occurred_at: str
 
 

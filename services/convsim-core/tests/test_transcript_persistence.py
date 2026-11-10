@@ -17,6 +17,8 @@ from fastapi.testclient import TestClient
 
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
+from convsim_core.runtime.fake import FakeChatRuntime
+from convsim_core.runtime.types import ChatFinal, ChatRequest
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +78,38 @@ def _do_turn(client: TestClient, session_id: str, content: str = "I have five ye
 
 def _db_conn(client: TestClient):
     return client.app.state.db.connection()
+
+
+_RUBRIC_OBSERVATIONS = [
+    {"rubric_id": "clarity", "observation": "Gave a concrete example.", "score_delta": 2},
+    {"rubric_id": "structure", "observation": "Answered in order.", "score_delta": 1},
+]
+
+
+class _RubricObservationRuntime(FakeChatRuntime):
+    """Runtime whose reply scores the player, as a real model's usually does."""
+
+    def chat_stream(self, request: ChatRequest):
+        return self._stream(request)
+
+    async def _stream(self, request: ChatRequest):
+        response = {
+            "npc_utterance": "That's a clear, well-ordered answer.",
+            "npc_emotion": "impressed",
+            "state_delta": {},
+            "event_flags": [],
+            "rubric_observations": _RUBRIC_OBSERVATIONS,
+            "safety": {"status": "ok"},
+            "session_control": {"continue_session": True},
+        }
+        text = json.dumps(response)
+        yield ChatFinal(
+            text=text,
+            model_id="fake-small",
+            input_tokens=10,
+            output_tokens=len(text.split()),
+            structured=response,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +329,39 @@ class TestSessionExport:
     def test_export_on_unknown_session_returns_404(self, client):
         res = client.get("/api/sessions/sess-doesnotexist/export")
         assert res.status_code == 404
+
+    def test_export_succeeds_after_turn_with_rubric_observations(self, client):
+        """A turn that scored rubric observations must not break the export.
+
+        The pipeline stores the ``rubric_observations`` event payload as a JSON
+        list, not an object. The export used to validate every payload as a
+        dict and answered 500 for any session where the model scored the
+        player, which is nearly every real-model session.
+        """
+        from convsim_core.services.model_manager_service import set_active_config
+
+        app = client.app
+        # Unpinned sessions follow app.state.runtime, which this test swaps for
+        # a stub; issue #473 needs a real-model selection to create one.
+        set_active_config(
+            app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf"
+        )
+        setup = {k: v for k, v in _BASE_SETUP.items() if k != "runtime_id"}
+        res = client.post("/api/sessions", json=setup)
+        assert res.status_code == 201
+        session_id = res.json()["session_id"]
+        assert client.post(f"/api/sessions/{session_id}/start").status_code == 200
+
+        app.state.runtime = _RubricObservationRuntime()
+        _do_turn(client, session_id)
+
+        res = client.get(f"/api/sessions/{session_id}/export")
+        assert res.status_code == 200
+        rubric_events = [
+            e for e in res.json()["events"] if e["event_type"] == "rubric_observations"
+        ]
+        assert len(rubric_events) == 1
+        assert rubric_events[0]["payload"] == _RUBRIC_OBSERVATIONS
 
 
 # ---------------------------------------------------------------------------

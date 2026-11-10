@@ -21,6 +21,22 @@ type TranscriptEvent = {
   payload: Record<string, unknown>
 }
 
+// One entry of the export's event log. Its payload is whatever the event
+// stored: an object for most events, but a list for `rubric_observations`.
+type ExportedEvent = Omit<TranscriptEvent, 'payload'> & { payload: unknown }
+
+const TRANSCRIPT_EVENT_TYPES = new Set(['player_turn', 'npc_turn', 'npc_opening'])
+
+function transcriptEventsOf(events: ExportedEvent[] | undefined): TranscriptEvent[] {
+  return (events ?? []).filter(
+    (e): e is TranscriptEvent =>
+      TRANSCRIPT_EVENT_TYPES.has(e.event_type) &&
+      typeof e.payload === 'object' &&
+      e.payload !== null &&
+      !Array.isArray(e.payload),
+  )
+}
+
 export default function Debrief() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -130,7 +146,7 @@ export default function Debrief() {
         if (r2.ok) {
           const exportData = r2.data as {
             session?: { setup?: SessionCreateRequest; scenario_id?: string }
-            events?: TranscriptEvent[]
+            events?: ExportedEvent[]
           }
           if (exportData.session?.setup) {
             setSessionSetup(exportData.session.setup)
@@ -138,13 +154,7 @@ export default function Debrief() {
           if (exportData.session?.scenario_id) {
             setExportedScenarioId(exportData.session.scenario_id)
           }
-          const turns = (exportData.events ?? []).filter(
-            (e) =>
-              e.event_type === 'player_turn' ||
-              e.event_type === 'npc_turn' ||
-              e.event_type === 'npc_opening',
-          )
-          setTranscript(turns)
+          setTranscript(transcriptEventsOf(exportData.events))
         }
         // silently ignore export error
       }
@@ -205,17 +215,11 @@ export default function Debrief() {
     }
     const exportData = r.data as {
       session?: { setup?: SessionCreateRequest; scenario_id?: string }
-      events?: TranscriptEvent[]
+      events?: ExportedEvent[]
     }
     if (exportData.session?.setup) setSessionSetup(exportData.session.setup)
     if (exportData.session?.scenario_id) setExportedScenarioId(exportData.session.scenario_id)
-    const turns = (exportData.events ?? []).filter(
-      (e) =>
-        e.event_type === 'player_turn' ||
-        e.event_type === 'npc_turn' ||
-        e.event_type === 'npc_opening',
-    )
-    setTranscript(turns)
+    setTranscript(transcriptEventsOf(exportData.events))
     setPhase('transcript_only')
   }
 
