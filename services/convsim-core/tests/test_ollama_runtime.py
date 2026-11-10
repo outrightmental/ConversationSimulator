@@ -622,6 +622,30 @@ async def test_chat_stream_request_includes_format_when_schema_provided():
 
 
 @pytest.mark.asyncio
+async def test_a_sessions_rubric_enum_reaches_ollama_unchanged():
+    """Ollama builds its grammar from ``format``: the session's turn schema
+    (issue #578) must arrive with its rubric_id enum as sent."""
+    from convsim_prompt import build_npc_turn_output_schema
+
+    schema = build_npc_turn_output_schema(rubric_ids=["comprehension", "confidence"])
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="fake-tag:1b",
+        messages=[ChatMessage(role="user", content="go")],
+        json_schema=schema,
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    sent = client.stream.call_args.kwargs["json"]["format"]
+    assert sent == schema
+    item = sent["properties"]["rubric_observations"]["items"]
+    assert item["properties"]["rubric_id"]["enum"] == ["comprehension", "confidence"]
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_request_excludes_format_when_no_schema():
     """Without a json_schema, 'format' must not appear in the payload."""
     client = MagicMock()

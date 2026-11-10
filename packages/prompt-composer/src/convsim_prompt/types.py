@@ -1,8 +1,9 @@
 """Shared data types for the layered prompt composer."""
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 
 @dataclass
@@ -57,6 +58,35 @@ class ResponseStyleOverrides:
 
 
 @dataclass
+class RubricDimension:
+    """One scoring dimension of a scenario rubric (a rubric file's ``dimensions[]``).
+
+    ``low``, ``medium`` and ``high`` are the authored band descriptions
+    (``scoring.low`` and so on). ``weight`` is the optional relative weight
+    the overall score uses; None when the rubric gives the dimension none.
+    """
+    id: str
+    name: str
+    description: str = ""
+    low: str = ""
+    medium: str = ""
+    high: str = ""
+    weight: Optional[float] = None
+
+
+@dataclass
+class ScenarioRubric:
+    """The rubric a scenario's ``rubric: ref:`` names, as play uses it (issue #578)."""
+    rubric_id: str
+    title: str
+    dimensions: List[RubricDimension] = field(default_factory=list)
+
+    @property
+    def dimension_ids(self) -> List[str]:
+        return [d.id for d in self.dimensions]
+
+
+@dataclass
 class ScenarioData:
     scenario_id: str
     title: str
@@ -68,6 +98,15 @@ class ScenarioData:
     response_style: Optional[ResponseStyleOverrides] = None
     opening_npc_says: Optional[str] = None
     player_visible_goals: List[str] = field(default_factory=list)
+    # The scenario's rubric, loaded from its pack (issue #578). None for the
+    # hardcoded catalog entries and for a pack scenario whose rubric file is
+    # missing or unreadable: those play, and debrief, as they always have.
+    rubric: Optional[ScenarioRubric] = None
+
+    @property
+    def rubric_dimension_ids(self) -> List[str]:
+        """The rubric's dimension ids, or [] when the scenario has no rubric."""
+        return self.rubric.dimension_ids if self.rubric else []
 
 
 @dataclass
@@ -170,6 +209,54 @@ NPC_TURN_OUTPUT_SCHEMA: Dict[str, Any] = {
         },
     },
 }
+
+
+def build_npc_turn_output_schema(
+    *,
+    rubric_ids: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    """The NPC turn output schema for one session: a fresh copy of the canonical one.
+
+    With ``rubric_ids``, ``rubric_observations[].rubric_id`` becomes an
+    ``enum`` of those ids (issue #578). The runtimes hand this schema to the
+    engine (llama.cpp's ``response_format.schema``, Ollama's ``format``),
+    whose schema-to-grammar conversion then cannot emit any other id; the
+    free-string id let the starter model score dimensions the rubric does not
+    have. Without ids (a scenario with no rubric) the result equals
+    NPC_TURN_OUTPUT_SCHEMA.
+
+    The schema is constant for a session, and it is the last system layer,
+    after the per-turn state and transcript, so making it per scenario costs
+    the prompt cache nothing (issue #524).
+
+    Only keywords both converters handle are used: ``type``, ``properties``,
+    ``required``, ``enum`` of strings, ``items``, ``additionalProperties``
+    and integer ``minimum``/``maximum``.
+    """
+    schema = copy.deepcopy(NPC_TURN_OUTPUT_SCHEMA)
+    ids = list(dict.fromkeys(i for i in (rubric_ids or ()) if isinstance(i, str) and i))
+    if ids:
+        item = schema["properties"]["rubric_observations"]["items"]
+        item["properties"]["rubric_id"] = {"type": "string", "enum": ids}
+    return schema
+
+
+def turn_output_schema_for(scenario: "ScenarioData") -> Dict[str, Any]:
+    """The turn output schema a session of ``scenario`` is played with."""
+    return build_npc_turn_output_schema(rubric_ids=scenario.rubric_dimension_ids)
+
+
+def rubric_ids_in_schema(schema: Optional[Dict[str, Any]]) -> Optional[List[str]]:
+    """The ``rubric_id`` enum of a turn output schema, or None when it has none."""
+    try:
+        item = schema["properties"]["rubric_observations"]["items"]  # type: ignore[index]
+        enum = item["properties"]["rubric_id"]["enum"]
+    except (KeyError, TypeError):
+        return None
+    if not isinstance(enum, list):
+        return None
+    ids = [i for i in enum if isinstance(i, str) and i]
+    return ids or None
 
 
 @dataclass

@@ -1008,7 +1008,7 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             captured["hidden_agenda"] = hidden_agenda
             return _valid_turn_output()
 
@@ -1035,7 +1035,7 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             captured["runtime"] = runtime
             return _valid_turn_output()
 
@@ -1060,7 +1060,7 @@ class TestPromptComposerWiring:
         conn = _make_unit_db()
         row = _insert_unit_session(conn)
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="structural_validation_failure",
@@ -1096,7 +1096,7 @@ class TestPromptComposerWiring:
 
         secret_keywords = "candidate leadership competency"
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="output_violation_detected",

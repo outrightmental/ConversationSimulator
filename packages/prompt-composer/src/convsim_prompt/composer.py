@@ -15,10 +15,11 @@ from .layers import (
     build_recent_transcript_layer,
     build_relationship_memory_layer,
     build_response_style_layer,
+    build_rubric_layer,
     build_safety_policy_layer,
     build_scenario_brief_layer,
 )
-from .types import PromptBundle, PromptComposerInput
+from .types import PromptBundle, PromptComposerInput, turn_output_schema_for
 
 # Conservative chars-per-token estimate for budget calculations.
 _CHARS_PER_TOKEN = 4
@@ -33,12 +34,16 @@ _CHARS_PER_TOKEN = 4
 #     the scenario brief and response style layers respectively) bracket items 3–10
 #     (SCENARIO_BRIEF through RESPONSE_STYLE, now including RELATIONSHIP_MEMORY),
 #     making the untrusted region verifiable by adapters.
+#   - RUBRIC is constant for a session, so it sits with the stable layers,
+#     ahead of CURRENT_STATE, where a prompt cache can reuse it (issue #524).
+#     It is empty, and left out of the prompt, for a scenario with no rubric.
 SYSTEM_LAYER_ORDER: List[str] = [
     "GLOBAL_RULES",
     "SAFETY_POLICY",
     "SCENARIO_BRIEF",          # untrusted region begins here
     "NPC_PUBLIC_PERSONA",
     "NPC_PRIVATE_PERSONA",
+    "RUBRIC",                  # the scenario rubric's dimension ids (issue #578)
     "CURRENT_STATE",
     "RECENT_TRANSCRIPT",
     "MEMORY_SUMMARY",
@@ -72,6 +77,7 @@ def _build_layers(inp: PromptComposerInput, max_transcript_turns: int) -> Dict[s
         "SCENARIO_BRIEF": build_scenario_brief_layer(inp.scenario),
         "NPC_PUBLIC_PERSONA": build_npc_public_persona_layer(inp.scenario),
         "NPC_PRIVATE_PERSONA": build_npc_private_persona_layer(inp.scenario),
+        "RUBRIC": build_rubric_layer(inp.scenario),
         "CURRENT_STATE": build_current_state_layer(inp.session_state),
         "RECENT_TRANSCRIPT": build_recent_transcript_layer(
             inp.recent_transcript,
@@ -87,7 +93,7 @@ def _build_layers(inp: PromptComposerInput, max_transcript_turns: int) -> Dict[s
             max_turns=max_transcript_turns,
         ),
         "PLAYER_UTTERANCE": build_player_utterance_layer(inp.player_utterance),
-        "OUTPUT_SCHEMA": build_output_schema_layer(),
+        "OUTPUT_SCHEMA": build_output_schema_layer(turn_output_schema_for(inp.scenario)),
     }
 
 

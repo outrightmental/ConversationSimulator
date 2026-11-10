@@ -5,9 +5,11 @@ from .debrief_composer import DebriefComposerInput, DebriefTurnRecord, compose_d
 from .debrief_output import (
     DEBRIEF_NARRATIVE_SCHEMA,
     DEBRIEF_SYSTEM_PREAMBLE,
+    DIMENSION_BANDS,
     DebriefNarrative,
     DebriefValidationError,
     TurningPoint,
+    build_debrief_narrative_schema,
     parse_debrief_narrative,
 )
 from .inspection import PromptInspector
@@ -17,6 +19,7 @@ from .output_validator import (
     OutputViolation,
     validate_npc_output,
 )
+from .rubric import RubricIdMatcher, normalize_dimension_id
 from .turn_output import (
     RubricObservation,
     RuntimeProtocol,
@@ -28,6 +31,7 @@ from .turn_output import (
     TurnEvent,
     TurnOutput,
     ValidationError,
+    filter_rubric_observations,
     parse_turn_output,
 )
 from .types import (
@@ -39,10 +43,15 @@ from .types import (
     PromptBundle,
     PromptComposerInput,
     ResponseStyleOverrides,
+    RubricDimension,
     SafetyPolicy,
     ScenarioData,
+    ScenarioRubric,
     SessionState,
     TranscriptEntry,
+    build_npc_turn_output_schema,
+    rubric_ids_in_schema,
+    turn_output_schema_for,
 )
 
 __all__ = [
@@ -61,10 +70,19 @@ __all__ = [
     "PromptBundle",
     "PromptComposerInput",
     "ResponseStyleOverrides",
+    "RubricDimension",
     "SafetyPolicy",
     "ScenarioData",
+    "ScenarioRubric",
     "SessionState",
     "TranscriptEntry",
+    # Per-session output schemas and rubric id matching (issue #578)
+    "build_npc_turn_output_schema",
+    "turn_output_schema_for",
+    "rubric_ids_in_schema",
+    "RubricIdMatcher",
+    "normalize_dimension_id",
+    "filter_rubric_observations",
     # Turn output parser
     "parse_turn_output",
     "TurnOutput",
@@ -87,6 +105,8 @@ __all__ = [
     "DebriefTurnRecord",
     "DEBRIEF_NARRATIVE_SCHEMA",
     "DEBRIEF_SYSTEM_PREAMBLE",
+    "DIMENSION_BANDS",
+    "build_debrief_narrative_schema",
     "DebriefNarrative",
     "DebriefValidationError",
     "TurningPoint",

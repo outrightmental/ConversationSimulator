@@ -341,6 +341,12 @@ class DebriefResponse(BaseModel):
     generated_at: str
     used_fallback: bool
     metrics: Optional[Dict[str, Any]] = None
+    # Rubric dimension id -> the rubric's name for it (issue #578), so the
+    # scorecard labels rows with the rubric's names; empty for a scenario
+    # with no rubric, whose rows the client names from their ids.
+    dimension_names: Dict[str, str] = {}
+    # Rubric dimension id -> the band the debrief placed it in.
+    dimension_bands: Dict[str, str] = {}
 
 
 class BranchSessionRequest(BaseModel):
@@ -1221,6 +1227,8 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
                 generated_at=doc.get("generated_at", _now_iso()),
                 used_fallback=doc.get("used_fallback", False),
                 metrics=doc.get("metrics"),
+                dimension_names=doc.get("dimension_names") or {},
+                dimension_bands=doc.get("dimension_bands") or {},
             )
         # DebriefReady state with no persisted row — data inconsistency.
         raise HTTPException(
@@ -1252,6 +1260,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
             conn=conn,
             runtime=runtime,
             scenario_data=scenario_data,
+            state_variable_overrides=info.state_variable_overrides,
         )
     except Exception as exc:
         logger.error("Debrief generation failed for session %s: %s", session_id, exc)
@@ -1291,6 +1300,8 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
         generated_at=result.generated_at,
         used_fallback=result.used_fallback,
         metrics=result.metrics if result.metrics else None,
+        dimension_names=result.dimension_names,
+        dimension_bands=result.dimension_bands,
     )
 
 

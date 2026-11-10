@@ -5,8 +5,9 @@ Processing steps (SPEC §6):
   1. Normalize player text: strip, reject empty, reject oversized.
   2. Local input safety gate: route player text through deterministic rule
      checks (route_player_input) before the LLM; refuse/stop/redirect as needed.
-  3. Build prompt context: scenario, NPC, state, transcript, rubric, player utterance.
-  4. Call ChatRuntime and collect the structured response.
+  3. Build prompt context: scenario, NPC, rubric, state, transcript, player utterance.
+  4. Call ChatRuntime and collect the structured response, constrained by the
+     session's output schema (its rubric_id an enum of the rubric's ids).
   5. Validate / repair / fallback the model response.
   6. Apply bounded state deltas.
   7. Evaluate scenario event triggers and ending conditions.
@@ -26,7 +27,6 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Set
 
 from convsim_prompt import (
-    NPC_TURN_OUTPUT_SCHEMA,
     SAFE_FALLBACK_UTTERANCE,
     PromptComposerInput,
     SafetyPolicy,
@@ -34,11 +34,12 @@ from convsim_prompt import (
     TranscriptEntry,
     TurnEvent,
     compose_turn_prompt,
+    filter_rubric_observations,
     parse_turn_output,
+    turn_output_schema_for,
 )
 from convsim_prompt.output_validator import validate_npc_output
 from convsim_prompt.turn_output import _extract_json
-from convsim_prompt.types import ScenarioData
 from convsim_prompt.types import ResponseStyleOverrides, ScenarioData
 
 from convsim_core.input_router import (
@@ -749,9 +750,13 @@ async def process_turn(
         ChatMessage(role="system", content=prompt.system_prompt),
         ChatMessage(role="user", content=prompt.user_prompt),
     ]
+    # The session's schema, the one the prompt's OUTPUT_SCHEMA layer quotes:
+    # with a rubric, rubric_id is an enum of its dimension ids (issue #578),
+    # which the engine's schema-to-grammar conversion enforces.
+    output_schema = turn_output_schema_for(scenario_data)
     request = ChatRequest(
         messages=messages,
-        json_schema=NPC_TURN_OUTPUT_SCHEMA,
+        json_schema=output_schema,
         scripted_turn_index=turn_number,
         # Structured turn output (utterance + deltas + rubric observations)
         # regularly lands in the 300-600 token range; the 512 default left no
@@ -842,6 +847,9 @@ async def process_turn(
             raw_text, native_structured, released_line, force_defaults=blocked
         )
         turn_output = salvage.output
+        turn_output.rubric_observations = filter_rubric_observations(
+            turn_output.rubric_observations, output_schema
+        )
         salvaged = salvage.salvaged
         if blocked:
             violation = gate.blocked.first_violation
@@ -882,6 +890,7 @@ async def process_turn(
             runtime=runtime_bridge,
             hidden_agenda=hidden_agenda,
             turn_events=turn_parse_events,
+            output_schema=output_schema,
         )
         used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
         if used_fallback:

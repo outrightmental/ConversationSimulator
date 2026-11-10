@@ -34,6 +34,7 @@ from _helpers import (
     make_hiring_manager_npc,
     make_interview_input,
     make_interview_scenario,
+    make_rubric_interview_input,
 )
 
 
@@ -151,7 +152,8 @@ class TestLayerOrdering:
 
     def test_output_schema_is_final_system_layer(self):
         """OUTPUT_SCHEMA must appear after every other system layer."""
-        bundle = compose_turn_prompt(make_interview_input())
+        # With a rubric, so the optional RUBRIC layer is in the prompt too.
+        bundle = compose_turn_prompt(make_rubric_interview_input())
         sp = bundle.system_prompt
         schema_pos = _layer_pos(sp, "OUTPUT_SCHEMA")
         for name in SYSTEM_LAYER_ORDER[:-1]:
@@ -180,9 +182,19 @@ class TestLayerOrdering:
         assert "LAYER:PLAYER_UTTERANCE" in bundle.user_prompt
 
     def test_all_system_layers_present_in_system_prompt(self):
-        bundle = compose_turn_prompt(make_interview_input())
+        bundle = compose_turn_prompt(make_rubric_interview_input())
         for name in SYSTEM_LAYER_ORDER:
             assert f"LAYER:{name}" in bundle.system_prompt, f"Missing layer: {name}"
+
+    def test_rubric_is_the_only_system_layer_a_scenario_can_lack(self):
+        """A scenario with no rubric (the hardcoded catalog) has no RUBRIC layer;
+        every other system layer is always there."""
+        bundle = compose_turn_prompt(make_interview_input())
+        assert bundle.layer_map["RUBRIC"] == ""
+        for name in SYSTEM_LAYER_ORDER:
+            if name != "RUBRIC":
+                assert f"LAYER:{name}" in bundle.system_prompt, f"Missing layer: {name}"
+        assert "LAYER:RUBRIC" not in bundle.system_prompt
 
     def test_system_layer_order_ends_with_output_schema(self):
         assert SYSTEM_LAYER_ORDER[-1] == "OUTPUT_SCHEMA"
@@ -508,7 +520,7 @@ class TestPromptBudget:
             TranscriptEntry(speaker="npc", text="B " * 300, turn_number=i)
             for i in range(20)
         ]
-        inp = make_interview_input(transcript=long_transcript)
+        inp = make_rubric_interview_input(transcript=long_transcript)
         inp.token_budget = 400
         bundle = compose_turn_prompt(inp)
         for name in SYSTEM_LAYER_ORDER:

@@ -390,11 +390,25 @@ After a session ends, `POST /api/sessions/{id}/debrief` calls
 
 1. Load all turns and raw LLM output from the database.
 2. Aggregate rubric observations (score deltas per dimension from each turn).
-3. Compute weighted per-dimension and overall scores (baseline 50, range 0–100).
-4. Identify turning points: significant state changes, event flags, safety events.
-5. Build a debrief prompt (scenario context + full transcript + rubric scores).
-6. Call `ChatRuntime.chat_stream` with the debrief JSON schema.
-7. Persist and return the debrief document.
+   With a rubric, only observations under its dimensions count.
+3. Identify turning points: significant state changes, event flags, safety events.
+4. Build a debrief prompt: scenario context, the rubric's dimensions with
+   their names, weights and low / medium / high bands, and the transcript,
+   with every line and note labelled with whose it is.
+5. Call `ChatRuntime.chat_stream` with the debrief JSON schema. With a rubric
+   the schema also asks for each dimension's band (`dimension_bands`).
+6. Score each dimension (0–100). A band sets the score (low 25, medium 55,
+   high 85) and the turn deltas move it at most 12 points either way; a
+   dimension with no band scores 50 plus its deltas, and one with neither is
+   left off. The overall score weights the dimensions by the rubric's weights.
+   A scenario with no rubric scores every observed id from 50 plus its
+   deltas, and the overall score is their mean.
+7. Persist and return the debrief document, with each dimension's rubric
+   name (`dimension_names`) and band (`dimension_bands`).
+
+The turn prompt names the same dimensions (its `RUBRIC` layer), and the turn
+output schema the runtime is sent makes `rubric_observations[].rubric_id` an
+enum of their ids, so the engine's grammar cannot write any other.
 
 Language guardrails in the prompt prohibit clinical advice, performance
 guarantees, and invented quotes. Evidence is cited by turn number only.

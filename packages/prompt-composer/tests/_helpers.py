@@ -12,8 +12,10 @@ from convsim_prompt import (
     NpcPublicPersona,
     PromptComposerInput,
     ResponseStyleOverrides,
+    RubricDimension,
     SafetyPolicy,
     ScenarioData,
+    ScenarioRubric,
     SessionState,
     TranscriptEntry,
 )
@@ -111,3 +113,38 @@ def make_interview_input(
         max_transcript_turns=6,
         token_budget=4096,
     )
+
+
+def make_interview_rubric() -> ScenarioRubric:
+    """A two-dimension rubric shaped like packs/official/job-interview-basic's."""
+    return ScenarioRubric(
+        rubric_id="interview_rubric",
+        title="Interview Performance Rubric",
+        dimensions=[
+            RubricDimension(
+                id="specificity",
+                name="Specificity",
+                description="Uses concrete examples instead of generic claims.",
+                low="Mostly generic claims.",
+                medium="Some examples but thin details.",
+                high="Specific examples with context, action, and result.",
+                weight=0.6,
+            ),
+            RubricDimension(
+                id="self_awareness",
+                name="Self-awareness",
+                description="Shows reflection and learning.",
+                low="Blames others or avoids weakness.",
+                medium="Acknowledges lessons in simple terms.",
+                high="Owns mistakes and explains growth.",
+                weight=0.4,
+            ),
+        ],
+    )
+
+
+def make_rubric_interview_input(**kwargs) -> PromptComposerInput:
+    """make_interview_input with the scenario's rubric loaded, as a pack scenario has."""
+    inp = make_interview_input(**kwargs)
+    inp.scenario.rubric = make_interview_rubric()
+    return inp

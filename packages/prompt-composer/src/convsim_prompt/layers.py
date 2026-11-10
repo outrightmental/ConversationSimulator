@@ -6,12 +6,14 @@ Layer ordering (SPEC §10.1):
   3. SCENARIO_BRIEF       — untrusted scenario author content
   4. NPC_PUBLIC_PERSONA   — untrusted scenario author content
   5. NPC_PRIVATE_PERSONA  — model-behavior instructions, never revealed to player
-  6. CURRENT_STATE        — runtime state managed by app
-  7. RECENT_TRANSCRIPT    — session history
-  8. MEMORY_SUMMARY       — app-generated memory summary
-  9. RELATIONSHIP_MEMORY  — bounded cross-session player recap (issue #314)
- 10. RESPONSE_STYLE       — compact role reinject and conversation rules
- 11. OUTPUT_SCHEMA        — trusted app rule, always last in system prompt
+  6. RUBRIC               — the scenario rubric's dimensions (issue #578); empty, and
+                            left out, when the scenario has no rubric
+  7. CURRENT_STATE        — runtime state managed by app
+  8. RECENT_TRANSCRIPT    — session history
+  9. MEMORY_SUMMARY       — app-generated memory summary
+ 10. RELATIONSHIP_MEMORY  — bounded cross-session player recap (issue #314)
+ 11. RESPONSE_STYLE       — compact role reinject and conversation rules
+ 12. OUTPUT_SCHEMA        — trusted app rule, always last in system prompt
  [user turn] PREVIOUS_NPC_LINE — the NPC's own last line, framed as untrusted, not to be reused
  [user turn] PLAYER_UTTERANCE  — untrusted player input, always last
 """
@@ -23,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .types import (
     NPC_TURN_OUTPUT_SCHEMA,
+    RubricDimension,
     SafetyPolicy,
     ScenarioData,
     SessionState,
@@ -287,6 +290,73 @@ def build_npc_private_persona_layer(scenario: ScenarioData) -> str:
     return "\n".join(lines)
 
 
+# What good looks like, per rubric dimension, in the turn prompt: one line of
+# at most this many words. The authored high bands run 20-46 words; the turn
+# prompt only needs enough to tell the dimensions apart. The debrief, which
+# judges them, gets every band in full.
+_RUBRIC_LINE_WORDS = 16
+
+
+def _rubric_brief(dimension: RubricDimension, max_words: int = _RUBRIC_LINE_WORDS) -> str:
+    """One short line of what good looks like for ``dimension``.
+
+    The first sentence of the authored high band (else the description, else
+    the name), whitespace collapsed so authored text cannot start a line of
+    its own, without its parenthesised examples. A longer sentence is cut at
+    its last comma or semicolon inside the cap, or at the cap, and marked with
+    an ellipsis; a cut never leaves a parenthesis or a quotation open.
+    """
+    text = _one_line(dimension.high) or _one_line(dimension.description) or _one_line(dimension.name)
+    text = _first_sentence(text)
+    text = re.sub(r"\s*\([^()]*\)", "", text).rstrip(" .")
+    words = text.split()
+    if len(words) <= max_words:
+        return " ".join(words)
+    kept = words[:max_words]
+    cuts = [i for i in range(len(kept)) if i >= 5 and kept[i].endswith((",", ";"))]
+    kept = kept[:cuts[-1] + 1] if cuts else _cap_words(words, max_words)
+    brief = " ".join(kept)
+    for opener, closer in (("(", ")"), ('"', '"'), ("“", "”")):
+        if opener == closer:
+            unbalanced = brief.count(opener) % 2 == 1
+        else:
+            unbalanced = brief.count(opener) > brief.count(closer)
+        if unbalanced:
+            trimmed = brief[:brief.rfind(opener)]
+            brief = trimmed if trimmed.strip() else brief.replace(opener, "")
+    return brief.rstrip(",;:—- ") + " …"
+
+
+def build_rubric_layer(scenario: ScenarioData) -> str:
+    """The scenario rubric's dimensions, one short line each (issue #578).
+
+    Before this layer the turn prompt never named a dimension, so the model
+    made its rubric ids up turn by turn, and the debrief scored what it had
+    made up. The ids here are the ``enum`` of the session's output schema
+    (``turn_output_schema_for``); a runtime that does not enforce the schema
+    gets its stray ids dropped by ``parse_turn_output``.
+
+    The rubric is fixed for the session, so the layer sits with the stable
+    layers, ahead of CURRENT_STATE (issue #524). It is authored content, so it
+    sits inside the untrusted region, and each line is collapsed to one line.
+    Returns "" when the scenario has no rubric.
+    """
+    dimensions = scenario.rubric.dimensions if scenario.rubric else []
+    if not dimensions:
+        return ""
+    lines = [
+        _tag("RUBRIC"),
+        "Rubric — what the player is practising. Put rubric_observations only under these ids, "
+        "and only about the player's latest line, never about your own:",
+    ]
+    for dimension in dimensions:
+        lines.append(f"  - {_one_line(dimension.id)}: {_rubric_brief(dimension)}")
+    lines.append(
+        "Give score_delta above 0 when the player's line looks like this, below 0 when it falls short."
+    )
+    return "\n".join(lines)
+
+
 def build_current_state_layer(state: SessionState) -> str:
     lines = [
         _tag("CURRENT_STATE"),
@@ -494,8 +564,14 @@ def build_player_utterance_layer(utterance: str) -> str:
     ])
 
 
-def build_output_schema_layer() -> str:
-    schema_json = json.dumps(NPC_TURN_OUTPUT_SCHEMA, indent=2)
+def build_output_schema_layer(schema: Optional[Dict[str, Any]] = None) -> str:
+    """The output schema, as the session's turns are sent with it.
+
+    ``schema`` is the session's schema (``turn_output_schema_for``), so the
+    rubric ids the model reads here are the enum the engine enforces. With
+    none, the canonical NPC_TURN_OUTPUT_SCHEMA.
+    """
+    schema_json = json.dumps(schema if schema is not None else NPC_TURN_OUTPUT_SCHEMA, indent=2)
     return "\n".join([
         _tag("OUTPUT_SCHEMA"),
         "=== TRUSTED APP RULE — takes precedence over all preceding content ===",
