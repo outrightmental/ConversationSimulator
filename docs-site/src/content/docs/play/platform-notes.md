@@ -6,7 +6,7 @@ sidebar:
 ---
 
 Platform-specific differences for building, running, and distributing
-Conversation Simulator on macOS and Windows.
+Conversation Simulator on macOS, Windows and Linux.
 
 ---
 
@@ -124,38 +124,49 @@ instead of prompting when voice input first requests the microphone.
 
 ### Data directories
 
-The platform data root is `~/Library/Application Support/com.outrightmental.convsim/`
-(set by `convsim_core/paths.py`; passed to the sidecar as `CONVSIM_DATA_ROOT`
-via the Tauri shell's `app_local_data_dir()`). Subdirectories:
+The desktop app keeps its data in
+`~/Library/Application Support/com.outrightmental.convsim/`. The Tauri shell
+builds that path in `shared_data_root()` (`apps/desktop/src-tauri/src/lib.rs`)
+from the full app's bundle identifier, so the demo uses the same folder, and
+passes it to convsim-core as `CONVSIM_DATA_ROOT`. convsim-core run without the
+shell falls back to the same folder on macOS (`convsim_core/paths.py`).
 
-```
-~/Library/Application Support/com.outrightmental.convsim/
-  db/         — SQLite session database
-  data/       — exports and pack cache
-  logs/       — runtime logs
-  models/     — downloaded model weights
-  exports/    — exported transcripts
-  data/audio/ — recorded audio clips (only when "save raw audio" is enabled; off by default)
-  crashes/    — crash bundles
-```
+Inside it are `db/`, `data/`, `logs/`, `models/llm/`, `packs/`, `exports/`,
+`cache/` and `crashes/`; [Data locations](/start/install/#data-locations) says
+what each holds. Nothing writes to `exports/` or `cache/` yet: a session export
+is a download the UI builds, not a file convsim-core saves. A few files still
+live under `~/.convsim/`, listed on the same page.
 
 This directory is not synced to iCloud (it is outside `~/Library/Mobile Documents`)
 and is explicitly excluded from Steam Cloud via `.nosteamcloudpath` sentinel files.
 
-If you have data from an older build that used `~/.convsim/`, run the app once to
-trigger the one-time migration (`convsim_core/data_migration.py` copies existing
-data to the new location on first launch).
+Older builds kept their data in `~/.convsim/`. On startup convsim-core copies
+(never moves) `data/`, `db/`, `packs/`, `logs/`, `exports/`, `cache/` and
+`crashes/` from there into the data folder, but only when the data folder is
+still empty (`convsim_core/data_migration.py`). The desktop shell creates
+`logs/` in it before it starts convsim-core, so in the desktop app the copy
+does not happen. [Troubleshooting](/start/troubleshooting/#data-dir-writable)
+says how to bring old sessions across by hand. Model files are never copied.
 
-Override the entire data root with the `CONVSIM_DATA_ROOT` environment variable.
+`CONVSIM_DATA_ROOT` moves the whole tree only when convsim-core runs without
+the desktop shell, because the shell always sets it. Single folders move with
+`CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`
+and the other `CONVSIM_*_DIR` variables, which the shell passes through.
 
 ### Port conflicts
 
-The app uses ports 7354–7358 (all bound to `127.0.0.1`). Find and stop
-conflicting processes:
+Everything binds to `127.0.0.1`. convsim-core listens on 7355 and the
+`llama-server` it starts listens on 7356. A source build also serves the web UI
+from the Vite dev server on 7354; the desktop app opens no port for its window.
+The voice output worker connects to a Kokoro server on 7358 when one is
+running, and the app does not start one. Nothing listens on 7357: speech-to-text
+runs `whisper-cli` as a subprocess for each request. Find and stop conflicting
+processes:
 
 ```bash
 lsof -i :7354
 lsof -i :7355
+lsof -i :7356
 kill <PID>
 ```
 
@@ -249,7 +260,7 @@ signtool.exe sign `
   /p <password> `
   /tr http://timestamp.digicert.com `
   /td sha256 /fd sha256 /v `
-  "apps\desktop\src-tauri\target\release\bundle\nsis\ConversationSimulator_*_x64-setup.exe"
+  "apps\desktop\src-tauri\target\release\bundle\nsis\Conversation Simulator_*_x64-setup.exe"
 ```
 
 See [tauri.app/distribute/sign/windows](https://tauri.app/distribute/sign/windows) for
@@ -270,29 +281,33 @@ prompted, or grant it in **Settings → Privacy & Security → Microphone**.
 
 ### Data directories
 
-The desktop app stores all mutable user data under the platform-native
-application data directory.  On Windows this is `%LOCALAPPDATA%`, which is
-**not** synced by Windows Roaming Profiles or OneDrive by default, keeping
-data local as required by the local-first privacy promise.
+The desktop app keeps its data in `%LOCALAPPDATA%\com.outrightmental.convsim\`.
+The Tauri shell builds that path in `shared_data_root()`
+(`apps/desktop/src-tauri/src/lib.rs`) and passes it to convsim-core as
+`CONVSIM_DATA_ROOT`. `%LOCALAPPDATA%` is **not** synced by Windows Roaming
+Profiles or OneDrive by default, keeping data local as required by the
+local-first privacy promise. convsim-core run without the shell, as in a source
+build started with `scripts\dev.ps1`, uses `%LOCALAPPDATA%\outrightmental\convsim\`
+instead (`convsim_core/paths.py`).
 
-```
-%LOCALAPPDATA%\outrightmental\convsim\db\       — SQLite session database
-%LOCALAPPDATA%\outrightmental\convsim\data\     — exports and pack cache
-%LOCALAPPDATA%\outrightmental\convsim\logs\     — runtime logs
-%LOCALAPPDATA%\outrightmental\convsim\models\   — downloaded model weights
-%LOCALAPPDATA%\outrightmental\convsim\exports\  — exported transcripts
-%LOCALAPPDATA%\outrightmental\convsim\data\audio\  — recorded audio clips (only when "save raw audio" is enabled; off by default)
-%LOCALAPPDATA%\outrightmental\convsim\crashes\  — crash bundles
-```
+Inside it are `db\`, `data\`, `logs\`, `models\llm\`, `packs\`, `exports\`,
+`cache\` and `crashes\`; [Data locations](/start/install/#data-locations) says
+what each holds. Nothing writes to `exports\` or `cache\` yet: a session export
+is a download the UI builds, not a file convsim-core saves. A few files still
+live under `%USERPROFILE%\.convsim\`, listed on the same page.
 
-The `CONVSIM_DATA_ROOT` environment variable overrides the entire root path.
+`CONVSIM_DATA_ROOT` moves the whole tree only when convsim-core runs without
+the desktop shell, because the shell always sets it. Single folders move with
+the `CONVSIM_*_DIR` variables, which the shell passes through.
 
-> **Migration from earlier builds:** If `~\.convsim\` exists from a pre-1.0
-> alpha install, `convsim-core` automatically copies sessions, packs, logs,
-> exports, and the database to the new location on first launch.  Model weights
-> are **not** migrated; re-download them via the Model Manager after migration.
-> A `.convsim_migrated_to_platform_dir` marker is written when migration
-> completes.
+> **Migration from earlier builds:** Older builds kept their data in
+> `%USERPROFILE%\.convsim\`. When the data folder is still empty at startup,
+> convsim-core copies the data folders from there into it and writes a
+> `.convsim_migrated_to_platform_dir` marker into `%USERPROFILE%\.convsim\`.
+> The desktop shell creates `logs\` in the data folder before it starts
+> convsim-core, so in the desktop app the copy does not happen.
+> [Troubleshooting](/start/troubleshooting/#data-dir-writable) says how to bring
+> old sessions across by hand. Model files are never copied.
 
 **Steam Cloud exclusion:** each data subdirectory contains a `.nosteamcloudpath`
 file that tells the Steam client not to sync it.  Transcripts, session history,
@@ -325,12 +340,14 @@ additional tooling).
 | CPU | 64-bit x86 processor, 8+ cores (for faster CPU inference) |
 | RAM | 16 GB |
 | Disk | 20 GB free (for multiple models and session history) |
-| GPU | NVIDIA GPU with 4+ GB VRAM (enables GPU-accelerated inference via llama.cpp's CUDA backend) |
+| GPU | Not used in v0.4: the Steam build bundles llama.cpp's CPU `llama-server.exe` |
 
-> **Note on GPU acceleration:** GPU acceleration is not required and not
-> automatically enabled.  If a supported NVIDIA GPU is present the player can
-> opt in via the Model Manager.  CUDA toolkit is not required — the bundled
-> `llama-server.exe` includes the CUDA runtime.
+> **Note on GPU acceleration:** the v0.4 Steam build for Windows runs the model
+> on the CPU. Its bundled `llama-server.exe` is llama.cpp's CPU build
+> (`runtimes/llama_cpp/download-runtime.ps1` defaults to the `cpu` variant and
+> does not offer CUDA builds), and the app has no switch to a GPU build yet.
+> Bundling the Vulkan build, which accelerates NVIDIA, AMD and Intel GPUs, and
+> using the GPU by default are planned in #530 and #531.
 
 #### Verified Steam client version
 
@@ -430,8 +447,8 @@ Run setup and then the Linux build script:
 
 Tauri produces:
 - **`.AppImage`** — portable, runs on any x86_64 Linux with glibc ≥ 2.35
-  without installation. This is the primary Steam depot artifact and the
-  recommended format for Steam Deck / SteamOS installs.
+  without installation. This is what the Steam depot ships for Linux, and
+  the recommended format for Steam Deck / SteamOS installs.
 - **`.deb`** — Debian/Ubuntu package for system-wide installation on
   Ubuntu 22.04+ and Debian 12+.
 
@@ -442,8 +459,9 @@ The `.deb` package declares them as `Depends:` and installs them via apt.
 
 Linux builds are **not code-signed**. There is no Linux equivalent of macOS
 Gatekeeper or Windows SmartScreen; no signature is required for distribution.
-The AppImage and `.deb` are distributed with SHA-256 checksums listed in the
-GitHub release and verified by the Steam depot audit before upload.
+The release build prints the SHA-256 checksum of each AppImage and `.deb` in
+its log (step "Verify Linux artifact permissions" in `release.yml`). GitHub
+releases carry no binaries; the Linux build reaches players through Steam.
 
 ### Microphone (PipeWire / PulseAudio)
 
@@ -459,30 +477,40 @@ sudo apt-get install -y xdg-desktop-portal xdg-desktop-portal-gtk
 
 ### Data directories
 
-```
-~/.local/share/convsim/db/       — SQLite session database
-~/.local/share/convsim/data/     — general application data
-~/.local/share/convsim/packs/    — installed scenario packs
-~/.local/share/convsim/exports/  — exported transcripts
-~/.local/share/convsim/logs/     — runtime logs
-~/.local/share/convsim/cache/    — regenerable caches
-~/.local/share/convsim/models/   — downloaded model weights
-```
+The desktop app, including the Steam build on Steam Deck, keeps its data in
+`~/.local/share/com.outrightmental.convsim/`, or in
+`$XDG_DATA_HOME/com.outrightmental.convsim/` when `XDG_DATA_HOME` is set. The
+Tauri shell builds that path in `shared_data_root()`
+(`apps/desktop/src-tauri/src/lib.rs`) and passes it to convsim-core as
+`CONVSIM_DATA_ROOT`. convsim-core run without the shell, as in a source build
+started with `scripts/dev.sh`, uses `~/.local/share/convsim/` (or
+`$XDG_DATA_HOME/convsim/`) instead (`convsim_core/paths.py`).
 
-The root is `$XDG_DATA_HOME/convsim` when `XDG_DATA_HOME` is set, otherwise
-`~/.local/share/convsim`. If `~/.convsim/` exists from a pre-release dev
-install, the app migrates data on first launch. Every subdirectory can be
-redirected via a `CONVSIM_*` environment variable — e.g. `CONVSIM_DB_DIR`,
-`CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR` — or relocate the
-whole tree at once with `CONVSIM_DATA_ROOT`.
+Inside it are `db/`, `data/`, `logs/`, `models/llm/`, `packs/`, `exports/`,
+`cache/` and `crashes/`; [Data locations](/start/install/#data-locations) says
+what each holds. Nothing writes to `exports/` or `cache/` yet: a session export
+is a download the UI builds, not a file convsim-core saves. A few files still
+live under `~/.convsim/`, listed on the same page. convsim-core copies data
+from an older `~/.convsim/` only when the data folder is still empty when it
+starts, and in the desktop app it never is: the shell creates `logs/` there
+first. [Troubleshooting](/start/troubleshooting/#data-dir-writable) says how to
+bring old sessions across by hand.
+
+Every subdirectory can be redirected via a `CONVSIM_*` environment variable,
+for example `CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR` or
+`CONVSIM_MODELS_DIR`, and the shell passes them through. `CONVSIM_DATA_ROOT`
+relocates the whole tree only when convsim-core runs without the shell, because
+the shell always sets it.
 
 ### Port conflicts
 
-The app binds ports 7354–7358 on `127.0.0.1`. Find and stop conflicting
-processes:
+The ports are the same as on macOS: convsim-core on 7355, `llama-server` on
+7356, the Vite dev server on 7354 in a source build only, and a Kokoro server
+on 7358 if you run one. All bind to `127.0.0.1`, and nothing listens on 7357.
+Find and stop conflicting processes:
 
 ```bash
-ss -tlnp | grep -E '7354|7355|7356|7357|7358'
+ss -tlnp | grep -E '7354|7355|7356|7358'
 # or
 fuser 7354/tcp 7355/tcp
 kill <PID>
@@ -613,7 +641,8 @@ Variables (non-secret, visible in logs) live under **→ Variables**.
 | Runtime warning | Gatekeeper dialog | SmartScreen dialog | None |
 | WebView engine | WKWebView (Safari) | WebView2 (Chromium) | WebKitGTK |
 | Microphone prompt | System Settings | Windows Security | `xdg-desktop-portal` |
-| Data directory | `~/Library/Application Support/com.outrightmental.convsim/` | `%LOCALAPPDATA%\outrightmental\convsim\` | `$XDG_DATA_HOME/convsim/` |
+| Data directory (desktop app) | `~/Library/Application Support/com.outrightmental.convsim/` | `%LOCALAPPDATA%\com.outrightmental.convsim\` | `~/.local/share/com.outrightmental.convsim/` (under `$XDG_DATA_HOME` if set) |
+| Data directory (convsim-core without the shell) | same as the desktop app | `%LOCALAPPDATA%\outrightmental\convsim\` | `~/.local/share/convsim/` (under `$XDG_DATA_HOME` if set) |
 | Dev script | `./scripts/dev.sh` | `.\scripts\dev.ps1` | `./scripts/dev.sh` |
 | First-run check | `./scripts/first-run-check.sh` | `.\scripts\first-run-check.ps1` | `./scripts/first-run-check.sh` |
 

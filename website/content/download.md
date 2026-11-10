@@ -17,10 +17,10 @@ description: Get Conversation Simulator for Windows, macOS, or Linux — $9.99 o
 
 ## Two ways to get it — both run 100% on your computer
 
-Conversation Simulator is **free and open source**. The engine is Apache-2.0 and
-the four official scenario packs are CC BY 4.0, so you can always clone the
-[repository](https://github.com/outrightmental/ConversationSimulator), build it,
-and run it at no cost — see the
+Conversation Simulator is **free and open source**. The engine and the First
+Words tutorial are Apache-2.0 and the official scenario packs are CC BY 4.0, so
+you can always clone the [repository](https://github.com/outrightmental/ConversationSimulator),
+build it, and run it at no cost — see the
 [developer install guide](https://docs.conversationsimulator.com/dev/developer-install/).
 
 The **$9.99 Steam edition** is that same software, packaged: code-signed and
@@ -32,7 +32,7 @@ is transmitted to any server during play.
 
 ## Premium scenario packs
 
-Beyond the four free official packs, first-party **premium scenario-pack
+Beyond the free official packs, first-party **premium scenario-pack
 expansions** — advanced professional skills, extended language courses, and themed
 conversation bundles — are available as paid downloadable content on Steam. They
 are optional add-ons on top of the free core; nothing that ships free is ever moved
@@ -43,8 +43,9 @@ behind the paywall.
 No model ships in the box — you choose what runs on your machine. On first
 launch the app walks you through downloading a starter model
 (**Qwen3 4B Instruct**, ~2.5 GB, Apache-2.0), with the license and size shown
-before anything is fetched. One model download is the only time the app needs
-the internet. After that, everything works offline.
+before anything is fetched. That first-run download (the model, plus the AI
+engine itself in a source build) is the only time the app needs the internet.
+After that, everything works offline.
 
 **Recommended hardware:** any 64-bit machine with 8 GB RAM runs the starter
 model; 6 GB+ of VRAM unlocks the larger, sharper models. Full details in the

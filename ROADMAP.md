@@ -49,6 +49,20 @@ criteria.
 > shipped, organized into phases, with the open backlog extending from there. The
 > snapshot below is narrative; the board is the record.
 
+### Done — shipped in v0.4.0
+
+- [x] The reply arrives as it is written: sentence-by-sentence streaming over a WebSocket served by convsim-core, with released text committed (#538)
+- [x] The wait says what it is doing: staged turn panel, reading bar, reply-start estimate from this machine's measured speeds (#539)
+- [x] Every turn records what it cost: engine timings, stage times, extra calls, rolling speeds endpoint (#519)
+- [x] The engine launches for one conversation: one slot, registry context size, 256-token batches, 1 GiB prompt cache bound (#523)
+- [x] The first session explains itself: resume, reply speed, plain wording, meter clarity, whole-turn counting (#501)
+- [x] The Conversation Brief leads with the mission: numbered goals, two decisions, the mechanical settings in one card (#500, building on #486)
+- [x] The demo has its own icon set and Steamworks icons (#499)
+- [x] Copy diagnostics works on macOS; a rejected request names the field (#508)
+- [x] Model downloads show the real model folder and offer Retry when the connection drops (#568)
+- [x] Slow turns wait instead of failing; convsim-core runs as a supervised sidecar and shuts down its whole process tree (#489, #456, #485)
+- [x] Screenshots and a demo recording from a real local-model session (#455); diagnostics name the release version (#490); tracker structure declared and validated in CI (#491)
+
 ### Done — shipped in v0.3.0
 
 - [x] Onboarding overhaul — first conversation in 60 seconds, zero error walls (#388)
@@ -90,7 +104,7 @@ criteria.
 ### Remaining polish — before Milestone 1 tag
 
 - [x] Real UI screenshots and demo recording, captured from a local-model playthrough — [#455](https://github.com/outrightmental/ConversationSimulator/issues/455)
-- [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`) — [#456](https://github.com/outrightmental/ConversationSimulator/issues/456)
+- [x] Desktop app with bundled backend (Tauri sidecar for `convsim-core`) — [#456](https://github.com/outrightmental/ConversationSimulator/issues/456)
 - [ ] Automated real-model CI smoke test — [#457](https://github.com/outrightmental/ConversationSimulator/issues/457)
 
 ### Post-alpha — Milestone 2+

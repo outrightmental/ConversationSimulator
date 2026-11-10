@@ -135,13 +135,12 @@ retired_labels:
 # no burndown to show. The one historical milestone that was really used —
 # "Steam Release Roadmap" — stays closed and untouched.
 milestones:
-  - title: v0.4 — Demo and Next Fest
-    due_on: 2026-10-31
+  - title: v0.4 — Demo
+    due_on: 2026-11-14
     state: open
     description: >-
-      A free demo build in front of players: Steam Next Fest submission, its own
-      client identity, and a first session that explains itself without a
-      maintainer in the room.
+      A free demo build in front of players: its own client identity, and a
+      first session that explains itself without a maintainer in the room.
   - title: v1.0 — Paid launch
     due_on: 2026-11-28
     state: open
@@ -187,7 +186,7 @@ rules:
 # `apply` never overwrites a value that is already set.
 backfill:
   milestones:
-    v0.4 — Demo and Next Fest: [487, 488, 494, 495, 499, 500, 501, 508]
+    v0.4 — Demo: [487, 488, 494, 495, 499, 500, 501, 508]
     v1.0 — Paid launch: [315, 316, 361, 362, 364, 366, 456, 457]
     v1.1 — Post-launch: [454, 461, 462, 463, 464, 465, 466]
   priorities:

@@ -184,7 +184,7 @@ looks triaged while burning down nowhere. The next three:
 
 | Milestone | Due | What it delivers |
 | --------- | --- | ---------------- |
-| v0.4 — Demo and Next Fest | Oct 31, 2026 | A free demo build in front of players: Next Fest submission, its own client identity, a self-explaining first session |
+| v0.4 — Demo | Nov 14, 2026 | A free demo build in front of players: its own client identity, a first session that explains itself, a reply that arrives as it is written and a wait that says what it is doing |
 | v1.0 — Paid launch | Nov 28, 2026 | The $9.99 Steam edition goes live — bundled desktop engine, real-model CI gate, store and DLC registration |
 | v1.1 — Post-launch | Jan 16, 2027 | The groomed backlog released to the factory: auto-update, accessibility, performance targets, the UGC on-ramp |
 

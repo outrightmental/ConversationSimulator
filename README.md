@@ -107,8 +107,14 @@ bundled — you decide what to install and when.
 | **Everyday Negotiation** | Used car, apartment lease, freelance scope, customer service refund |
 | **Language Café** | Spanish coffee shop, French hotel check-in, Japanese convenience store, English small talk |
 | **Difficult Conversations** | Coworker feedback, missed-deadline apology, boundary with a friend, ask for a raise |
+| **Dating — Confidence & Boundaries** | Asking someone out, accepting a no, turning down a neighbor, a first date |
 
-All official packs are CC BY 4.0. Fork them, remix them, or create your own from scratch.
+**First Words**, a scripted tutorial of 3 to 5 minutes, ships alongside them
+and needs no model download. The app imports every pack in `packs/official/`
+when it starts.
+
+The scenario packs are CC BY 4.0 and the First Words tutorial is Apache-2.0.
+Fork them, remix them, or create your own from scratch.
 
 ---
 
@@ -193,8 +199,8 @@ The JSON Schema in `schemas/` validates everything at import time.
 | ---- | ------------- |
 | LLM inference | Local model via llama.cpp — stays on your machine |
 | Speech-to-text | whisper.cpp — local, no audio uploads |
-| Text-to-speech | Kokoro / sherpa-onnx — local, TTS audio cached on disk |
-| Transcripts | SQLite at `~/.convsim/db/` — never uploaded |
+| Text-to-speech | Kokoro, a local server; TTS audio cached on disk |
+| Transcripts | SQLite in the `db/` folder of the app's [data folder](docs/install.md#data-locations), never uploaded |
 | Telemetry | None — `telemetry_enabled` defaults off and the MVP ships no telemetry subsystem |
 | Model downloads | Only when you explicitly request them; license shown before every download |
 
@@ -217,33 +223,35 @@ any subsystem attempts to reach an external host.
 
 ## Architecture
 
-Five services, all on localhost. The browser never talks to the internet.
+Everything runs on your machine and, by default, listens only on localhost.
+The browser never talks to the internet.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                        Your machine                          │
 │                                                              │
-│  Browser (React / Vite)                                      │
-│  convsim-ui  :7354                                           │
+│  Web UI (React)                                              │
+│  :7354 Vite dev server in a source build;                    │
+│  the desktop app shows it in its own window                  │
 │       │  HTTP REST + WebSocket (localhost only)              │
 │       ▼                                                      │
 │  convsim-core  :7355  (Python / FastAPI)                     │
-│       │                   SQLite  ~/.convsim/db/             │
-│   ┌───┼──────────┐                                           │
-│   ▼   ▼          ▼                                           │
-│  :7356 :7357   :7358                                         │
-│  LLM   STT     TTS                                           │
-│ llama  whisper Kokoro / sherpa-onnx                          │
+│       │                   SQLite  <data folder>/db/          │
+│   ┌───┼──────────────┐                                       │
+│   ▼   ▼              ▼                                       │
+│  :7356  no port      :7358                                   │
+│  LLM    STT          TTS                                     │
+│  llama  whisper-cli  Kokoro                                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-| Service | Port | Responsibility |
-| ------- | ---- | -------------- |
-| convsim-ui | 7354 | Browser UI (Vite dev server) |
+| Component | Port | Responsibility |
+| --------- | ---- | -------------- |
+| Web UI | 7354 | Browser UI. The Vite dev server serves it in a source build; the desktop app loads it into its own window and opens no port for it |
 | convsim-core | 7355 | Scenario engine, REST API, WebSocket |
-| convsim-llm | 7356 | Local LLM (llama-server) |
-| convsim-stt | 7357 | Speech-to-text (whisper.cpp) |
-| convsim-tts | 7358 | Text-to-speech (Kokoro / sherpa-onnx) |
+| llama-server | 7356 | Local LLM, a process convsim-core starts |
+| whisper-cli | none | Speech-to-text (whisper.cpp), which convsim-core runs as a subprocess for each request |
+| Kokoro server | 7358 | Text-to-speech. convsim-core connects to a Kokoro server on this port when one is running; the app does not ship or start one |
 
 > Architecture deep-dive: [docs/architecture.md](docs/architecture.md) &nbsp;·&nbsp;
 > Runtime adapters: [docs/runtime-adapters.md](docs/runtime-adapters.md)
@@ -292,11 +300,11 @@ Every session runs through a layered safety system before and after the model is
 | Milestone | Goal | Status |
 | --------- | ---- | ------ |
 | 0 | Monorepo skeleton, dev setup, official scenario packs | Complete |
-| 1 | Text-only local simulator (browser UI + Python backend + local LLM) | In progress |
-| 2 | Scenario pack system (import, validate, browse community packs) | Planned |
-| 3 | Local voice input (Whisper speech-to-text) | Planned |
-| 4 | Local voice output (TTS with Kokoro / sherpa-onnx) | Planned |
-| 5 | Polished playable alpha | Planned |
+| 1 | Text-only local simulator (browser UI + Python backend + local LLM) | Complete |
+| 2 | Scenario pack system (import, validate, browse community packs) | Import, export and validation complete; in-app community pack browser planned ([#465](https://github.com/outrightmental/ConversationSimulator/issues/465)) |
+| 3 | Local voice input (Whisper speech-to-text) | Complete (opt-in) |
+| 4 | Local voice output (TTS with Kokoro / sherpa-onnx) | Complete (opt-in) |
+| 5 | Polished playable alpha | Complete (v0.1.0-alpha.1); v0.4.0 is the first public demo |
 
 **[ROADMAP.md](ROADMAP.md)** — MVP acceptance criteria, build order, what is
 deliberately out of scope, and links to the acceptance criteria and docs.
@@ -311,8 +319,8 @@ deliberately out of scope, and links to the acceptance criteria and docs.
 Conversation Simulator is **free and open source, and fairly priced**:
 
 - **GitHub — free.** Clone this repository, build it with the quickstart above,
-  and run it at no cost. The engine is Apache-2.0 and the five official packs are
-  CC BY 4.0.
+  and run it at no cost. The engine and the First Words tutorial are Apache-2.0,
+  and the official scenario packs are CC BY 4.0.
 - **Steam — $9.99.** The [Steam edition](publishing/STEAM_STORE_PAGE.md) is the
   same software, packaged: signed, notarized, auto-updating, Steam Deck–verified.
   The price funds continued development; it does not unlock anything the source
@@ -323,7 +331,7 @@ Conversation Simulator is **free and open source, and fairly priced**:
   ships as a separate free Steam app for Steam Next Fest. Everything you practise
   in it carries over to the full game.
 - **Premium scenario-pack DLC — Steam only.** First-party expansion packs beyond
-  the four free official ones are developed in a separate **private** repository
+  the free official ones are developed in a separate **private** repository
   and sold as paid Steam DLC. Their content is never in this public repository.
   See [docs/DLC_MODEL.md](docs/DLC_MODEL.md) for the private-repo → Steam-DLC
   contract. The open core never shrinks: nothing that ships free is relocked as DLC.
@@ -380,7 +388,7 @@ you can ship one without touching engine code.
 ```
 apps/
   web/             React / TypeScript browser UI
-  desktop/         Tauri desktop wrapper (future milestone)
+  desktop/         Tauri desktop wrapper (the packaged and Steam builds)
 
 packages/
   ui/              Shared UI component library
@@ -395,11 +403,9 @@ runtimes/
   whisper_cpp/     whisper.cpp speech-to-text integration
 
 packs/
-  official/        First-party scenario packs (CC BY 4.0)
-    job-interview-basic/
-    everyday-negotiation/
-    language-cafe/
-    difficult-conversations/
+  official/        First-party packs: the scenario packs listed above (CC BY 4.0)
+                   and the First Words tutorial (Apache-2.0)
+  sample/          hello-conversation, a minimal sample pack (CC0-1.0)
 
 schemas/           JSON Schema definitions for packs, scenarios, NPCs, rubrics
 model-registry/    Curated registry of supported local models with checksums
@@ -415,14 +421,16 @@ scripts/           Developer setup and launch scripts
 | ------- | ------- |
 | Application code | Apache-2.0 |
 | Official scenario packs | CC BY 4.0 |
+| First Words tutorial pack | Apache-2.0 |
 | Documentation | CC BY 4.0 |
 | Captured screenshots and demo recording, placeholder pack art | CC0-1.0 |
 | Model weights | Not bundled — user-installed with full license disclosure |
 | Premium scenario-pack DLC | Proprietary — not in this repository; sold on Steam |
 
-Everything in **this** repository is open source: the code is Apache-2.0, the four
-official packs and the docs are CC BY 4.0. The paid Steam build is a packaging of
-this same open code — buying it funds development, not access. Premium expansion
+Everything in **this** repository is open source: the code and the First Words
+tutorial are Apache-2.0, and the official scenario packs and the docs are
+CC BY 4.0. The paid Steam build is a packaging of this same open code — buying
+it funds development, not access. Premium expansion
 packs are the only proprietary content; they live in a separate private repository
 and are never included here.
 
