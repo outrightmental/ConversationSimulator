@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Project board sync — holds the delivery board (org project 12) to
+# .github/project-structure.yml with the same script a maintainer runs by hand.
+#
+# Why a workflow: the board's Priority and Phase are project fields, which only
+# a token with the `project` scope can write. GITHUB_TOKEN cannot reach an
+# organization project, so the maintainer used to run `apply` from a laptop
+# after `gh auth refresh -s project`, and between runs the board drifted from
+# the milestones and labels triage had already set. This runs the same
+# `audit`/`apply` daily and on demand.
+#
+# Token: PROJECT_SYNC_TOKEN, a fine-grained token on the outrightmental
+# organization with Projects: read and write, plus Issues: read and write and
+# Metadata: read on this repository (or a classic token with `repo` and
+# `project`). Without it every run says so and exits green — the same shape as
+# the Steam job without its credentials.
+#
+#   Scheduled run   audit only: reports drift in the job summary, changes nothing.
+#   Run workflow    mode=audit (default) or mode=apply to converge the board.
+
+name: Project board sync
+
+on:
+  schedule:
+    # Daily, off the hour.
+    - cron: "41 7 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "audit reports drift; apply converges the board on the manifest"
+        required: false
+        default: audit
+        type: choice
+        options:
+          - audit
+          - apply
+          - apply --dry-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync project board (${{ github.event.inputs.mode || 'audit' }})
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN != '' }}
+      MODE: ${{ github.event.inputs.mode || 'audit' }}
+    steps:
+      - name: Token check
+        if: env.HAS_TOKEN != 'true'
+        run: |
+          {
+            echo "### Project board sync skipped"
+            echo
+            echo "PROJECT_SYNC_TOKEN is not set, so this run cannot read or write the"
+            echo "org project's Priority and Phase fields. See the header of"
+            echo "\`.github/workflows/project-sync.yml\` for the token it needs."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "INFO  PROJECT_SYNC_TOKEN is not set — skipping."
+
+      - uses: actions/checkout@v5
+        if: env.HAS_TOKEN == 'true'
+
+      - uses: actions/setup-python@v6
+        if: env.HAS_TOKEN == 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        if: env.HAS_TOKEN == 'true'
+        run: pip install pyyaml
+
+      # The offline gates first: a manifest CI would reject must not reach the
+      # live board.
+      - name: Validate the manifest
+        if: env.HAS_TOKEN == 'true'
+        run: |
+          python scripts/project-structure.py self-test
+          python scripts/project-structure.py validate
+
+      - name: ${{ env.MODE }}
+        if: env.HAS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -o pipefail
+          # shellcheck disable=SC2086 # MODE is a fixed choice, split on purpose
+          python scripts/project-structure.py $MODE 2>&1 | tee sync.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "### project-structure.py $MODE (exit $status)"
+            echo
+            echo '```'
+            tail -n 200 sync.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Exit 1 means drift (audit) or work left for a human (apply): worth a
+          # red run on a manual dispatch, noise on the daily audit.
+          if [ "$status" -ne 0 ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            exit "$status"
+          fi
