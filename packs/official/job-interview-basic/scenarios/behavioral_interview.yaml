@@ -132,16 +132,21 @@ events:
       learned from the experience or how they would approach it differently
       today.
     repeat: false
+  # It repeats (#580): unless impression then falls below 15 no ending follows
+  # the wrap-up, and fired once, its instruction left the prompt the turn
+  # after Dana asked her "one last thing", and the interview carried on.
   - id: low_impression_warning
     when:
       type: variable_below
       variable: impression
       threshold: 25
     npc_instruction: >-
-      Dana is losing confidence in this candidate. Begin wrapping up the interview
-      with one final question and signal that time is short: "We're getting close
-      to time — let me ask you one last thing before we wrap up."
-    repeat: false
+      Dana is losing confidence in this candidate. If she has not signalled
+      yet that time is short, she begins wrapping up the interview with one
+      final question: "We're getting close to time — let me ask you one last
+      thing before we wrap up." Once she has, she asks nothing new: she
+      acknowledges the answer briefly and closes the interview politely.
+    repeat: true
 # Pacing (#580): impression starts at 50 and moves at most 6 a turn, so
 # success (above 70) takes four turns at the limit and failure (below 15) six.
 # At 15 a turn, two strong answers ended the interview.

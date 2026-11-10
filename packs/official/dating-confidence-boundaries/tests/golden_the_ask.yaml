@@ -103,9 +103,9 @@ static_assertions:
     path: events[id=disengagement].when
     check: "type=variable_below AND variable=jordan_interest AND threshold=20"
 
-  - description: disengagement fires only once
+  - description: disengagement holds on every turn jordan_interest stays below 20
     path: events[id=disengagement].repeat
-    check: "equals false"
+    check: "equals true"
 
   - description: Success ending condition targets jordan_interest above 68
     path: ending_conditions.success

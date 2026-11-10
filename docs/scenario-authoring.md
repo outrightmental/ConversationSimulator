@@ -424,6 +424,13 @@ Two things follow:
   Write it as how the NPC carries on from here ("The candidate has been
   giving specific answers; follow up deeper"), not as a reply to the line
   that crossed the threshold, which the NPC has already answered.
+- **A `repeat: false` instruction is in the prompt for one reply only.** An
+  instruction that closes the conversation (a goodbye, a polite no, "one
+  last question") is gone again on the next turn, and the NPC carries on
+  as if it had never been said, unless an ending follows. When none is sure
+  to, mark it `repeat: true` and write it for every turn its condition
+  holds: "If you have not offered a polite close yet, offer one now. Once
+  you have, keep each reply to a short goodbye."
 
 Endings are checked at the end of each turn, after its change is applied.
 A `max_delta_per_turn` that lets a variable reach an ending in one or two

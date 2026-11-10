@@ -96,9 +96,9 @@ static_assertions:
     path: events[id=high_specificity_reward].repeat
     check: "equals false"
 
-  - description: low_impression_warning fires only once
+  - description: low_impression_warning holds on every turn impression stays below 25
     path: events[id=low_impression_warning].repeat
-    check: "equals false"
+    check: "equals true"
 
   - description: Success ending targets impression above 70
     path: ending_conditions.success

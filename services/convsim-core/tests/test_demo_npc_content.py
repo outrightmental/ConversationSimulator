@@ -294,6 +294,37 @@ def test_diane_says_her_polite_no_before_the_conversation_fails():
     assert ending == "failure" and turn == 3 and "deflation_signal" in spoke
 
 
+# Events whose instruction closes the conversation. No ending is sure to
+# follow them, so each repeats and is written for the turns after it spoke
+# too: fired once, the instruction left the prompt the next turn and the NPC
+# could chat on after its goodbye (#580).
+_CLOSING_EVENTS = {
+    "the_ask": "disengagement",
+    "ask_for_raise": "deflation_signal",
+    "behavioral_interview": "low_impression_warning",
+}
+
+
+@pytest.mark.parametrize("scenario_id", sorted(_CLOSING_EVENTS))
+def test_an_event_that_closes_the_conversation_holds_until_it_ends(scenario_id):
+    info = _load(scenario_id)
+    event = next(e for e in info.events if e.id == _CLOSING_EVENTS[scenario_id])
+    assert event.repeat is True
+    # The same instruction serves the turn it first speaks and the ones after.
+    text = " ".join(event.npc_instruction.split())
+    assert re.search(r"\b(?:has not|have not)\b.*\byet\b", text), text
+    assert re.search(r"\bOnce (?:she|he|Jordan|they) ha(?:s|ve)\b", text), text
+    # It speaks on every turn its condition holds, not on the first alone.
+    defs = build_variable_defs(info.state_variable_overrides)
+    variable = event.when["variable"]
+    state = dict(initialize_state(defs), **{variable: event.when["threshold"] - 1})
+    fired: set = set()
+    assert [event.id in evaluate_event_triggers(state, turn, info.events, fired)
+            for turn in (3, 4, 5)] == [True, True, True]
+    # And it is not true at the defaults (see above), so it waits for a turn that earns it.
+    assert event.id not in evaluate_event_triggers(initialize_state(defs), 1, info.events, set())
+
+
 def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
     info = _load("ask_for_raise")
     defs = build_variable_defs(info.state_variable_overrides)

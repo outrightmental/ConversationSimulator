@@ -45,7 +45,7 @@ using the STAR method earn a stronger impression; vague platitudes lower it.
 
 - **rambling_redirect** — fires when `rambling_count > 2`; Dana asks for a concrete, specific example
 - **high_specificity_reward** — fires once when `specificity_score > 75`; Dana shows deeper follow-up engagement
-- **low_impression_warning** — fires once when `impression < 25`; Dana begins wrapping up
+- **low_impression_warning** — fires on every turn `impression < 25`; Dana wraps up and asks nothing new
 
 **Endings:**
 
