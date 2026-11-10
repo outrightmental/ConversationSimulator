@@ -107,10 +107,10 @@ Files are named after the model ID:
 
 ```
 <models folder>/
-  qwen3-4b-instruct-q4_k_m.gguf
+  qwen3-4b-instruct-2507-q4_k_m.gguf
   qwen3-8b-instruct-q4_k_m.gguf
   ...
-  qwen3-4b-instruct-q4_k_m.gguf.part   # only while a download is in progress
+  qwen3-4b-instruct-2507-q4_k_m.gguf.part   # only while a download is in progress
 ```
 
 ### Voice models
@@ -224,12 +224,12 @@ download begins until you click Confirm & install."
 
 | Row on screen | Source | Example |
 |---------------|--------|---------|
-| **Model** | `name` field in registry | `Qwen3 4B Instruct Q4_K_M` |
+| **Model** | `name` field in registry | `Qwen3 4B Instruct 2507 Q4_K_M` |
 | **Size** | `size_gb` in registry | `2.5 GB` |
 | **License** | `license` + `license_url` in registry | `Apache-2.0`, linked to `https://www.apache.org/licenses/LICENSE-2.0` |
 | **Min VRAM** / **Recommended VRAM** | `hardware` in registry | `4 GB` / `6 GB` |
 | **Integrity checksum** (**SHA-256 checksum** in the model manager) | `download.sha256` in registry | 64 hex chars |
-| **Saves to** (**Storage path** in the model manager) | Models folder from `GET /api/privacy/folders`, plus `<model-id>.gguf` | `/home/you/.local/share/com.outrightmental.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf` on Linux. Until the folder loads the row reads **File name** and shows `qwen3-4b-instruct-q4_k_m.gguf` alone (see Section 1) |
+| **Saves to** (**Storage path** in the model manager) | Models folder from `GET /api/privacy/folders`, plus `<model-id>.gguf` | `/home/you/.local/share/com.outrightmental.convsim/models/llm/qwen3-4b-instruct-2507-q4_k_m.gguf` on Linux. Until the folder loads the row reads **File name** and shows `qwen3-4b-instruct-2507-q4_k_m.gguf` alone (see Section 1) |
 | **Source** (model manager only) | `source_type` | `Official registry` |
 
 The licence row is a link that opens the full licence text at `license_url`
@@ -406,7 +406,7 @@ Current registry entries:
 
 | Model ID | Tier | Size | Licence |
 |----------|------|------|---------|
-| `qwen3-4b-instruct-q4_k_m` | Starter | 2.5 GB | Apache-2.0 |
+| `qwen3-4b-instruct-2507-q4_k_m` | Starter | 2.5 GB | Apache-2.0 |
 | `qwen3-8b-instruct-q4_k_m` | Standard | 5.0 GB | Apache-2.0 |
 | `qwen3-14b-instruct-q4_k_m` | High-quality | 9.0 GB | Apache-2.0 |
 | `mistral-small-3.1-24b-instruct-q4_k_m` | High-quality | 14.3 GB | Apache-2.0 |
@@ -416,7 +416,7 @@ All registry-managed download URLs are pinned to a commit SHA and paired with a
 verified SHA-256 checksum; no entry ships a `PENDING` value.
 
 The Steam Next Fest demo installs exactly one model: the `role: starter` entry
-(Qwen3 4B Instruct Q4_K_M), unless `CONVSIM_DEMO_MODEL_ID` names another
+(Qwen3 4B Instruct 2507 Q4_K_M), unless `CONVSIM_DEMO_MODEL_ID` names another
 registry id. See [`docs/steam-next-fest-demo.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/steam-next-fest-demo.md)
 for the decision.
 

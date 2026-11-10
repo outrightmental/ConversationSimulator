@@ -134,7 +134,7 @@ manager UI must satisfy before the packaged desktop alpha stage opens.
 
 ```
 Model:       Qwen3 4B Instruct (Q4_K_M)
-Source:      Hugging Face — Qwen/Qwen3-4B-GGUF
+Source:      Hugging Face — unsloth/Qwen3-4B-Instruct-2507-GGUF
 License:     Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
 Size:        2.6 GB
 Checksum:    SHA-256 — a3b1c2...  (verified after download)

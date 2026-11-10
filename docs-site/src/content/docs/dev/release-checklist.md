@@ -156,7 +156,7 @@ In the browser, navigate to **Settings**, find the **Runtime** section, and clic
 
 **Real-model smoke** (optional, requires adequate hardware):
 
-- [ ] Download the **Qwen3 4B Instruct Q4_K_M** starter model (≈2.6 GB)
+- [ ] Download the **Qwen3 4B Instruct 2507 Q4_K_M** starter model (≈2.6 GB)
 - [ ] SHA-256 checksum verified by the app after download
 - [ ] Model status changes to `"loaded"` after checksum passes
 - [ ] Record model filename and size in the smoke log
@@ -622,7 +622,7 @@ In the desktop app:
 
 ### F.5 Scripted text playthrough (real model — optional)
 
-Requires the **Qwen3 4B Instruct Q4_K_M** starter model (≈2.6 GB) to be
+Requires the **Qwen3 4B Instruct 2507 Q4_K_M** starter model (≈2.6 GB) to be
 downloaded and verified via the in-app Model Manager.
 
 - [ ] First-run Model Manager wizard appeared before the scenario library

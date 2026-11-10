@@ -26,7 +26,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _OFFICIAL_PACKS = _REPO_ROOT / "packs" / "official"
 _REGISTRY_PATH = _REPO_ROOT / "model-registry" / "registry.yaml"
 
-_STARTER_MODEL_ID = "qwen3-4b-instruct-q4_k_m"
+_STARTER_MODEL_ID = "qwen3-4b-instruct-2507-q4_k_m"
 
 
 def _config(tmp_path: Path, **overrides) -> ServiceConfig:

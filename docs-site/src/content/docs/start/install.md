@@ -110,7 +110,7 @@ it shows a **Getting things ready** screen, otherwise the download starts.
   scenario to start playing.
 
 The recommended model is the registry's starter entry, currently
-**Qwen3 4B Instruct Q4_K_M** (2.5 GB, Apache-2.0). It is saved in the
+**Qwen3 4B Instruct 2507 Q4_K_M** (2.5 GB, Apache-2.0). It is saved in the
 `models/llm/` folder under the data folder (see [Data locations](#data-locations)).
 
 No model weights are bundled with the app. The one-time download is the only

@@ -9,8 +9,15 @@ schema_version: "0.1"
 models:
   # ── Starter tier ─────────────────────────────────────────────────────────────
   # Smallest recommended model; suitable for first-run demo on lower VRAM systems.
-  - id: qwen3-4b-instruct-q4_k_m
-    name: "Qwen3 4B Instruct Q4_K_M"
+  # Qwen3-4B-Instruct-2507 is the non-thinking instruct release of Qwen3 4B. Until
+  # v0.4 the starter was the hybrid Qwen3-4B (id qwen3-4b-instruct-q4_k_m), run
+  # with reasoning off. The demo-gate replays of issue #580 found 2507 more
+  # coherent in all five demo conversations at the same size. Qwen publishes no
+  # GGUF of 2507, so this is unsloth's quantisation, pinned by revision and digest
+  # like every entry. An install of the earlier starter keeps working under its
+  # own id; the registry no longer offers it.
+  - id: qwen3-4b-instruct-2507-q4_k_m
+    name: "Qwen3 4B Instruct 2507 Q4_K_M"
     family: qwen3
     role: starter
     format: gguf
@@ -22,9 +29,9 @@ models:
       recommended_vram_gb: 6
     download:
       provider: huggingface
-      # Pinned to commit a9a60d0 of Qwen/Qwen3-4B-GGUF
-      url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/a9a60d009fa7ff9606305047c2bf77ac25dbec49/Qwen3-4B-Q4_K_M.gguf"
-      sha256: "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
+      # Pinned to commit a06e946 of unsloth/Qwen3-4B-Instruct-2507-GGUF
+      url: "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+      sha256: "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
     runtime:
       llama_cpp:
         context_length: 8192
