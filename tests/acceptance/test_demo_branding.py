@@ -28,6 +28,14 @@ is what the Steam client draws "in the library list view, 'favorites' in chat,
 and notifications", which is exactly the sidebar row where the demo and the
 full game read as the same product.
 
+Issue #551 is the same gap one level up: the demo app had no capsule or
+library art at all, so its library entry and store presence rendered blank.
+D-10g pins the demo capsule set ``gen_capsules.py --edition demo`` writes to
+``publishing/assets/capsules/demo/``: every asset at Valve's exact size, on
+the demo icon's purple plate rather than the full game's near-black stage,
+with the icon's "DEMO" ribbon in the lower-right corner of every asset allowed
+to carry the name — clear of the composition — and none on the library hero.
+
 Nothing here needs a build or a network, and only the JPEG's pixels need
 ImageMagick — the PNGs, the ICO and the ICNS are parsed directly, and the
 JPEG's dimensions come straight out of its SOF marker. The CI acceptance job
@@ -39,6 +47,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import shutil
 import struct
@@ -57,7 +66,11 @@ _ICON_DIR = _REPO_ROOT / "publishing" / "assets" / "icons"
 _APP_ICON = _ICON_DIR / "demo_app_icon.jpg"
 _SHORTCUT_ICON = _ICON_DIR / "demo_shortcut_icon.png"
 _DEMO_SVG = _ICON_DIR / "demo_icon.svg"
-_GEN_ICONS = _REPO_ROOT / "publishing" / "assets" / "source" / "gen_icons.py"
+_ASSET_SOURCE = _REPO_ROOT / "publishing" / "assets" / "source"
+_GEN_ICONS = _ASSET_SOURCE / "gen_icons.py"
+_GEN_CAPSULES = _ASSET_SOURCE / "gen_capsules.py"
+_CAPSULE_DIR = _REPO_ROOT / "publishing" / "assets" / "capsules"
+_DEMO_CAPSULE_DIR = _CAPSULE_DIR / "demo"
 
 # Plate colours from publishing/assets/source/gen_icons.py.
 _BASE_PLATE = (0x14, 0x7A, 0x84)
@@ -88,6 +101,41 @@ _SHORTCUT_ICON_PX = 256
 # teal/purple pair measures ~148, so there is room to retune either plate; the
 # point of the floor is to fail a future "subtle" recolour, not to be a tight fit.
 _MIN_PLATE_DISTANCE = 100.0
+
+# Steamworks capsule and library sizes
+# (https://partner.steamgames.com/doc/store/assets), restated so a drift in
+# gen_capsules.py fails here rather than in Valve's uploader.  The demo set is
+# all of these; the full game's adds page_background.
+_CAPSULE_SIZES = {
+    "header_capsule": (920, 430),
+    "small_capsule": (462, 174),
+    "main_capsule": (1232, 706),
+    "vertical_capsule": (748, 896),
+    "library_capsule": (600, 900),
+    "library_header": (920, 430),
+    "library_hero": (3840, 1240),
+    "library_logo": (1280, 720),     # transparent PNG
+}
+_BASE_ONLY_CAPSULES = {"page_background": (1438, 810)}
+# The assets that carry the game name, and so may carry "DEMO".  The hero must
+# stay textless (Steam lays the logo over it) and the logo has no corner.
+_RIBBONED_CAPSULES = ("header_capsule", "small_capsule", "main_capsule",
+                      "vertical_capsule", "library_capsule", "library_header")
+_OPAQUE_CAPSULES = tuple(n for n in _CAPSULE_SIZES if n != "library_logo")
+
+# The full game's capsule stage, lower and upper band (gen_capsules.py).
+_BASE_STAGE = ((0x0D, 0x0D, 0x15), (0x12, 0x12, 0x1C))
+# The demo stage: the icon plate above, a step darker below.
+_DEMO_LOWER_BAND = (0x5B, 0x21, 0xB6)
+
+# Ribbon placement on a capsule, restated from gen_capsules.py: the icon's
+# 256-unit frame, plate corner (245.5, 245.5) pinned to the capsule's
+# lower-right corner and scaled as a demo icon 0.6 x the capsule's
+# geometric-mean side.  The band edges themselves are _RIBBON_U_* above.
+_PLATE_CORNER = 245.5
+_CAPSULE_RIBBON_ICON_SIDE = 0.6
+# Fraction of the band's width that must stay clear inside its inner edge.
+_CAPSULE_RIBBON_CLEARANCE = 0.4
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +210,111 @@ def _png_dimensions(raw: bytes) -> tuple[int, int]:
     assert raw[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG payload"
     assert raw[12:16] == b"IHDR", "first chunk is not IHDR"
     return struct.unpack(">II", raw[16:24])
+
+
+class _Raster:
+    """Pixel access to an 8-bit non-interlaced PNG: RGB, RGBA or palette.
+
+    For the capsules, which run to 3840 x 1240 — far past what ``_read_png``'s
+    tuple-per-pixel decode can do in a test's time.  Rows are kept as bytes
+    and only sampled pixels are looked at.  A row stored with filter type 0
+    costs nothing to read, and gen_capsules.py writes every row that way; any
+    other filter is still decoded correctly, just at pure-Python speed.
+    """
+
+    def __init__(self, path: Path):
+        raw = path.read_bytes()
+        assert raw[:8] == b"\x89PNG\r\n\x1a\n", f"{path} is not a PNG"
+        pos, idat, header, palette, trns = 8, b"", None, b"", b""
+        while pos < len(raw):
+            (length,) = struct.unpack(">I", raw[pos:pos + 4])
+            kind = raw[pos + 4:pos + 8]
+            payload = raw[pos + 8:pos + 8 + length]
+            if kind == b"IHDR":
+                header = struct.unpack(">IIBBBBB", payload)
+            elif kind == b"PLTE":
+                palette = payload
+            elif kind == b"tRNS":
+                trns = payload
+            elif kind == b"IDAT":
+                idat += payload
+            pos += length + 12
+        assert header is not None, f"{path} has no IHDR"
+        self.width, self.height, depth, self.colour, _, _, interlace = header
+        assert depth == 8 and interlace == 0 and self.colour in (2, 3, 6), (
+            f"{path}: unsupported PNG layout {header}"
+        )
+        self.alpha = self.colour == 6
+        self.palette = [tuple(palette[i:i + 3]) for i in range(0, len(palette), 3)]
+        self.trns = trns
+        bpp = {2: 3, 3: 1, 6: 4}[self.colour]
+        self.bpp = bpp
+        stride = self.width * bpp
+        data = zlib.decompress(idat)
+        rows: list[bytes] = []
+        prev = bytes(stride)
+        pos = 0
+        for _ in range(self.height):
+            filter_type = data[pos]
+            line = data[pos + 1:pos + 1 + stride]
+            pos += 1 + stride
+            if filter_type != 0:
+                line = self._unfilter(filter_type, bytearray(line), prev, bpp, path)
+            rows.append(line)
+            prev = line
+        self.rows = rows
+
+    @staticmethod
+    def _unfilter(kind: int, line: bytearray, prev: bytes, bpp: int, path: Path) -> bytes:
+        for i in range(len(line)):
+            left = line[i - bpp] if i >= bpp else 0
+            up = prev[i]
+            up_left = prev[i - bpp] if i >= bpp else 0
+            if kind == 1:
+                line[i] = (line[i] + left) & 0xFF
+            elif kind == 2:
+                line[i] = (line[i] + up) & 0xFF
+            elif kind == 3:
+                line[i] = (line[i] + (left + up) // 2) & 0xFF
+            elif kind == 4:
+                p = left + up - up_left
+                pa, pb, pc = abs(p - left), abs(p - up), abs(p - up_left)
+                best = left if (pa <= pb and pa <= pc) else (up if pb <= pc else up_left)
+                line[i] = (line[i] + best) & 0xFF
+            else:
+                raise AssertionError(f"{path}: unsupported PNG filter {kind}")
+        return bytes(line)
+
+    def rgba(self, x: int, y: int) -> tuple[int, int, int, int]:
+        row = self.rows[y]
+        if self.colour == 3:
+            index = row[x]
+            alpha = self.trns[index] if index < len(self.trns) else 255
+            return (*self.palette[index], alpha)
+        i = x * self.bpp
+        if self.colour == 2:
+            return row[i], row[i + 1], row[i + 2], 255
+        return row[i], row[i + 1], row[i + 2], row[i + 3]
+
+    def sample(self, step: int):
+        """Every ``step``-th pixel in both directions, as (x, y, rgba)."""
+        for y in range(0, self.height, step):
+            for x in range(0, self.width, step):
+                yield x, y, self.rgba(x, y)
+
+    def diagonal_strip(self, lo: float, hi: float):
+        """The pixels whose centres satisfy lo <= x + y <= hi, as (x, y, rgba).
+
+        The ribbon band, its clearance and the corner tip beyond it are all
+        such strips across the lower-right corner, so only they are read.
+        """
+        w, h = self.width, self.height
+        for y in range(max(0, int(lo) - w - 1), h):
+            x0 = max(0, math.floor(lo - y - 1))
+            x1 = min(w - 1, math.ceil(hi - y - 1))
+            for x in range(x0, x1 + 1):
+                if lo <= x + y + 1 <= hi:
+                    yield x, y, self.rgba(x, y)
 
 
 def _find_magick() -> str | None:
@@ -342,6 +495,11 @@ def _ribbon_letterforms(path: Path) -> list[int]:
             continue
         if _distance((r, g, b), _RIBBON_FG) <= 24:
             columns[x - y] = columns.get(x - y, 0) + 1
+    return _letterform_runs(columns)
+
+
+def _letterform_runs(columns: dict[int, int]) -> list[int]:
+    """Lettering pixel counts per run of consecutive ``x - y`` buckets."""
     if not columns:
         return []
     runs, current = [], [min(columns)]
@@ -936,3 +1094,191 @@ class TestGeneratedArtworkIsCurrent:
         """It is billed as the >= 128 px drawing, so it must be the ribboned one."""
         gen = _load_generator()
         assert _DEMO_SVG.read_text().strip() != gen.icon_svg("demo", ribbon=False)
+
+
+# ---------------------------------------------------------------------------
+# D-10g  The demo capsule and library art (issue #551)
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def demo_capsule():
+    """``demo_capsule(name)`` -> a decoded ``_Raster``, each file read once."""
+    cache: dict[str, _Raster] = {}
+
+    def load(name: str) -> _Raster:
+        if name not in cache:
+            cache[name] = _Raster(_DEMO_CAPSULE_DIR / f"{name}.png")
+        return cache[name]
+
+    return load
+
+
+def _capsule_ribbon_band(width: int, height: int) -> tuple[float, float]:
+    """The demo ribbon's (inner, outer) edges on a capsule, as values of x + y."""
+    k = _CAPSULE_RIBBON_ICON_SIDE * math.sqrt(width * height) / _VIEW
+    root2 = math.sqrt(2.0)
+    return (width + height - (2 * _PLATE_CORNER - _RIBBON_U_INNER * root2) * k,
+            width + height - (2 * _PLATE_CORNER - _RIBBON_U_OUTER * root2) * k)
+
+
+def _dominant_colour(raster: _Raster, step: int = 4) -> tuple[int, int, int]:
+    counts = Counter(rgba[:3] for _, _, rgba in raster.sample(step) if rgba[3] == 255)
+    assert counts, "no opaque pixels"
+    return counts.most_common(1)[0][0]
+
+
+class TestDemoCapsules:
+    """The demo app's own store and library art, so its entries stop rendering blank.
+
+    The set is the full game's, on the demo icon's purple plate and with the
+    icon's "DEMO" ribbon in the lower-right corner of every asset that may
+    carry the game name. The checks mirror the icon ones above: the plate
+    separates the two library entries at a glance, and where the ribbon is
+    drawn it really spells the word — and nothing of the composition runs
+    under it.
+    """
+
+    def test_the_demo_set_is_exactly_the_upload_set(self):
+        """Eight assets, and nothing that invites a wrong upload.
+
+        No page background — it is optional, Valve wants it ambient and
+        textless, and the full game's near-black one is the file to use if the
+        demo ever needs one — and no community icon: the App Icon and the
+        Shortcut Icon are gen_icons.py's, in publishing/assets/icons/.
+        """
+        found = sorted(p.name for p in _DEMO_CAPSULE_DIR.iterdir())
+        assert found == sorted(f"{n}.png" for n in _CAPSULE_SIZES), (
+            f"publishing/assets/capsules/demo/ holds {found}; re-run "
+            "gen_capsules.py --edition demo"
+        )
+
+    @pytest.mark.parametrize("name", sorted(_CAPSULE_SIZES))
+    def test_demo_asset_is_valves_exact_size(self, name):
+        path = _DEMO_CAPSULE_DIR / f"{name}.png"
+        assert path.is_file(), f"{path.name} is missing: run gen_capsules.py --edition demo"
+        assert _png_dimensions(path.read_bytes()) == _CAPSULE_SIZES[name], (
+            f"{name}: Steamworks requires {_CAPSULE_SIZES[name]}"
+        )
+
+    @pytest.mark.parametrize("name", sorted({**_CAPSULE_SIZES, **_BASE_ONLY_CAPSULES}))
+    def test_full_game_asset_is_valves_exact_size(self, name):
+        sizes = {**_CAPSULE_SIZES, **_BASE_ONLY_CAPSULES}
+        path = _CAPSULE_DIR / f"{name}.png"
+        assert path.is_file(), f"{path.name} is missing: run gen_capsules.py"
+        assert _png_dimensions(path.read_bytes()) == sizes[name]
+
+    def test_no_demo_asset_is_a_copy_of_the_full_games(self):
+        """The regression itself: the demo app's entries showing the base art,
+        or nothing, instead of their own."""
+        for name in _CAPSULE_SIZES:
+            demo = (_DEMO_CAPSULE_DIR / f"{name}.png").read_bytes()
+            assert demo != (_CAPSULE_DIR / f"{name}.png").read_bytes(), name
+
+    @pytest.mark.parametrize("name", _OPAQUE_CAPSULES)
+    def test_plate_is_the_demo_purple(self, name, demo_capsule):
+        """Hue separates the two library entries, as it does the two icons."""
+        raster = demo_capsule(name)
+        opaque = all(rgba[3] == 255 for _, _, rgba in raster.sample(16))
+        assert opaque, f"{name}: a store capsule should be fully opaque"
+        plate = _dominant_colour(raster)
+        assert _distance(plate, _DEMO_PLATE) <= 12, (
+            f"{name}: dominant colour {plate} is not the demo plate {_DEMO_PLATE}"
+        )
+        assert _distance(plate, _BASE_PLATE) >= _MIN_PLATE_DISTANCE
+        for stage in _BASE_STAGE:
+            assert _distance(plate, stage) >= _MIN_PLATE_DISTANCE, (
+                f"{name}: plate {plate} is too close to the full game's stage {stage}"
+            )
+
+    @pytest.mark.parametrize("name", _RIBBONED_CAPSULES)
+    def test_ribbon_spells_demo_in_the_lower_right(self, name, demo_capsule):
+        """A dark band with four light letterforms, where the generator puts it.
+
+        Counted as on the icons: band colour and lettering inside the diagonal
+        strip, then the lettering bucketed along the band so the gaps between
+        D, E, M and O show up as four separate runs.
+        """
+        raster = demo_capsule(name)
+        inner, outer = _capsule_ribbon_band(raster.width, raster.height)
+        covered = band = word = 0
+        columns: dict[int, int] = {}
+        for x, y, (r, g, b, _) in raster.diagonal_strip(inner, outer):
+            covered += 1
+            if _distance((r, g, b), _RIBBON_BG) <= 24:
+                band += 1
+            elif _distance((r, g, b), _RIBBON_FG) <= 24:
+                word += 1
+                columns[x - y] = columns.get(x - y, 0) + 1
+        assert covered, f"{name}: the ribbon band falls outside the capsule"
+        assert band > covered * 0.5, (
+            f"{name}: only {band}/{covered} band pixels are the ribbon colour"
+        )
+        assert 0.05 <= word / covered <= 0.45, (
+            f'{name}: lettering is {word}/{covered} of the band — "DEMO" is '
+            "missing, mispositioned or the wrong size"
+        )
+        runs = _letterform_runs(columns)
+        assert len(runs) == 4, f"{name}: {len(runs)} letterform(s), not four: {runs}"
+        assert min(runs) * 4 >= max(runs), f"{name}: lopsided letterforms {runs}"
+
+    @pytest.mark.parametrize("name", _RIBBONED_CAPSULES)
+    def test_nothing_crowds_the_ribbon(self, name, demo_capsule):
+        """Only the plate in the clearance inside the band and in the tip beyond it.
+
+        A mark or a line of the logotype under the ribbon is half hidden — the
+        one failure in this set the eye skips over on a full-size capsule. The
+        two pixels next to each band edge are left out for the anti-aliasing.
+        """
+        raster = demo_capsule(name)
+        inner, outer = _capsule_ribbon_band(raster.width, raster.height)
+        stage = (_DEMO_PLATE, _DEMO_LOWER_BAND)
+
+        def strays(lo: float, hi: float) -> list[tuple[int, int]]:
+            return [
+                (x, y) for x, y, rgba in raster.diagonal_strip(lo, hi)
+                if min(_distance(rgba[:3], c) for c in stage) > 16
+            ]
+
+        clearance = strays(inner - _CAPSULE_RIBBON_CLEARANCE * (outer - inner), inner - 2)
+        assert not clearance, (
+            f"{name}: {len(clearance)} pixels of artwork within the ribbon's "
+            f"clearance, e.g. {clearance[:5]}"
+        )
+        tip = strays(outer + 2, raster.width + raster.height)
+        assert not tip, f"{name}: the corner beyond the ribbon is not plain plate: {tip[:5]}"
+
+    def test_hero_carries_no_ribbon(self, demo_capsule):
+        """Valve's library hero takes no text or logo: plate and mark only."""
+        raster = demo_capsule("library_hero")
+        inner, outer = _capsule_ribbon_band(raster.width, raster.height)
+        corner = [rgba for _, _, rgba in raster.diagonal_strip(
+            inner - (outer - inner), raster.width + raster.height)]
+        assert corner
+        stage = (_DEMO_PLATE, _DEMO_LOWER_BAND)   # the strip crosses both bands
+        assert all(min(_distance(rgba[:3], c) for c in stage) <= 16 for rgba in corner), (
+            "the hero's lower-right corner is not plain plate"
+        )
+        dark = sum(1 for _, _, rgba in raster.sample(4) if _distance(rgba[:3], _RIBBON_BG) <= 48)
+        assert dark == 0, f"{dark} sampled hero pixels are the ribbon's near-black"
+
+    def test_logo_is_transparent_and_carries_the_demo_mark(self, demo_capsule):
+        """The logo is laid over the purple hero, so its player bubble is white.
+
+        The full game's logo has a #6D28D9 bubble, which on the demo hero would
+        vanish into the plate and leave three floating dots: of the logo's
+        opaque pixels, only those dots may be the plate colour.
+        """
+        raster = demo_capsule("library_logo")
+        assert raster.alpha, "the library logo must be a transparent PNG"
+        w, h = raster.width, raster.height
+        for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+            assert raster.rgba(x, y)[3] == 0, f"logo corner ({x}, {y}) is not transparent"
+        opaque = [rgba[:3] for _, _, rgba in raster.sample(2) if rgba[3] == 255]
+        assert opaque, "the library logo is empty"
+        purple = sum(1 for rgb in opaque if _distance(rgb, _DEMO_PLATE) <= 24)
+        assert purple <= len(opaque) * 0.02, (
+            f"{purple}/{len(opaque)} of the logo is the demo plate colour — it "
+            "would disappear against the demo hero"
+        )
+        assert not any(_distance(rgb, _RIBBON_BG) <= 24 for rgb in opaque), (
+            "the library logo carries the ribbon's band colour"
+        )
