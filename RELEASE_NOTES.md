@@ -207,6 +207,14 @@ install and returned by the install status API, and a `NETWORK` failure shows
   The turn used to commit its state over the ending when it returned, so a
   player who ended a slow turn's session, or whose debrief had started, found
   the conversation back in progress. The late turn is kept in the transcript.
+- The debrief shows the conversation's transcript again, and *Replay same
+  setup* replays it. Exporting a session failed with a server error once any
+  NPC turn had recorded rubric observations, which is every real-model
+  session, and the debrief read the export in a shape convsim-core does not
+  produce; both are fixed, so *Export session JSON* works too.
+- A debrief scores one rubric dimension once however the model spells its id
+  (`self-awareness`, `Self Awareness`); the turn prompt does not yet give the
+  model the rubric's own ids (#578).
 - The README, website and docs no longer state an official-pack count (it had
   drifted to four, five and six in different places), no longer call the Steam
   edition Steam Deck Verified, name the files the build actually produces, and

@@ -2146,6 +2146,7 @@ class _FinishesSessionMidTurnRuntime(FakeChatRuntime):
         self._app = app
         self._session_id = session_id
         self._finished_state = finished_state
+        self.ends_the_session = False
 
     def chat_stream(self, request: ChatRequest):
         return self._stream(request)
@@ -2165,7 +2166,11 @@ class _FinishesSessionMidTurnRuntime(FakeChatRuntime):
             "event_flags": [],
             "rubric_observations": [],
             "safety": {"status": "ok"},
-            "session_control": {"continue_session": True},
+            "session_control": (
+                {"continue_session": False, "ending_type": "success"}
+                if self.ends_the_session
+                else {"continue_session": True}
+            ),
         }
         text = json.dumps(response)
         yield ChatFinal(
@@ -2205,6 +2210,39 @@ class TestTurnAfterSessionFinished:
             contents = json.dumps(transcript)
             assert "I owned the billing migration end to end." in contents
             assert "Let me think about that." in contents
+
+    def test_late_ending_turn_writes_no_second_ending(self, tmp_config):
+        # The player ended the session; the late turn's model output also
+        # ends it. The session keeps player_exit and the event log does not
+        # gain a session_ending naming a different ending.
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
+            session_id = res.json()["session_id"]
+            client.post(f"/api/sessions/{session_id}/start")
+            runtime = _FinishesSessionMidTurnRuntime(app, session_id, "Ended")
+            runtime.ends_the_session = True
+            app.state.runtime = runtime
+            res = client.post(
+                f"/api/sessions/{session_id}/turn", json={"content": "Thanks, that's all."}
+            )
+            assert res.status_code == 200
+            assert res.json()["state"] == "Ended"
+            assert res.json()["ending_type"] == "player_exit"
+            conn = app.state.db.connection()
+            endings = conn.execute(
+                "SELECT payload_json FROM turn_session_events "
+                "WHERE session_id = ? AND event_type = 'session_ending'",
+                (session_id,),
+            ).fetchall()
+            assert endings == []
+            rows = conn.execute(
+                "SELECT role, flow_state_after FROM turn_session_turns "
+                "WHERE session_id = ? AND role IN ('player', 'npc')",
+                (session_id,),
+            ).fetchall()
+            assert {r[1] for r in rows} == {"Ended"}
 
     def test_finished_states_match_the_router(self):
         from convsim_core.routers.sessions import ENDED_FLOW_STATES
