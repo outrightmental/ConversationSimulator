@@ -254,7 +254,7 @@ These thresholds are **pass/fail** criteria for QA sign-off. A platform + tier c
 
 ### Graceful-degradation expectations
 
-- When first-token latency exceeds the threshold for the detected tier, the app must surface an in-app performance tip linking to Runtime Settings.
+- When a turn is slow on the detected tier, the conversation screen must show the turn panel with the stage the turn is in and a running clock for the whole wait, and from five seconds the text footnote naming Reply speed in Settings. The footnote is deliberately not a link, since leaving mid-turn loses the pending message. There is no first-token threshold tip to look for: #539 removed it.
 - When RAM is insufficient for the selected model, the app must reject the model load with a clear "Insufficient memory" message before any OOM condition occurs.
 - When VRAM is insufficient for full GPU offload, the app must fall back to CPU+GPU split or CPU-only mode automatically and inform the player.
 - All degradation messages must be actionable (link to settings or model manager) and must not expose a stack trace to the player.

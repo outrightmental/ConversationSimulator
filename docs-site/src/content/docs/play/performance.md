@@ -18,7 +18,7 @@ These are the official latency budgets for the **mid-spec reference machine** (A
 | TTS first-audio chunk | < 1.5 s | Kokoro sidecar, sentence-level streaming |
 | STT round-trip | < 2 s | 10-word utterance, whisper.cpp small model |
 
-All values in the `LATENCY_BUDGETS` constant in [`packages/shared/src/types/metrics.ts`](https://github.com/outrightmental/ConversationSimulator/blob/main/packages/shared/src/types/metrics.ts). They are reference figures only: since issue #539 nothing in the app warns when one is exceeded.
+All values in the `LATENCY_BUDGETS` constant in [`packages/shared/src/types/metrics.ts`](https://github.com/outrightmental/ConversationSimulator/blob/main/packages/shared/src/types/metrics.ts). They are reference figures only: since issue #539 nothing a player sees warns when one is exceeded. In developer mode the debug drawer still marks a figure over its budget in amber with a warning sign.
 
 ## Hardware tiers
 
