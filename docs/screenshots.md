@@ -207,17 +207,19 @@ variables (baseline `pressure`, the scenario's `stretch_potential` and
 badge, a model-written summary, the rubric scorecard, the telemetry panel with
 conversation metrics and a sparkline per state variable, then strengths — each citing the
 turn it came from — and areas for improvement. The frame ends at the improvements
-section; key moments, replay suggestions and the transcript continue below.
+section; key moments, replay suggestions and the transcript continue below. The scorecard's
+dimension names are the model's own: the turn prompt does not give it the rubric's ids
+(#578), and this frame was shot before spellings of one id were scored together, so
+Self-Awareness appears twice.
 
 **Alt text:**
-> Session Debrief scoring the session 53 out of 100 with a "Player Exit" outcome badge
-> and four turns. A written summary is followed by a six-dimension scorecard — Experience
-> Gap Acknowledged 59, Transferable Skills Demonstrated 52, Learning Velocity
-> Demonstrated 52, Specific Evidence Transferable Skills 52, Honesty About Experience Gap
-> 51, Transferable Evidence 52 — then a Telemetry panel showing talk ratio, words per
-> turn, question counts, response latency and a sparkline for each state meter. Strengths
-> are listed in green, each citing the turn it came from, and areas for improvement in
-> amber.
+> Session Debrief scoring the session 52 out of 100 with a "Player Exit" outcome badge
+> and four turns. A written summary is followed by a five-row scorecard — Experience Gap
+> 53, Learning Velocity 53, Self-Awareness 52, Transferable Skills 51 and a second Self
+> Awareness row at 52 — then a Telemetry panel showing talk ratio, words per turn,
+> question counts, a median response latency of 99 seconds on the capture machine, and a
+> sparkline for each conversation meter across the four turns. Strengths are listed in
+> green, each quoting the turn it came from, and areas for improvement in amber.
 
 ---
 

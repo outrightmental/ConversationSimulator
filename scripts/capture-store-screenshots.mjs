@@ -12,15 +12,17 @@
  * docs/screenshots.md's README set is a different thing: full edition, 2x,
  * heights fitted to each screen.
  *
- * Every frame is exactly 1920 x 1080: a 1280 x 720 CSS-pixel viewport at
- * deviceScaleFactor 1.5, so the UI reads at the size a player sees it rather
- * than as a narrow column on a 1920-wide page.
+ * Every frame is exactly 1920 x 1080: a 1440 x 810 CSS-pixel viewport at
+ * deviceScaleFactor 4/3, so the UI reads at about the size a player sees it
+ * rather than as a narrow column on a 1920-wide page, and the conversation
+ * frame holds the meters panel, the whole transcript box and the composer.
  *
  * Writes publishing/assets/screenshots/demo/:
  *   01-first-run.png      Welcome, "Set me up" (needs a fresh profile)
  *   02-home.png           the five conversations and the upsell card
  *   03-cafe-sol-brief.png Coffee at Café Sol's Conversation Brief
- *   04-conversation.png   The Used Car Deal, three exchanges in
+ *   04-conversation.png   one conversation three exchanges in (CONVSIM_STORE_PLAY,
+ *                         default The Used Car Deal)
  *   05-debrief.png        that session's debrief, scorecard in frame
  *
  * Prerequisites
@@ -51,20 +53,38 @@ const OUT_DIR =
   process.env.CONVSIM_STORE_SHOT_DIR ?? path.join(REPO_ROOT, 'publishing', 'assets', 'screenshots', 'demo')
 const SEED = process.env.CONVSIM_CAPTURE_SEED ?? '495'
 
-const VIEWPORT = { width: 1280, height: 720 }
-const SCALE = 1.5 // 1280 x 720 CSS px -> 1920 x 1080 device px
+const VIEWPORT = { width: 1440, height: 810 }
+const SCALE = 4 / 3 // 1440 x 810 CSS px -> 1920 x 1080 device px
 
 // Keep in step with MODEL_FREE_RUNTIME_IDS in convsim_core/runtime/active.py.
 const MODEL_FREE_RUNTIMES = new Set(['fake', 'scripted'])
 
 const BRIEF_SCENARIO = 'spanish_coffee'
-const PLAY_SCENARIO = 'used_car_negotiation'
-// A buyer who has done the homework, so Ray has something to push against.
-const PLAYER_TURNS = [
-  "Thanks for having it ready. I've driven it and I like it. Before we talk numbers: what's been replaced on it, and do you have the service records?",
-  "I appreciate that. The listing says $14,900. The same model at this mileage is going for about $13,200 within fifty miles, and it needs tires in the next few months. I can do $12,800 today, out the door.",
-  "I'm not trying to lowball you. My financing is approved and I can sign this afternoon. Meet me at $13,400 out the door with the tires included and we have a deal. If not, I have two others lined up to look at.",
-]
+// Three player turns per demo conversation, written against each scenario's
+// own setup (the Civic is listed at $15,500, comparables at $13,500-$14,200).
+const PLAYS = {
+  used_car_negotiation: [
+    "Thanks for having it ready. I've driven it and I like it. Before we talk numbers: what's been replaced on it, and do you have the service records?",
+    "The listing says fifteen-five. Comparable Civics at this mileage are selling for thirteen-five to fourteen-two within fifty miles, and it needs tires soon. I can do twelve thousand eight hundred out the door today.",
+    "I'm not trying to lowball you. My financing is approved and I can sign this afternoon. Thirteen thousand four hundred out the door with new tires and we have a deal.",
+  ],
+  behavioral_interview: [
+    "Sure. Last winter our checkout service started timing out under holiday load. I was the on-call lead. I traced it to an N+1 query in the pricing call, shipped a batched query behind a flag that night, and p95 latency went from four seconds to three hundred milliseconds.",
+    "Afterwards I added a load test to CI so it could not come back, and wrote up the incident so the next on-call knew where to look first.",
+    "Another one: I disagreed with my tech lead about rewriting our auth service. I wrote a one-page comparison with our incident data, we chose incremental fixes, and closed the top three incident causes in six weeks.",
+  ],
+  ask_for_raise: [
+    "Thanks for making the time. I want to talk about my compensation. In the last six months I led the cross-team migration, onboarded two new hires, and we shipped three weeks early.",
+    "Market data for this role in our city puts it about fifteen percent above what I'm paid now. I'm asking for an adjustment that brings me into that range.",
+    "I understand budgets are tight. If the full amount isn't possible this cycle, could we agree on part of it now and the rest at the next review, in writing?",
+  ],
+}
+const PLAY_SCENARIO = process.env.CONVSIM_STORE_PLAY ?? 'used_car_negotiation'
+if (!PLAYS[PLAY_SCENARIO]) {
+  console.error(`CONVSIM_STORE_PLAY must be one of: ${Object.keys(PLAYS).join(', ')}`)
+  process.exit(1)
+}
+const PLAYER_TURNS = PLAYS[PLAY_SCENARIO]
 
 const written = new Set()
 const wanted = ['01', '02', '03', '04', '05']
@@ -234,8 +254,13 @@ async function main() {
         await waitForTurn(page, before)
       }
       sessionReady = true
-      // The newest exchange and the composer, with the meters above them.
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+      // The meters panel at the top of the frame, then the transcript box
+      // (scrolled to its newest exchange) and the composer under it.
+      await page.evaluate(() => {
+        const meters = document.querySelector('[data-testid="state-vars"]')
+        const top = meters ? meters.getBoundingClientRect().top + window.scrollY - 12 : document.body.scrollHeight
+        window.scrollTo(0, top)
+      })
       await settle(page, 800)
       await shot(page, '04', '04-conversation.png')
     })
