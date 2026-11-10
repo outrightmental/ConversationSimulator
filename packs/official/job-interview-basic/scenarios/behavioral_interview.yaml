@@ -46,25 +46,38 @@ state:
       max: 100
       default: 50
       visibility: visible
-      max_delta_per_turn: 15
+      max_delta_per_turn: 6
+      description: >-
+        Dana's read of the candidate as a hire. Rises with concrete examples
+        that end in a result, or an owned mistake; falls with platitudes,
+        rambling or blame.
     rapport:
       min: 0
       max: 100
       default: 40
       visibility: visible
       max_delta_per_turn: 10
+      description: >-
+        How candid the talk feels to Dana. Rises with honesty and curiosity
+        about her team; falls with evasive or rehearsed replies.
     rambling_count:
       min: 0
       max: 10
       default: 0
       visibility: hidden
       max_delta_per_turn: 2
+      description: >-
+        Answers that ran long without a point. Add 1 when one wanders, take 1
+        off for a focused one, else 0.
     specificity_score:
       min: 0
       max: 100
       default: 50
       visibility: hidden
       max_delta_per_turn: 15
+      description: >-
+        How concrete the answers are. Rises with a real situation, their own
+        part and a measurable outcome; falls with general claims.
 difficulty:
   default: standard
   options:
@@ -113,10 +126,11 @@ events:
       variable: specificity_score
       threshold: 75
     npc_instruction: >-
-      The candidate just gave an impressively specific, well-structured answer.
-      Show genuine engagement: acknowledge the detail, and follow up with a deeper
-      question such as what they learned from the experience or how they would
-      approach it differently today.
+      The candidate's answers have become impressively specific and well
+      structured. Show genuine engagement: pick up a concrete detail from their
+      latest answer, and follow up with a deeper question such as what they
+      learned from the experience or how they would approach it differently
+      today.
     repeat: false
   - id: low_impression_warning
     when:
@@ -128,6 +142,9 @@ events:
       with one final question and signal that time is short: "We're getting close
       to time — let me ask you one last thing before we wrap up."
     repeat: false
+# Pacing (#580): impression starts at 50 and moves at most 6 a turn, so
+# success (above 70) takes four turns at the limit and failure (below 15) six.
+# At 15 a turn, two strong answers ended the interview.
 ending_conditions:
   success:
     type: variable_above

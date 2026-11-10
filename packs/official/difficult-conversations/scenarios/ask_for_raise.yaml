@@ -55,24 +55,37 @@ state:
       default: 45
       visibility: visible
       max_delta_per_turn: 12
+      description: >-
+        Diane's confidence in the employee's case. Rises with a calm, specific
+        business case; falls with need or tenure as the reason, or claims they
+        cannot back up.
     rapport:
       min: 0
       max: 100
       default: 40
       visibility: visible
       max_delta_per_turn: 10
+      description: >-
+        How candid the talk feels to Diane. Rises with a straightforward tone
+        and attention to her questions; falls with pressure or defensiveness.
     evidence_strength:
       min: 0
       max: 100
       default: 10
       visibility: hidden
       max_delta_per_turn: 20
+      description: >-
+        How well the case is backed: scope, results, numbers and their
+        sources. Rises with specifics; falls with vague or unsupported claims.
     case_clarity:
       min: 0
       max: 100
       default: 10
       visibility: hidden
       max_delta_per_turn: 18
+      description: >-
+        How clear the ask is: a number or range and the reasoning for it.
+        Rises when they name and justify a figure; falls when they never do.
 difficulty:
   default: standard
   options:

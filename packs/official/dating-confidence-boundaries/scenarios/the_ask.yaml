@@ -48,24 +48,39 @@ state:
       default: 25
       visibility: visible
       max_delta_per_turn: 15
+      description: >-
+        How much real contact Jordan and the player have made. Rises with easy
+        back-and-forth and shared humour; falls with scripted lines or
+        pushing.
     confidence:
       min: 0
       max: 100
       default: 40
       visibility: visible
       max_delta_per_turn: 12
+      description: >-
+        How at ease the player comes across. Rises with relaxed, direct or
+        funny lines; falls with nervous apologising or showing off.
     jordan_interest:
       min: 0
       max: 100
       default: 35
       visibility: hidden
-      max_delta_per_turn: 18
+      max_delta_per_turn: 8
+      description: >-
+        How much Jordan wants to keep talking. Rises with curiosity about
+        Jordan's research and a well-timed ask; falls with smooth lines or an
+        early ask.
     jordan_comfort:
       min: 0
       max: 100
       default: 65
       visibility: hidden
       max_delta_per_turn: 15
+      description: >-
+        How comfortable Jordan feels. Falls with pressure, overly personal
+        questions, flirting or asking again after a soft no; rises when
+        Jordan's cues are respected.
 difficulty:
   default: standard
   options:
@@ -146,6 +161,10 @@ events:
       should grab my order and find a seat before my lecture." Let the player
       respond but do not re-open the conversation after this.
     repeat: false
+# Pacing (#580): jordan_interest starts at 35 and moves at most 8 a turn, so
+# success (above 68) takes five turns at the limit, after positive_signal
+# (above 60) has had a turn, and disengagement (below 20) needs two turns. At
+# 18 a turn, two good lines ended the conversation before any ask.
 ending_conditions:
   success:
     type: variable_above

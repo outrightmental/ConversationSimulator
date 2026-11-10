@@ -25,6 +25,7 @@ output check that play uses, and pin what the rewrite relies on:
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -154,6 +155,28 @@ def test_endings_are_reachable_within_the_turn_limit(scenario_id, kind):
     assert turns >= 2, f"{scenario_id}: {kind} can fire on the first turn"
 
 
+# Fewest turns, each moving the ending's variable by its per-turn limit, until
+# the ending fires (issue #580). Once the model has to report every authored
+# variable every turn, these are reachable: at the old limits two strong lines
+# ended behavioral_interview, the_ask (before any ask) and spanish_coffee.
+_EARLIEST_ENDING = {
+    "behavioral_interview": {"success": 4, "failure": 6},
+    "used_car_negotiation": {"success": 4, "failure": 3},
+    "ask_for_raise": {"success": 4, "failure": 3},
+    "the_ask": {"success": 5, "failure": 4},
+    "spanish_coffee": {"success": 4, "failure": 4},
+}
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_no_ending_can_fire_in_the_first_turns(scenario_id):
+    info = _load(scenario_id)
+    turns = {kind: _turns_to_ending(info, kind) for kind in ("success", "failure")}
+    assert turns == _EARLIEST_ENDING[scenario_id]
+    assert turns["success"] >= 4, f"{scenario_id}: success after {turns['success']} turns"
+    assert turns["failure"] >= 3, f"{scenario_id}: failure after {turns['failure']} turns"
+
+
 def _turns_to_event(info: ScenarioInfo, event_id: str) -> Optional[int]:
     """Fewest turns, at the per-turn delta limit, until the event fires (None: never)."""
     event = next(e for e in info.events if e.id == event_id)
@@ -181,6 +204,13 @@ def test_ask_for_raise_keeps_its_original_pacing():
     assert _turns_to_event(info, "strong_case_acknowledged") == 4
 
 
+def test_jordan_warms_before_the_conversation_can_succeed():
+    """positive_signal fires on the turn after jordan_interest passes 60, so at
+    the delta limit it reaches the prompt by the turn success can end it on."""
+    info = _load("the_ask")
+    assert _turns_to_event(info, "positive_signal") < _turns_to_ending(info, "success")
+
+
 def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
     info = _load("ask_for_raise")
     defs = build_variable_defs(info.state_variable_overrides)
@@ -202,6 +232,47 @@ def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
     assert "vague_claim_probe" not in fired
     assert "no_number_anchor" not in fired
     assert events["vague_claim_probe"].repeat is True
+
+
+# ── What each state variable means ────────────────────────────────────────────
+
+
+def _words(text: str) -> list:
+    """Words as the D-05 replay compares them: NFKC, case-folded, no apostrophes."""
+    text = unicodedata.normalize("NFKC", text).casefold().replace("'", "").replace("’", "")
+    return [w for w in re.split(r"\W+", text) if w]
+
+
+def _runs(words: list, n: int) -> set:
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_every_variable_says_what_it_means(scenario_id):
+    """The model updates every authored variable every turn (issue #580); the
+    STATE_VARIABLES layer shows each one's authored meaning, in full."""
+    info = _load(scenario_id)
+    data = info.get_scenario_data("standard")
+    assert data.state_variable_names == list(info.state_variable_overrides)
+    layer = _turn_prompt_layers(scenario_id)["STATE_VARIABLES"]
+    for variable in data.state_variables:
+        assert variable.description, f"{scenario_id}: {variable.name} has no description"
+        assert len(variable.description.split()) <= 45, f"{scenario_id}: {variable.name} would be clipped"
+        assert variable.cues == []
+        assert f"a turn): {variable.description}" in layer
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_no_description_repeats_the_hidden_agenda(scenario_id):
+    """A reply that echoes a variable's meaning must not read as an agenda
+    leak to the D-05 replay, which flags any five-word run of the agenda."""
+    info = _load(scenario_id)
+    agenda = set()
+    for item in info.scenario_data.npc.private_persona.hidden_agenda:
+        agenda |= _runs(_words(item), 5)
+    for variable in info.get_scenario_data("standard").state_variables:
+        shared = _runs(_words(variable.description), 5) & agenda
+        assert not shared, f"{scenario_id}: {variable.name} repeats {shared}"
 
 
 # ── Facts the NPC answers from survive the transcript window ──────────────────

@@ -48,25 +48,38 @@ state:
       max: 100
       default: 50
       visibility: visible
-      max_delta_per_turn: 15
+      max_delta_per_turn: 10
+      description: >-
+        How well Rosa and the player understand each other in Spanish. Rises
+        when the meaning gets across; falls when the player is lost or
+        switches to English.
     confidence:
       min: 0
       max: 100
       default: 40
       visibility: visible
       max_delta_per_turn: 10
+      description: >-
+        How confidently the player uses Spanish. Rises with full sentences and
+        questions of their own; falls with one-word answers or English.
     repair_count:
       min: 0
       max: 10
       default: 0
       visibility: hidden
       max_delta_per_turn: 1
+      description: >-
+        Times the player has asked Rosa to repeat or slow down, or rephrased.
+        Add 1 when their line does, else 0; never lower it.
     vocabulary_richness:
       min: 0
       max: 100
       default: 50
       visibility: hidden
       max_delta_per_turn: 10
+      description: >-
+        How varied the player's Spanish is. Rises with words beyond the
+        basics; falls with the same stock phrases or English words.
 difficulty:
   default: standard
   options:
@@ -117,10 +130,11 @@ events:
       variable: repair_count
       threshold: 1
     npc_instruction: >-
-      The player has tried to manage a communication breakdown — by asking
-      you to repeat, slow down, or by restating their own meaning in a
-      different way. Respond warmly and naturally to their repair request,
-      then continue the conversation. This is great behaviour to reinforce.
+      The player has managed a communication breakdown more than once now —
+      asking you to repeat or slow down, or restating their own meaning a
+      different way. Keep making that easy: whenever they do it, repeat more
+      slowly with simpler words and briefly praise the attempt, then carry on.
+      When they do not, just continue the conversation.
     repeat: true
   - id: confidence_building
     when:
@@ -133,11 +147,14 @@ events:
       question about their visit, where they are from, or how long they are
       staying in Madrid.
     repeat: false
+# Pacing (#580): comprehension starts at 50 and moves at most 10 a turn, so
+# success (above 80) takes four turns at the limit and failure (below 20)
+# four. At 65 and 15 a turn, two good lines ended the conversation.
 ending_conditions:
   success:
     type: variable_above
     variable: comprehension
-    threshold: 65
+    threshold: 80
   failure:
     type: variable_below
     variable: comprehension
