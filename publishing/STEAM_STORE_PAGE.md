@@ -102,6 +102,12 @@ pricing statement.
     into a hotel, shopping at a convenience store. Optional gentle correction
     included.
   </li>
+  <li>
+    <strong>Dating — Confidence &amp; Boundaries</strong> — Start a conversation
+    and ask someone out, accept a no with grace, hold a boundary with someone
+    pursuing you, and build real connection on a first date. Every scenario
+    rewards honesty and respect over tactics and pressure.
+  </li>
 </ul>
 
 <h2>Key features</h2>
@@ -199,20 +205,19 @@ pricing statement.
 <h2>Open source, fairly priced</h2>
 
 <p>
-  Conversation Simulator is free and open source. The engine and the four
-  official scenario packs are public on GitHub under open licenses — you can
-  clone the repository, build it, and run it at no cost, forever. Buying the
-  $9.99 Steam edition gets you that same software, packaged and ready to run:
-  code-signed, notarized, auto-updating, and Steam Deck–verified. You are not
-  paying to unlock the product — you are paying for the convenience of not
-  building it yourself, and to fund continued development. There is no
-  subscription.
+  Conversation Simulator is free and open source. The engine and the official
+  scenario packs are public on GitHub under open licenses — you can clone the
+  repository, build it, and run it at no cost, forever. Buying the $9.99 Steam
+  edition gets you that same software, packaged and ready to run: code-signed,
+  notarized, and auto-updating. You are not paying to unlock the product — you
+  are paying for the convenience of not building it yourself, and to fund
+  continued development. There is no subscription.
 </p>
 
 <p>
   Want more scenarios? First-party premium expansion packs — advanced
   professional skills, extended language courses, and themed conversation
-  bundles — are available as optional paid DLC. The four built-in packs stay
+  bundles — are available as optional paid DLC. The built-in packs stay
   free, and nothing that ships free is ever moved behind the paywall.
 </p>
 ```
@@ -299,13 +304,13 @@ $9.99, one-time — not a subscription, not a trial.
 
 The Conversation Simulator Steam edition is a one-time $9.99 purchase. It is the
 ready-to-run, code-signed, auto-updating package of a fully open-source
-application: the engine and the five official scenario packs are public on GitHub
+application: the engine and the official scenario packs are public on GitHub
 under open licenses (Apache-2.0 and CC BY 4.0), so anyone can build and run the
 same software for free. The $9.99 pays for the packaged, maintained build and funds
 continued development — not for access.
 
 Premium scenario-pack expansions are available as optional paid DLC on Steam. The
-four built-in packs are included at no extra cost and are never relocked behind the
+built-in packs are included at no extra cost and are never relocked behind the
 DLC. There is no subscription, no in-app purchase UI, and no Steam Wallet
 microtransaction system — paid content is delivered only through Steam's standard
 DLC storefront. Community packs can still be installed manually and are distributed
@@ -593,7 +598,7 @@ Character count: 228. Within the 300-character limit.
 
 <h2>What the full game adds</h2>
 <ul>
-  <li>The complete scenario library — 20 conversations across five packs, plus premium scenario packs.</li>
+  <li>The complete scenario library — every official scenario pack, plus premium scenario packs.</li>
   <li>The Creator Workbench: write and share your own scenarios, characters, and rubrics.</li>
   <li>Model tiers, Ollama, and your own GGUF files for higher-quality characters.</li>
   <li>Voice: speak your side and hear the reply, all processed on your machine.</li>

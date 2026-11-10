@@ -20,13 +20,14 @@ sidebar:
 The Steam edition costs **$9.99 (USD)**, a one-time purchase — no subscription.
 The identical software is **free and open source on GitHub**: anyone can clone the
 repository, build it, and run it at no cost. The $9.99 buys the ready-to-run,
-code-signed, notarized, auto-updating package (plus Steam Deck verification, Steam
-Cloud settings sync, and achievements) and funds continued development. It does not
+code-signed, notarized, auto-updating package (plus Steam Cloud settings sync and
+achievements) and funds continued development. It does not
 unlock anything the source build lacks — the paid build is a convenience and a way
 to support the work, not a gate on the product.
 
-Outright Mental publishes the Steam edition. The four official scenario packs remain
-free and openly licensed (CC BY 4.0) in both the source build and the Steam build.
+Outright Mental publishes the Steam edition. The official scenario packs (CC BY 4.0)
+and the First Words tutorial (Apache-2.0) remain free and openly licensed in both
+the source build and the Steam build.
 
 ### Local-first play, no exceptions
 
@@ -73,7 +74,7 @@ in a separate **private repository** (`ConversationSimulator-DLC`) and never ent
 this public repo. The app checks DLC ownership through the Steamworks API and
 unlocks only the packs the player owns.
 
-The four official packs stay free, and nothing that ships free is ever relocked as
+The official packs stay free, and nothing that ships free is ever relocked as
 DLC. There is **no in-app payment UI, no Steam Wallet microtransactions, and no
 third-party creator marketplace** — community packs are still installed manually and
 distributed by their authors outside the app. A broader creator marketplace remains
@@ -94,7 +95,7 @@ met and its tracking issue is closed.
 | **1. GitHub MVP** | Open-source build reaches Milestone 1: stable text loop, voice I/O, workbench, official packs, offline smoke gate, full docs. | All [ROADMAP.md](/project/roadmap/) Milestone 1 items are checked off. |
 | **2. Packaged desktop alpha** | Tauri desktop app bundles `convsim-core` as a sidecar. Single installer on Windows, macOS, Linux. No Steam involvement yet. | GitHub MVP is tagged. Installer boots without CLI setup. Offline smoke test passes from the installed app. |
 | **3. Steam private beta** | App is submitted to the Steam partner portal. Invited testers (developers, Outright Mental staff, select community members) validate the Steam overlay, controller navigation, and platform-specific quirks. | Packaged desktop alpha passes internal QA on all three desktop platforms. Steam page draft is approved by Valve. |
-| **4. Public paid Steam release ($9.99)** | App is published as a **$9.99** title on Steam. All four official packs are included free. Model Manager UI is stable. The first premium scenario-pack DLC may launch alongside or shortly after the base game. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). Store pricing and (if launching) DLC configuration are approved by Valve. |
+| **4. Public paid Steam release ($9.99)** | App is published as a **$9.99** title on Steam. Every pack under `packs/official/` is included free. Model Manager UI is stable. The first premium scenario-pack DLC may launch alongside or shortly after the base game. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). Store pricing and (if launching) DLC configuration are approved by Valve. |
 | **5. Post-launch: creator marketplace exploration** | First-party premium DLC ships via Steam's DLC system (stage 4 / ongoing). This stage evaluates only whether a **third-party community-creator** marketplace or pack browser is warranted on top of it. No decision has been made; this is a research milestone. See [`docs/marketplace-architecture.md`](/dev/marketplace-architecture/) for the entry gate criteria and design baseline. | Public release has been live for at least 90 days. Community feedback and usage signals inform the evaluation. Entry gate from [`docs/marketplace-architecture.md`](/dev/marketplace-architecture/) must be satisfied before any implementation issue is opened. |
 
 ---

@@ -143,8 +143,8 @@ hardware.
 
 | # | Step | Pass criterion | Method |
 |---|------|----------------|--------|
-| 03.1 | All four official packs present without additional download | Job Interview Basics, Everyday Negotiation, Language Café, Difficult Conversations all appear in the scenario picker | Manual |
-| 03.2 | Pack schema validation | `convsim validate-pack` exits 0 for all four packs; zero errors, zero warnings | Automated |
+| 03.1 | All official packs present without additional download | Every pack under `packs/official/` appears in the scenario picker | Manual |
+| 03.2 | Pack schema validation | `convsim validate-pack` exits 0 for every pack under `packs/official/`; zero errors, zero warnings | Automated |
 | 03.3 | Start a session in each official pack | NPC opening line delivered within 10 s (fake runtime) / 60 s (real model, CPU minimum tier) | Manual |
 | 03.4 | Complete a multi-turn session in Job Interview Basics | At least 3 player turns completed; NPC responds to each; session ends cleanly | Manual |
 

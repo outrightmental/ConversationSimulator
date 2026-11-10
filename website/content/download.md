@@ -24,7 +24,7 @@ build it, and run it at no cost — see the
 [developer install guide](https://docs.conversationsimulator.com/dev/developer-install/).
 
 The **$9.99 Steam edition** is that same software, packaged: code-signed and
-notarized, auto-updating, Steam Deck–verified, with Steam Cloud settings sync and
+notarized, auto-updating, with Steam Cloud settings sync and
 achievements. You are not paying to unlock the product — it is open in the source.
 You are paying for a build you don't have to assemble yourself, and to fund
 continued development. The local-first guarantee is identical either way: nothing

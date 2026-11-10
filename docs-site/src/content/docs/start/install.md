@@ -58,9 +58,9 @@ That is the whole procedure. Skip to [Set up your AI](#3-set-up-your-ai-first-la
 
 ## 2. Build from source — free
 
-The engine is Apache-2.0, five of the six official scenario packs are CC BY 4.0
-and the sixth, the First Words tutorial, is Apache-2.0, so you can always build
-and run the app yourself at no cost. It is the same software; you are supplying
+The engine and the First Words tutorial are Apache-2.0 and the official scenario
+packs are CC BY 4.0, so you can always build and run the app yourself at no
+cost. It is the same software; you are supplying
 the build instead of paying for one.
 
 Check out a **release tag** rather than `main` — tags are the versions we test

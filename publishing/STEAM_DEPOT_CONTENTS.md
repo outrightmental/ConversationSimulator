@@ -21,7 +21,7 @@
 | App shell (Tauri executable) | YES — all platforms | No |
 | Python backend (`convsim-core`) | YES — bundled in app resources | No |
 | Runtime sidecars (llama-server, whisper-cli, sherpa-onnx-offline-tts) | YES — `runtimes/` directory | No |
-| Official scenario packs (4 packs) | YES — bundled in app resources | No |
+| Official scenario packs (every pack under `packs/official/`) | YES — bundled in app resources | No |
 | Premium scenario-pack DLC | **FORBIDDEN in base depots** — separate DLC depot only | YES — via Steam DLC, owners only |
 | UI assets (icons, fonts, web bundle) | YES — embedded in app bundle | No |
 | License files (`LICENSE`, `NOTICE`) | YES — depot root | No |
@@ -70,10 +70,7 @@ resources/
     whisper-cli.exe               # Whisper.cpp speech-to-text binary
     sherpa-onnx-offline-tts.exe   # Kokoro TTS via sherpa-onnx
   packs/
-    job-interview-basic/          # Official scenario pack (bundled)
-    everyday-negotiation/         # Official scenario pack (bundled)
-    language-cafe/                # Official scenario pack (bundled)
-    difficult-conversations/      # Official scenario pack (bundled)
+    <pack>/                       # One per directory under packs/official/ (bundled)
 installscript.vdf                 # Steam InstallScript — WebView2 bootstrapper (see below)
 MicrosoftEdgeWebView2Setup.exe    # WebView2 Evergreen Bootstrapper (~2 MB, from Microsoft)
 LICENSE                           # Apache 2.0 (depot root)
@@ -169,10 +166,7 @@ ConversationSimulator.app/
         whisper-cli                 # Whisper.cpp STT binary
         sherpa-onnx-offline-tts     # Kokoro TTS via sherpa-onnx
       packs/
-        job-interview-basic/
-        everyday-negotiation/
-        language-cafe/
-        difficult-conversations/
+        <pack>/                     # One per directory under packs/official/
     Info.plist
     _CodeSignature/                 # Apple code-signature bundle (mandatory)
 LICENSE                             # Apache 2.0
@@ -217,10 +211,7 @@ resources/
     whisper-cli                   # Whisper.cpp STT binary
     sherpa-onnx-offline-tts       # Kokoro TTS via sherpa-onnx
   packs/
-    job-interview-basic/
-    everyday-negotiation/
-    language-cafe/
-    difficult-conversations/
+    <pack>/                       # One per directory under packs/official/
 controller_config.vdf             # Default Steam Input bindings (see §Steam Input config)
 LICENSE                           # Apache 2.0
 NOTICE                            # Third-party licence notices
@@ -275,10 +266,10 @@ sidecars, and DLC packs run on that same bundled runtime.
 | `*.pth` | PyTorch model checkpoints — compliance rule MD-04 |
 | `*.ckpt` | Model checkpoints — compliance rule MD-04 |
 
-> **Base depots must NEVER contain premium/DLC pack content.** The four official
-> packs bundled in the base depots (`job-interview-basic`, `everyday-negotiation`,
-> `language-cafe`, `difficult-conversations`) are the only scenario packs that
-> ship inside the base Windows, macOS, and Linux depots. Premium/DLC packs are
+> **Base depots must NEVER contain premium/DLC pack content.** The official
+> packs bundled in the base depots (every directory under `packs/official/`) are
+> the only scenario packs that ship inside the base Windows, macOS, and Linux
+> depots. Premium/DLC packs are
 > delivered exclusively through their own DLC depots, downloaded by Steam only
 > for owning players. Placing paid pack content inside a base depot would push it
 > to every player (merely locked at runtime) and risk leaking paid content — it

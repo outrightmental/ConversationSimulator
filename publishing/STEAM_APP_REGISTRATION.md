@@ -290,15 +290,19 @@ Navigate to **Steamworks App Admin → Steam Cloud** for the app.
 #### Root paths (per platform)
 
 These root paths tell Steam Cloud where to look for files to sync.  Set them
-to the same platform-specific data root that `convsim_core.paths.platform_data_root()`
-resolves to, or use the `{Steam}` variable if Valve's remote storage paths match
-the platform conventions below.
+to the desktop app's data root: the folder the Tauri shell builds in
+`shared_data_root()` (`apps/desktop/src-tauri/src/lib.rs`) from the bundle
+identifier `com.outrightmental.convsim` and hands to convsim-core as
+`CONVSIM_DATA_ROOT`.  (convsim-core's own fallback in
+`convsim_core.paths.platform_data_root()` is a different folder on Windows and
+Linux, and applies only when it runs without the shell.)  Or use the `{Steam}`
+variable if Valve's remote storage paths match the platform conventions below.
 
 | Platform | Steamworks root path |
 |----------|---------------------|
-| Windows | `{localappdata}\outrightmental\convsim` |
+| Windows | `{localappdata}\com.outrightmental.convsim` |
 | macOS | `{userhome}/Library/Application Support/com.outrightmental.convsim` |
-| Linux / Steam Deck | `{userhome}/.local/share/convsim` |
+| Linux / Steam Deck | `{userhome}/.local/share/com.outrightmental.convsim` |
 
 #### Sync pattern — include (one entry)
 
@@ -319,7 +323,7 @@ control.
 | `logs\*` / `logs/*` | Yes | Application and service logs |
 | `models\*` / `models/*` | Yes | LLM / STT / TTS model weight files |
 | `packs\*` / `packs/*` | Yes | User-imported scenario packs (may be private) |
-| `exports\*` / `exports/*` | Yes | Exported session JSON files |
+| `exports\*` / `exports/*` | Yes | Reserved for exports; nothing writes here yet (a session export is a download) |
 | `cache\*` / `cache/*` | Yes | TTS audio cache and download cache |
 | `crashes\*` / `crashes/*` | Yes | Crash report bundles |
 | `data\*` / `data/*` | Yes | Miscellaneous application data directory |

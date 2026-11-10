@@ -231,7 +231,7 @@ and text-to-speech — all running on your computer, no internet required.
 
 **What to show:**
 - The home screen with the status panel showing all services green
-- Four official packs listed as installed
+- Every official pack listed as installed
 - Clean, uncluttered layout
 - No personal data visible
 
@@ -242,9 +242,9 @@ and text-to-speech — all running on your computer, no internet required.
 **File:** `docs/assets/screenshots/02-scenario-library.png` (re-shoot at 1920 × 1080)
 **Steam caption:**
 ```
-Choose from four built-in scenario packs covering job interviews, negotiations,
-difficult conversations, and language practice. Each scenario shows difficulty,
-duration, and content rating before you start.
+Choose from built-in scenario packs covering job interviews, negotiations,
+difficult conversations, language practice, and dating confidence. Each scenario
+shows difficulty, duration, and content rating before you start.
 ```
 
 **What to show:**
@@ -377,7 +377,7 @@ do I actually do?") within the first 15 seconds.
 |-----------|---------|
 | 0:00–0:05 | Title card: "Conversation Simulator" + tagline "The simulator for conversations." |
 | 0:05–0:15 | Home screen → Scenario Library → scenario card selection (fast cut). Show the app is approachable and immediately understandable. |
-| 0:15–0:45 | **Core loop — 30 seconds of actual conversation.** Show a mid-session exchange in one of the four built-in packs. Player types a response; NPC replies; a state meter changes; a scenario event triggers. Show at least one moment where the NPC pushes back or the dynamic shifts. |
+| 0:15–0:45 | **Core loop — 30 seconds of actual conversation.** Show a mid-session exchange in one of the built-in packs. Player types a response; NPC replies; a state meter changes; a scenario event triggers. Show at least one moment where the NPC pushes back or the dynamic shifts. |
 | 0:45–1:00 | Debrief screen. Show the overall score, at least one scorecard dimension, and a key moment. Convey that the session produced useful feedback, not just a score. |
 | 1:00–1:10 | Optional: 3-second cuts showing Model Manager, Creator Workbench, and voice mode in action. Convey depth without dwelling. |
 | 1:10–1:20 | Closing title card: "Runs entirely on your computer. Open source." + Outright Mental mark. |

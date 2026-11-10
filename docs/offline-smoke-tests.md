@@ -15,7 +15,7 @@ Every pull request runs several explicit CI steps:
 
 | CI step | What it covers |
 |---|---|
-| **Run offline smoke tests (mock runtime)** | Loads all four official packs, plays scripted turns with the fake runtime, confirms no network violations (TypeScript/TCP guard). Also validates all golden transcript fixtures. |
+| **Run offline smoke tests (mock runtime)** | Loads every pack under `packs/official/`, plays scripted turns with the fake runtime, confirms no network violations (TypeScript/TCP guard). Also validates all golden transcript fixtures. |
 | **Run CLI unit tests** | CLI argument parsing and command dispatch. |
 | **Run acceptance tests** | Full player text-path journey including `TestNoCloudInference` (LOCAL_MODE=True guard). |
 | **Run network guard acceptance tests** | Six explicit guard scenarios under a socket-level guard + `LOCAL_MODE`: text-only gameplay+debrief+export (G-1), STT-enabled audio upload (G-2), TTS-enabled synthesis (G-3), pack import and play (G-4), explicit-download always permitted (G-5), and a socket-guard self-test (G-6). |
@@ -214,7 +214,7 @@ and Node.js version (`node --version`).
 
 ### Expected result for a correctly installed build
 
-All four official packs should report `"status": "ok"` with `"network_violations": []`.
+Every official pack should report `"status": "ok"` with `"network_violations": []`.
 Any `network_violation` result is a regression and should be reported immediately.
 
 ---

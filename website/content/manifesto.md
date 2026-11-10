@@ -84,14 +84,15 @@ resources. Community packs can make safety rules stricter. Never looser.
 
 ## Free to build. Fair to buy.
 
-The engine is Apache-2.0. The four official packs are CC BY 4.0. Clone the
-repository, build it, and run it for nothing — that door is open, and it stays
-open. Free and open source is not a launch promotion here; it is the license.
+The engine and the First Words tutorial are Apache-2.0. The official scenario
+packs are CC BY 4.0. Clone the repository, build it, and run it for nothing —
+that door is open, and it stays open. Free and open source is not a launch
+promotion here; it is the license.
 
 The $9.99 version on Steam is that same software, packaged: signed, notarized,
-auto-updating, Steam Deck–ready, nothing to assemble. You are not paying to
-unlock the product — you already have it, in the open, for free. You are paying
-for the convenience of not building it yourself, and so the work can continue.
+auto-updating, nothing to assemble. You are not paying to unlock the product —
+you already have it, in the open, for free. You are paying for the convenience
+of not building it yourself, and so the work can continue.
 
 Still no ads. No subscription. No telemetry. No data resale — there is no data
 to sell. Premium scenario packs — new expansions, sold on Steam — pay for what

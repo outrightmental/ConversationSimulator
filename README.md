@@ -322,7 +322,7 @@ Conversation Simulator is **free and open source, and fairly priced**:
   and run it at no cost. The engine and the First Words tutorial are Apache-2.0,
   and the official scenario packs are CC BY 4.0.
 - **Steam — $9.99.** The [Steam edition](publishing/STEAM_STORE_PAGE.md) is the
-  same software, packaged: signed, notarized, auto-updating, Steam Deck–verified.
+  same software, packaged: signed, notarized, auto-updating.
   The price funds continued development; it does not unlock anything the source
   build lacks. The Steam edition makes the same local-first guarantee as the
   open-source build.

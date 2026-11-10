@@ -140,8 +140,8 @@ The money model, in one breath (details:
 [README → How it's distributed](../README.md#how-its-distributed) ·
 [DLC_MODEL.md](DLC_MODEL.md) · precedents: [landscape.md](landscape.md#business-model-precedents)):
 
-**Free engine on GitHub** (Apache-2.0, four official packs CC BY 4.0) → **$9.99 Steam
-edition** selling packaging — signed, notarized, auto-updating, Deck-verified — →
+**Free engine on GitHub** (Apache-2.0, official scenario packs CC BY 4.0) → **$9.99 Steam
+edition** selling packaging — signed, notarized, auto-updating — →
 **first-party premium pack DLC** from a private repo. Revenue funds development. Two
 invariants protect the compact: the open core never shrinks, and every edition keeps the
 same local-first guarantee — no account, no cloud, no telemetry.

@@ -41,8 +41,8 @@ happen for real. Today it ships to anyone who wants it.
 Conversation Simulator is open source. The full engine and the official
 scenario packs live on GitHub — clone it, build it, and run it yourself at zero
 cost, forever. The **$9.99 one-time purchase** on Steam buys the ready-to-run,
-code-signed, notarized, auto-updating, Steam Deck-verified package of that same
-open source, and it funds continued development. It is not a subscription, and
+code-signed, notarized, auto-updating package of that same open source, and it
+funds continued development. It is not a subscription, and
 it does not unlock anything the source build lacks.
 
 Premium scenario-pack DLC is available separately for players who want more
@@ -64,10 +64,10 @@ That means:
 - No conversation logs on our end — there are none to subpoena, leak, or sell.
 - No internet required once your model is downloaded. Fly, commute, practise
   anywhere.
-- Your data directory is yours: `~/.local/share/convsim/` on Linux/Steam Deck
-  (or `$XDG_DATA_HOME/convsim` if set),
+- Your data directory is yours: `~/.local/share/com.outrightmental.convsim/`
+  on Linux/Steam Deck (or `$XDG_DATA_HOME/com.outrightmental.convsim/` if set),
   `~/Library/Application Support/com.outrightmental.convsim/` on macOS, or
-  `%LOCALAPPDATA%\outrightmental\convsim\` on Windows. Move it, back it up,
+  `%LOCALAPPDATA%\com.outrightmental.convsim\` on Windows. Move it, back it up,
   or delete it from **Settings → Privacy → Clear all data**.
 
 ---
@@ -79,7 +79,7 @@ That means:
 | Windows 10 / 11 (x86-64) | Fully supported |
 | macOS 14 Sonoma or later (Apple Silicon) | Fully supported |
 | Linux x86-64 (Ubuntu 22.04+, Fedora 38+, Arch-based) | Fully supported |
-| Steam Deck / SteamOS (Gaming Mode and Desktop Mode) | Verified — text and keyboard; voice requires an external USB or Bluetooth microphone |
+| Steam Deck / SteamOS (Gaming Mode and Desktop Mode) | Supported — text and keyboard; voice requires an external USB or Bluetooth microphone |
 
 ---
 
@@ -109,7 +109,7 @@ by pointing the runtime adapter to `http://localhost:11434`. See
 
 ### Official scenario packs
 
-Five official packs ship with this release, covering common high-stakes
+The official scenario packs ship with this release, covering common high-stakes
 conversation types:
 
 | Pack | What you practise |
@@ -192,8 +192,8 @@ Free to build from source on GitHub. The $9.99 one-time Steam purchase gets you
 the packaged, auto-updating build and funds development. Premium scenario-pack
 DLC is available — the open core stays free.
 
-Five official scenario packs ship today. Create your own with the built-in
-Creator Workbench — it's YAML, no coding needed.
+The official scenario packs ship today, included with every copy. Create your
+own with the built-in Creator Workbench — it's YAML, no coding needed.
 
 Available on Windows, macOS, Linux, and Steam Deck.
 
