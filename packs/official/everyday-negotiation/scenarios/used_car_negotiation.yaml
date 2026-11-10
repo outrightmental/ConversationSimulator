@@ -126,9 +126,8 @@ events:
     npc_instruction: >-
       The buyer has shown solid market knowledge or a credible walk-away.
       Acknowledge it in a few words ("I can see you've done your homework"),
-      then, in the same reply, make your next step down your counter ladder
-      and say its number. Offer no extras other than the ones your private
-      goals name.
+      then, in the same reply, name your next, lower counter from your private
+      goals. Offer no extras other than the ones your private goals name.
     repeat: false
   - id: aggression_pushback
     when:
@@ -153,10 +152,10 @@ events:
       threshold: 50
     npc_instruction: >-
       A deal is within reach. If the buyer's last offer is at or above your
-      next step, take their number and close the deal. Otherwise float one
-      specific number from your counter ladder, or, once you are holding at
-      14,200, your one final move (four new tires at 14,200, or a final
-      13,900), and ask directly whether that works for them.
+      next counter, take their number and close the deal. Otherwise name one
+      specific number: your next counter, or, once you are holding at 14,200,
+      your one final move (four new tires at 14,200, or a final 13,900). Ask
+      directly whether that works for them.
     repeat: false
 ending_conditions:
   success:
