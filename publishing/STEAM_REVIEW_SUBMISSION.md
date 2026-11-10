@@ -127,10 +127,15 @@ Specifications for each asset are in
 
 ### 2.1 Capsule art (required for submission)
 
-- [ ] Header capsule (460 × 215 px) uploaded. No blurry upscale; no real human faces.
-- [ ] Small capsule (231 × 87 px) uploaded.
-- [ ] Library capsule (600 × 900 px) uploaded.
-- [ ] Main capsule / library hero (3840 × 1240 px) uploaded.
+Sizes and committed files are in [`STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md);
+the demo app (5343430) takes the set under `publishing/assets/capsules/demo/`.
+
+- [ ] Header capsule (920 × 430 px) uploaded. No blurry upscale; no real human faces.
+- [ ] Small capsule (462 × 174 px) uploaded.
+- [ ] Main capsule (1232 × 706 px) uploaded.
+- [ ] Vertical capsule (748 × 896 px) uploaded.
+- [ ] Library capsule (600 × 900 px), library header (920 × 430 px) and library logo (1280 × 720 px, transparent) uploaded.
+- [ ] Library hero (3840 × 1240 px, no text or logo) uploaded, and the library logo positioned over it.
 
 ### 2.2 Screenshots (minimum 5 required)
 
@@ -186,7 +191,7 @@ Navigate to **Steamworks App Admin → Pricing & Availability**.
 
 Navigate to **Steamworks App Admin → SteamPipe → Depots**.
 
-- [ ] Three depots exist: Windows x86-64, macOS (Universal), Linux x86-64 / SteamOS.
+- [ ] Three depots exist: Windows x86-64, macOS (Apple Silicon), Linux x86-64 / SteamOS.
 - [ ] Depot IDs match the values in
       [`publishing/STEAM_APP_REGISTRATION.md` — Identifiers](STEAM_APP_REGISTRATION.md#identifiers)
       and the GitHub repository variables `STEAM_DEPOT_WINDOWS_ID`,

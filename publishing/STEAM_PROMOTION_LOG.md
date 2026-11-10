@@ -71,13 +71,12 @@ Computed from the GitHub release assets for the release tag above.
 
 | Filename | SHA-256 |
 |----------|---------|
-| ConversationSimulator_vX.Y.Z_aarch64.dmg | |
-| ConversationSimulator_vX.Y.Z_x64.dmg | |
-| ConversationSimulator_vX.Y.Z_amd64.AppImage | |
-| ConversationSimulator_vX.Y.Z_x64-setup.exe | |
-| ConversationSimulator_vX.Y.Z_x64-setup.msi | |
-| checksums-sha256.txt | |
-| ConversationSimulator_vX.Y.Z_aarch64.app.tar.gz | |
+| Conversation Simulator_X.Y.Z_aarch64.dmg | |
+| Conversation Simulator.app.tar.gz | |
+| Conversation Simulator_X.Y.Z_amd64.AppImage | |
+| Conversation Simulator_X.Y.Z_amd64.deb | |
+| Conversation Simulator_X.Y.Z_x64-setup.exe | |
+| Conversation Simulator_X.Y.Z_x64_en-US.msi | |
 
 ### Release notes
 

@@ -57,6 +57,7 @@
  *   CONVSIM_API_URL     default http://127.0.0.1:7355
  *   CONVSIM_SHOT_DIR    default docs/assets/screenshots
  *   CONVSIM_CAPTURE_SEED  variation seed typed into scenario setup (default 455)
+ *   CONVSIM_HERO_FONTFILE font file for the --hero-speed label when ffmpeg has no fontconfig
  */
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
@@ -131,6 +132,13 @@ const OUTPUT_IDS = ['01', '02', '03', '04', '05', '06', 'hero']
 
 const args = process.argv.slice(2)
 const SKIP_HERO = args.includes('--skip-hero')
+// Playback speed of the hero recording. 1 (the default) is real time. On a
+// machine where one turn takes minutes, a real-time hero is minutes of a
+// waiting screen and blows GIF_BUDGET_BYTES; a higher value plays the segment
+// back faster and burns the factor and the real turn length into every frame,
+// so the recording never passes for real time.
+const HERO_SPEED_ARG = args.find((a) => a.startsWith('--hero-speed='))
+const HERO_SPEED = HERO_SPEED_ARG ? Number(HERO_SPEED_ARG.split('=')[1]) : 1
 const ONLY = (args.find((a) => a.startsWith('--only=')) ?? '').replace('--only=', '')
 const only = ONLY ? new Set(ONLY.split(',').map((s) => s.trim())) : null
 const wanted = (id) => !only || only.has(id)
@@ -157,6 +165,10 @@ if (only) {
         `       Valid values: ${OUTPUT_IDS.join(', ')} (screen numbers are zero-padded).`,
     )
   }
+}
+
+if (!Number.isFinite(HERO_SPEED) || HERO_SPEED < 1 || HERO_SPEED > 16) {
+  fail(`--hero-speed must be a number from 1 to 16 (got '${HERO_SPEED_ARG}').`)
 }
 
 // What this invocation would actually write, after `--only` and `--skip-hero`
@@ -237,8 +249,37 @@ async function preflight() {
         '       the screenshots without it.',
     )
   }
+  // A sped-up hero is honest only with its label, and drawtext needs an
+  // ffmpeg built with libfreetype plus a font it can find: through fontconfig
+  // (`font=Inter`), or a file named by CONVSIM_HERO_FONTFILE. Prove it on one
+  // frame now, not after a playthrough that took a real model an hour.
+  if (CAPTURE_HERO && HERO_SPEED > 1) {
+    try {
+      await run('ffmpeg', [
+        '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=320x240:d=1',
+        '-vf', `drawtext=${heroFontOption()}:text='label check':fontsize=18:fontcolor=white`,
+        '-frames:v', '1', '-f', 'null', '-',
+      ])
+    } catch (err) {
+      fail(
+        `--hero-speed=${HERO_SPEED} needs ffmpeg's drawtext filter to label the recording, ` +
+          'and the label check failed:\n' +
+          `       ${err.message.split('\n').slice(0, 3).join('\n       ')}\n` +
+          '       Use an ffmpeg built with libfreetype and fontconfig, or set\n' +
+          '       CONVSIM_HERO_FONTFILE to a .ttf/.otf file (e.g. Inter), or drop --hero-speed.',
+      )
+    }
+  }
   log(`runtime ${runtimeId} ready — model: ${health.runtime.llm_model_name}`)
   return health
+}
+
+/** drawtext's font option: a font file when CONVSIM_HERO_FONTFILE names one, else Inter via fontconfig. */
+function heroFontOption() {
+  const file = process.env.CONVSIM_HERO_FONTFILE
+  if (!file) return 'font=Inter'
+  // Filter-graph syntax: forward slashes, and the drive colon escaped.
+  return `fontfile='${file.replace(/\\/g, '/').replace(/:/g, '\\:')}'`
 }
 
 function run(cmd, cmdArgs) {
@@ -520,6 +561,22 @@ async function main() {
         before,
         { timeout: 300_000 },
       )
+      // The reply streams in before the turn commits (#538). Once the whole
+      // line is on screen the staged panel goes, but the request carrying the
+      // state delta can still be out: the transcript says "Updating the
+      // scene…" until it answers, and only then do the meters move (the
+      // composer unlocks early so a message typed then is queued). Moving on
+      // as soon as the reply text shows captures 03 mid-commit with last
+      // turn's meters, ends the hero before its meters move, and clicks "End
+      // session" while it is disabled — on a slower machine that stage lasts
+      // many seconds. Wait for both to go; one that never leaves is logged and
+      // the capture carries on with what is on screen.
+      for (const id of ['npc-turn-progress', 'turn-finishing-indicator']) {
+        await page
+          .locator(`[data-testid="${id}"]`)
+          .waitFor({ state: 'detached', timeout: 300_000 })
+          .catch(() => log(`WARNING: ${id} was still up — capturing the turn as rendered`))
+      }
       // Let the meters animate to their new values and the banner land.
       await page.waitForTimeout(isHero ? 2600 : 800)
       if (isHero) mark('heroEnd')
@@ -682,12 +739,26 @@ async function encodeHero(webm, marks) {
   const crop = c
     ? `crop=${c.width - (c.width % 2)}:${c.height - (c.height % 2)}:${c.x}:${c.y},`
     : ''
-  log(`encoding hero segment ${start.toFixed(1)}s +${duration.toFixed(1)}s`)
+  // Faster playback is an honest recording only while it says so: the factor
+  // and the turn's real length are drawn on every frame, after scaling so the
+  // label is the same size in the GIF and the MP4. `:` and `'` are filter
+  // syntax, so the text avoids both.
+  const speed = HERO_SPEED
+  const pts = speed > 1 ? `setpts=PTS/${speed},` : ''
+  const label =
+    speed > 1
+      ? `,drawtext=${heroFontOption()}:text='Played at ${speed}x speed — this turn took ${Math.round(duration)} s on the capture machine'` +
+        ':fontsize=18:fontcolor=white:box=1:boxcolor=black@0.7:boxborderw=8:x=12:y=h-th-20'
+      : ''
+  log(
+    `encoding hero segment ${start.toFixed(1)}s +${duration.toFixed(1)}s` +
+      (speed > 1 ? ` at ${speed}x (${(duration / speed).toFixed(1)}s of playback)` : ''),
+  )
 
   await run('ffmpeg', [
     '-y', '-loglevel', 'error',
     '-ss', String(start), '-t', String(duration), '-i', webm,
-    '-vf', `${crop}scale=900:-2:flags=lanczos`,
+    '-vf', `${crop}${pts}scale=900:-2:flags=lanczos${label}`,
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '26', '-movflags', '+faststart',
     '-an', mp4,
   ])
@@ -699,7 +770,7 @@ async function encodeHero(webm, marks) {
   let gifSize = 0
   for (const [fps, width, colors] of [[10, 880, 96], [10, 800, 64], [8, 760, 48]]) {
     const filter =
-      `${crop}fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];` +
+      `${crop}${pts}fps=${fps},scale=${width}:-1:flags=lanczos${label},split[a][b];` +
       `[a]palettegen=max_colors=${colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`
     await run('ffmpeg', [
       '-y', '-loglevel', 'error',

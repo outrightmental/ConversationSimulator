@@ -283,6 +283,22 @@ def _parse_rubric_observations(raw_output_json: Optional[str]) -> List[Dict[str,
     return []
 
 
+_DIMENSION_ID_SEPARATORS = re.compile(r"[^a-z0-9]+")
+
+
+def normalize_dimension_id(rubric_id: str) -> str:
+    """Fold a model-written rubric id onto one spelling.
+
+    The turn prompt does not hand the model the scenario rubric's dimension ids,
+    so it writes them itself, and not consistently: one session scored
+    ``self-awareness`` and ``self_awareness`` as two dimensions, and the debrief
+    listed both as "Self-Awareness" and "Self Awareness". Lowercase, with every
+    run of other characters as one underscore, matches the ids rubric files
+    declare (``self_awareness``, ``learning_velocity``).
+    """
+    return _DIMENSION_ID_SEPARATORS.sub("_", rubric_id.strip().lower()).strip("_")
+
+
 def _compute_scores(
     npc_turns: List[sqlite3.Row],
 ) -> Dict[str, float]:
@@ -292,7 +308,8 @@ def _compute_scores(
     in the range [-3, 3]. Starting from a baseline of 50, deltas are summed and
     the final value is clamped to [0, 100].
 
-    Only dimensions that appear in at least one observation are scored.
+    Only dimensions that appear in at least one observation are scored, and
+    spellings of one dimension id are scored together (normalize_dimension_id).
     """
     accumulators: Dict[str, float] = {}
 
@@ -302,6 +319,9 @@ def _compute_scores(
             rubric_id = obs.get("rubric_id")
             score_delta = obs.get("score_delta")
             if not isinstance(rubric_id, str) or not rubric_id:
+                continue
+            rubric_id = normalize_dimension_id(rubric_id)
+            if not rubric_id:
                 continue
             if rubric_id not in accumulators:
                 accumulators[rubric_id] = _SCORE_BASELINE

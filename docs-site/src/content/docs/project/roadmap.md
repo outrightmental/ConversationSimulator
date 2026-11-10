@@ -49,6 +49,60 @@ criteria.
 
 ## Status
 
+> Live status lives on the **[delivery board](https://github.com/orgs/outrightmental/projects/12)** — every issue this project has ever
+> shipped, organized into phases, with the open backlog extending from there. The
+> snapshot below is narrative; the board is the record.
+
+### Next — v1.0 Paid launch (milestone due Nov 28, 2026)
+
+The $9.99 Steam edition goes live. Grouped by what it changes for the player:
+
+- **Replies start sooner:** each turn's prompt extends the last (#524), the prompt is read ahead while the player types (#525), less is read and written per turn (#543), and one honest speed definition replaces the conflicting targets (#522, #520)
+- **The engine fits the machine:** settings take effect (#529), the graphics card by default with a processor fallback (#530, #531, #532), the engine tunes itself (#521, #535, #536), and Ollama gets the selected model (#528)
+- **Turns never go wrong twice:** a turn never runs twice and keeps the player's words on failure (#541), a reply can be stopped (#540), output repair is non-blocking and the output check stops rejecting innocent lines (#526, #527)
+- **Reply speed is the player's choice:** one control with plain presets, changeable mid-conversation and shown before the start (#546, #547, #548)
+- **Voice works in the packaged builds:** audio plays on all three platforms and never delays the text (#533, #534), and the voice models install from onboarding (#487)
+- **A real-model gate in CI:** the nightly conversation runs the engine players run and gates turn-speed regressions (#457, #542)
+- **Store and business:** the $9.99 registration and premium DLC (#361, #364, #366), the real store URL on the download page (#362), the full achievement set (#494)
+- **Housekeeping before launch:** everything the app writes under the data root (#562), the Windows developer setup (#564), First Words defined once (#553)
+- **Launch epics:** public beta readiness (#315) and the signature experience (#316)
+
+### Then — v1.1 Post-launch (milestone due Jan 16, 2027)
+
+Auto-update (#461), the accessibility audit (#462), performance targets on reference hardware (#463), voice setup from the Model Manager (#464), the community pack browser and pack signing (#465, #466), Flyting (#454), NPCs that escalate and eject a saboteur (#552), an Intel build of the macOS depot (#575), short model names (#555), what this computer can run (#537), per-reply speed (#549), voice that starts mid-reply (#544), the debrief as a continuation of the conversation (#545), the turn-speed epic (#518), and small setup inconsistencies (#566).
+
+### Done — shipped in v0.4.0
+
+- [x] The reply arrives as it is written: sentence-by-sentence streaming over a WebSocket served by convsim-core, with released text committed (#538)
+- [x] The wait says what it is doing: staged turn panel, reading bar, reply-start estimate from this machine's measured speeds (#539)
+- [x] Every turn records what it cost: engine timings, stage times, extra calls, rolling speeds endpoint (#519)
+- [x] The engine launches for one conversation: one slot, registry context size, 256-token batches, 1 GiB prompt cache bound (#523)
+- [x] The first session explains itself: resume, reply speed, plain wording, meter clarity, whole-turn counting (#501)
+- [x] The Conversation Brief leads with the mission: numbered goals, two decisions, the mechanical settings in one card (#500, building on #486)
+- [x] The demo has its own icon set and Steamworks icons (#499)
+- [x] Copy diagnostics works on macOS; a rejected request names the field (#508)
+- [x] Model downloads show the real model folder and offer Retry when the connection drops (#568)
+- [x] Slow turns wait instead of failing; convsim-core runs as a supervised sidecar and shuts down its whole process tree (#489, #456, #485)
+- [x] Screenshots and a demo recording from a real local-model session (#455); diagnostics name the release version (#490); tracker structure declared and validated in CI (#491)
+- [x] The store copy, QA matrix, depot template and publishing docs say the macOS build is Apple Silicon only, and CI fails if they claim Intel again (#563; Intel tracked in #575)
+- [x] README, website and docs stop stating a pack count that drifts, stop claiming Steam Deck Verified, name the AppImage the build produces, and describe the desktop app's data folder (#565)
+- [x] Screenshots and the README demo recording recaptured from a real local-model session on the v0.4 conversation screen (#554)
+- [x] The free demo edition — one model, five curated conversations, its own Steam app — is built from this release (#495)
+
+### Done — the v0.3 onboarding overhaul (shipped through v0.2.x; v0.3.0 was never tagged)
+
+- [x] Onboarding overhaul — first conversation in 60 seconds, zero error walls (#388)
+  - Welcome screen: "Set me up" vs "Try it right now" (two-card, one decision)
+  - Play while it downloads: scripted tutorial starts in < 15 s, real model arrives in background
+  - One-click resumable install pipeline (engine → model → verify → warmup → packs)
+  - Windows native engine provisioning — no WSL2 required
+  - Self-healing checks: auto-fixable failures silent, remediation cards only for genuine user decisions
+  - Dead-loop fixed: no fix action ever redirects back to Welcome
+  - Server-authoritative setup state (`GET /api/setup/status`)
+  - Voice invite deferred to after first real AI conversation
+  - Setup docs describe the actual shipped UI; CI drift-prevention check enforces it
+  - Onboarding e2e suite (P1–P8 wiped-profile journeys) as merge and release gate
+
 ### Done — shipped in v0.1.0-alpha.1
 
 - [x] Monorepo skeleton — directory structure, licensing, tooling
@@ -76,7 +130,7 @@ criteria.
 ### Remaining polish — before Milestone 1 tag
 
 - [x] Real UI screenshots and demo recording, captured from a local-model playthrough
-- [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`)
+- [x] Desktop app with bundled backend (Tauri sidecar for `convsim-core`)
 - [ ] Automated real-model CI smoke test
 
 ### Post-alpha — Milestone 2+

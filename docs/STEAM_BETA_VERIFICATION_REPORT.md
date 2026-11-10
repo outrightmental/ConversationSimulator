@@ -116,10 +116,10 @@ Notes:
 
 ```
 Hardware
-  CPU / chip  :  Apple M__ / Intel Core i__
+  CPU / chip  :  Apple M__
   RAM         :
-  OS          :  macOS 13 / 14 / 15
-  Architecture:  arm64 / x86-64
+  OS          :  macOS 14 / 15 / later
+  Architecture:  arm64 (the macOS build is Apple Silicon only)
   Model tested: Qwen3 4B Q4_K_M / other
   Hardware tier: [ ] Minimum  [ ] Starter  [ ] Recommended
 
@@ -269,7 +269,6 @@ Verification date  : YYYY-MM-DD
 --- Platform results ---
 Windows            : [ ] PASS  [ ] PARTIAL  [ ] FAIL
 macOS (Apple Si.)  : [ ] PASS  [ ] PARTIAL  [ ] FAIL
-macOS (Intel)      : [ ] PASS  [ ] PARTIAL  [ ] FAIL
 Linux (x86-64)     : [ ] PASS  [ ] PARTIAL  [ ] FAIL
 Steam Deck         : [ ] PASS  [ ] PARTIAL  [ ] FAIL  [ ] Deferred to Stage 4
 

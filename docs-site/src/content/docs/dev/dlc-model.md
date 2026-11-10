@@ -17,7 +17,7 @@ sidebar:
   ────────────────────────────          ────────────                ───────────────
   ConversationSimulator/                 Base app — $9.99            ConversationSimulator-DLC/
    • engine (Apache-2.0)         ───▶     (packaged build of ───┐     • premium pack YAML
-   • 4 official packs (CC BY 4.0)         the open source)      │     • pack art / audio
+   • official scenario packs (CC BY 4.0)  the open source)      │     • pack art / audio
    • docs, this contract                                        │     • pack-build script
    • DLC ownership integration           Premium DLC packs  ◀───┘  (never merged to public)
    • DLC depot VDF template               (one Steam DLC per        │
@@ -138,7 +138,7 @@ Steam or any server (see [Steam integration](/dev/steam-integration/)).
 ## Guardrails (must stay true)
 
 - No premium/DLC pack content is ever committed to the public repository.
-- The base app builds and runs fully from open source with **all four official packs
+- The base app builds and runs fully from open source with **every official pack
   free**; DLC absence is never an error or a nag beyond a normal "available to buy"
   affordance.
 - The DLC ownership check degrades to "not owned" in every non-Steam context.

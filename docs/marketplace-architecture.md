@@ -17,7 +17,7 @@
 
 ## Purpose of this document
 
-The $9.99 Steam release ships with four official packs and community packs that
+The $9.99 Steam release ships with the official packs and community packs that
 players install manually (local folder or zip). Beyond those, first-party
 premium scenario-pack DLC is the chosen way to deliver additional paid content —
 see **Option A — Steam DLC** below and the contract in
@@ -422,9 +422,10 @@ is separate: its own signing, schema, and refund work proceeds under
 | Automated refund-on-takedown pipeline | Stage 5, if validated |
 | Plugin sandbox runtime | Beyond Stage 5; requires separate design and audit |
 
-The four official packs (Job Interview Basics, Everyday Negotiation, Language
-Café, Difficult Conversations) ship free and are available at launch without
-any marketplace infrastructure.
+The official packs — every pack under `packs/official/`: Job Interview Basics,
+Everyday Negotiation, Language Café, Difficult Conversations,
+Dating — Confidence & Boundaries, and the First Words tutorial — ship free and
+are available at launch without any marketplace infrastructure.
 
 ---
 

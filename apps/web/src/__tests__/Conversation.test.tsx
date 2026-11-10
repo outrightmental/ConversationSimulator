@@ -2306,6 +2306,31 @@ describe('Conversation screen', () => {
         expect(screen.getByRole('button', { name: /generate debrief/i })).toBeInTheDocument(),
       )
     })
+
+    // A turn that lands after the player ended the session (from the
+    // in-progress banner in another window, or after this screen gave up
+    // waiting) reports the state the session kept, which can be a debrief
+    // state. The screen must read it as over, not offer a composer that
+    // answers 409.
+    it.each(['DebriefGenerating', 'DebriefReady', 'Error'] as const)(
+      'treats a turn response with state=%s as a finished conversation',
+      async (finishedState) => {
+        const lateTurnResponse: TurnResponse = { ...turnResponse, state: finishedState }
+        mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+        mockApi.submitTurn.mockResolvedValue({ ok: true, data: lateTurnResponse })
+        renderConversation()
+        await waitFor(() =>
+          expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+        )
+        fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+          target: { value: 'One more thing.' },
+        })
+        fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+        await waitFor(() =>
+          expect(screen.getByRole('button', { name: /generate debrief/i })).toBeInTheDocument(),
+        )
+      },
+    )
   })
 
   // A local model on CPU-only hardware legitimately spends a minute or more on

@@ -28,7 +28,6 @@ Installers for this release:
 | Platform | File | SHA-256 |
 |---|---|---|
 | macOS (Apple Silicon) | `ConversationSimulator_{{VERSION}}_aarch64.dmg` | see `checksums-sha256.txt` |
-| macOS (Intel) | `ConversationSimulator_{{VERSION}}_x64.dmg` | see `checksums-sha256.txt` |
 | Linux (x86_64) | `conversation-simulator_{{VERSION}}_amd64.AppImage` | see `checksums-sha256.txt` |
 | Windows (x86_64) | `ConversationSimulator_{{VERSION}}_x64-setup.exe` | see `checksums-sha256.txt` |
 
@@ -71,7 +70,7 @@ Run the pre-flight check before first launch:
 
 ### macOS
 
-1. Download the `.dmg` for your chip (Apple Silicon = aarch64, Intel = x64).
+1. Download the `.dmg` (Apple Silicon only; there is no Intel build, #563).
 2. Open the `.dmg` and drag **Conversation Simulator** to `/Applications`.
 3. **First launch:** macOS Gatekeeper will warn that the app is from an
    unidentified developer — this release is **not code-signed**. To open it:

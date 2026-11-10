@@ -1,11 +1,16 @@
-// SteamPipe depot build configuration — macOS (Apple Silicon + Intel).
+// SteamPipe depot build configuration — macOS (Apple Silicon only).
 //
 // Template file. Substituted by the deploy workflow before steamcmd is invoked.
 // Variables: STEAM_DEPOT_MACOS_ID, GITHUB_WORKSPACE.
 //
-// Content: the Tauri .app bundle for macOS, targeting Apple Silicon (arm64)
-// and Intel (x86-64). A universal binary is preferred; separate slices are
-// acceptable if a universal build is not yet available.
+// Content: the Tauri .app bundle for macOS, built for Apple Silicon (arm64)
+// only. release.yml has one macOS leg, macOS-aarch64 on macos-latest; there is
+// no x86-64 or universal build, so an Intel Mac cannot run what this depot
+// carries (issue #563). Adding Intel means a second macOS build leg, its own
+// frozen convsim-core sidecar and notarisation, and a universal merge before
+// staging; until then the store page, the QA matrix and this comment say
+// Apple Silicon only, and tests/acceptance/test_macos_architecture.py fails if
+// any of them claims otherwise.
 //
 // The build must be notarised with an Apple Developer ID certificate before
 // this depot is submitted for Stage 3 (private beta) or Stage 4 (public

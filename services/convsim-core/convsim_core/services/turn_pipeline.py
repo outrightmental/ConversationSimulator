@@ -96,6 +96,76 @@ def _apply_reply_speed(scenario_data: ScenarioData, speed: str) -> ScenarioData:
 
 MAX_TURN_CONTENT_CHARS = 2000
 
+#: Flow states a session has finished in — the same set as ENDED_FLOW_STATES in
+#: routers/sessions.py, which tests/test_turn_pipeline.py holds this to. A turn
+#: commits its session state at the end of a model call that can take minutes
+#: on a slow machine; a player who ends the session meanwhile (the end button
+#: on the in-progress banner, or after the client gave up waiting) must not see
+#: it come back. The commit leaves a finished session's state alone.
+FINISHED_FLOW_STATES = ("Ended", "DebriefGenerating", "DebriefReady", "Error")
+_FINISHED_STATES_SQL = ", ".join(f"'{state}'" for state in FINISHED_FLOW_STATES)
+
+
+def _commit_session_state(
+    conn: sqlite3.Connection,
+    session_id: str,
+    *,
+    turn_number: int,
+    flow_state: str,
+    ending_type: Optional[str],
+    extra_sets: str = "",
+    extra_params: tuple = (),
+) -> tuple[str, Optional[str]]:
+    """Write a turn's outcome to its session row; return the state it holds after.
+
+    ``flow_state`` and ``ending_type`` are written only while the session is
+    still in play. Once it has finished, a late turn's transcript rows are still
+    kept — the player did say it, and the NPC did answer — but the session stays
+    ended, keeps its ending, and its debrief is not reopened. SQLite evaluates
+    every SET expression against the row as it was before the update, so the
+    CASE tests the state the turn is racing with, not the one it writes.
+    """
+    conn.execute(
+        "UPDATE turn_sessions SET "
+        + extra_sets
+        + "turn_count = ?, "
+        f"flow_state = CASE WHEN flow_state IN ({_FINISHED_STATES_SQL}) THEN flow_state ELSE ? END, "
+        f"ending_type = CASE WHEN flow_state IN ({_FINISHED_STATES_SQL}) THEN ending_type ELSE ? END "
+        "WHERE session_id = ?",
+        (*extra_params, turn_number, flow_state, ending_type, session_id),
+    )
+    row = conn.execute(
+        "SELECT flow_state, ending_type FROM turn_sessions WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        return flow_state, ending_type
+    if row[0] != flow_state:
+        logger.info(
+            "Turn %d for session %s landed after the session finished (%s); "
+            "its transcript is kept and the session stays %s",
+            turn_number, session_id, row[0], row[0],
+        )
+    return row[0], row[1]
+
+
+def _finished_state(conn: sqlite3.Connection, session_id: str) -> Optional[str]:
+    """The state the session already finished in, or None while it is in play.
+
+    Read inside a turn's persist transaction, before anything is written: the
+    transaction has no await in it, so this is the state the commit races. A
+    turn that lands after the session finished keeps its transcript rows, but
+    they record the state the session kept, and it writes no session_ending
+    event — the session has an ending already, and the export would otherwise
+    report two.
+    """
+    row = conn.execute(
+        "SELECT flow_state FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is not None and row[0] in FINISHED_FLOW_STATES:
+        return row[0]
+    return None
+
 # Default safety policy used when no scenario-specific policy is configured.
 _DEFAULT_SAFETY_POLICY = SafetyPolicy(
     policy_id="default_pg",
@@ -336,11 +406,13 @@ def _persist_input_safety_stop(
     })
 
     with conn:
+        kept_state = _finished_state(conn, session_id)
+        rows_state = kept_state or new_flow_state
         player_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
             "(session_id, turn_number, role, content, source_mode, barged_in, flow_state_after, created_at) "
             "VALUES (?, ?, 'player', ?, ?, ?, ?, ?)",
-            (session_id, player_turn_number, normalized, source_mode, int(barged_in), new_flow_state, now),
+            (session_id, player_turn_number, normalized, source_mode, int(barged_in), rows_state, now),
         )
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
@@ -352,31 +424,33 @@ def _persist_input_safety_stop(
                 npc_turn_number,
                 npc_utterance,
                 json.dumps({"status": safety_status, "reason": decision.category}),
-                new_flow_state,
+                rows_state,
                 safety_stop_snapshot_json,
                 now,
             ),
         )
         # Sanitised event log: category and action only — never the raw player text.
+        safety_events = [
+            (
+                session_id, turn_number, "input_safety_stop",
+                json.dumps({
+                    "category": decision.category,
+                    "action": decision.action.value,
+                }),
+                now,
+            ),
+        ]
+        if not kept_state:
+            safety_events.append((
+                session_id, turn_number, "session_ending",
+                json.dumps({"ending_type": ending_type, "summary": None}),
+                now,
+            ))
         conn.executemany(
             "INSERT INTO turn_session_events "
             "(session_id, turn_number, event_type, payload_json, occurred_at) "
             "VALUES (?, ?, ?, ?, ?)",
-            [
-                (
-                    session_id, turn_number, "input_safety_stop",
-                    json.dumps({
-                        "category": decision.category,
-                        "action": decision.action.value,
-                    }),
-                    now,
-                ),
-                (
-                    session_id, turn_number, "session_ending",
-                    json.dumps({"ending_type": ending_type, "summary": None}),
-                    now,
-                ),
-            ],
+            safety_events,
         )
         if save_transcript:
             conn.executemany(
@@ -387,10 +461,12 @@ def _persist_input_safety_stop(
                     (session_id, npc_turn_number, "npc", npc_utterance),
                 ],
             )
-        conn.execute(
-            "UPDATE turn_sessions SET turn_count = ?, flow_state = ?, ending_type = ? "
-            "WHERE session_id = ?",
-            (turn_number, new_flow_state, ending_type, session_id),
+        new_flow_state, ending_type = _commit_session_state(
+            conn,
+            session_id,
+            turn_number=turn_number,
+            flow_state=new_flow_state,
+            ending_type=ending_type,
         )
 
     return TurnPipelineResult(
@@ -861,11 +937,13 @@ async def process_turn(
 
     persist_started = time.perf_counter()
     with conn:
+        kept_state = _finished_state(conn, session_id)
+        rows_state = kept_state or new_flow_state
         player_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
             "(session_id, turn_number, role, content, source_mode, barged_in, flow_state_after, created_at) "
             "VALUES (?, ?, 'player', ?, ?, ?, ?, ?)",
-            (session_id, player_turn_number, normalized, source_mode, int(barged_in), new_flow_state, received_at),
+            (session_id, player_turn_number, normalized, source_mode, int(barged_in), rows_state, received_at),
         )
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
@@ -884,7 +962,7 @@ async def process_turn(
                     "reason": turn_output.safety.reason,
                 }),
                 raw_text,
-                new_flow_state,
+                rows_state,
                 state_snapshot_json,
                 now,
             ),
@@ -934,7 +1012,7 @@ async def process_turn(
                 session_id, turn_number, "safety_stop",
                 json.dumps({"reason": turn_output.safety.reason}), now,
             ))
-        if ending_type:
+        if ending_type and not kept_state:
             events_to_insert.append((
                 session_id, turn_number, "session_ending",
                 json.dumps({
@@ -989,18 +1067,16 @@ async def process_turn(
                 ],
             )
 
-        conn.execute(
-            "UPDATE turn_sessions SET "
-            "state_vars_json = ?, fired_events_json = ?, turn_count = ?, "
-            "flow_state = ?, ending_type = ? "
-            "WHERE session_id = ?",
-            (
+        new_flow_state, ending_type = _commit_session_state(
+            conn,
+            session_id,
+            turn_number=turn_number,
+            flow_state=new_flow_state,
+            ending_type=ending_type,
+            extra_sets="state_vars_json = ?, fired_events_json = ?, ",
+            extra_params=(
                 json.dumps(delta_result.new_state),
                 json.dumps(list(fired_event_ids)),
-                turn_number,
-                new_flow_state,
-                ending_type,
-                session_id,
             ),
         )
 

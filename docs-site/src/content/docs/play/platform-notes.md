@@ -20,8 +20,8 @@ Steam store page and the Stage 3/4 release gates.
 | | Minimum | Recommended |
 |---|---|---|
 | **OS** | macOS 14 Sonoma | macOS 15 Sequoia or newer |
-| **Architecture** | Apple Silicon (arm64) or Intel (x86-64) | Apple Silicon (M2 or newer) |
-| **CPU** | Apple M1 / Intel Core i5 (8th gen or newer) | Apple M2 or newer |
+| **Architecture** | Apple Silicon (arm64) only — the Steam build has no Intel (x86-64) slice | Apple Silicon (M2 or newer) |
+| **CPU** | Apple M1 or newer | Apple M2 or newer |
 | **RAM** | 8 GB | 16 GB |
 | **Storage** | 2 GB free (app) + 3 GB per downloaded model | 5 GB free |
 | **GPU / ANE** | Integrated GPU | Apple Neural Engine (M1+) for fast inference |
@@ -29,16 +29,18 @@ Steam store page and the Stage 3/4 release gates.
 
 Notes:
 - macOS 12 Monterey may work but is **not tested** and is excluded from QA coverage.
-- A universal binary (arm64 + x86-64) is the target; separate arm64 and x86-64
-  `.dmg` files are acceptable for Stage 3 private beta.
-- As of late 2024, the GitHub-hosted `macos-13` Intel runner is deprecated; CI
-  builds on `macos-latest` (Apple Silicon / arm64). Intel builds require a
-  self-hosted runner or cross-compilation (`--target x86_64-apple-darwin`).
+- The Steam build is Apple Silicon only (issue #563): `release.yml` builds
+  macOS on one leg, `macos-latest` (arm64), because the GitHub-hosted `macos-13`
+  Intel runner is gone. An Intel build would need a second leg or
+  cross-compilation (`--target x86_64-apple-darwin`), its own frozen
+  convsim-core sidecar and notarisation, and a universal merge; that is #575.
 
 ### Supported versions
 
-macOS 14 Sonoma or newer. Apple Silicon (M1+) and Intel are both supported
-with separate installer builds (`.dmg` files differ by architecture).
+macOS 14 Sonoma or newer, on Apple Silicon (M1 or newer) for the Steam build.
+An Intel Mac can still build and run the app from source at a release tag
+(the engine download has a `macos-x64` asset), but Steam installs nothing it
+can run.
 
 ### Build prerequisites
 

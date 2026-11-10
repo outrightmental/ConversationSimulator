@@ -31,17 +31,19 @@ sidebar:
 
 ### What ships in the depot
 
-All four official scenario packs ship inside the app bundle in every Steam
+Every pack under `packs/official/` ships inside the app bundle in every Steam
 depot (Windows, macOS, Linux). No download is required after installation.
 See [`publishing/STEAM_DEPOT_CONTENTS.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_DEPOT_CONTENTS.md)
 for the exact path (`resources/packs/` inside the Tauri bundle).
 
-| Pack ID | Title |
-|---------|-------|
-| `job-interview-basic` | Job Interview Practice |
+| Directory | Title |
+|-----------|-------|
+| `job-interview-basic` | Job Interview Basics |
 | `everyday-negotiation` | Everyday Negotiation |
 | `language-cafe` | Language Café |
 | `difficult-conversations` | Difficult Conversations |
+| `dating-confidence-boundaries` | Dating — Confidence & Boundaries |
+| `first-words` | First Words (Tutorial) |
 
 ### Updating official packs
 
@@ -237,7 +239,7 @@ From [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/out
 - [ ] Safety policy blocks `nsfw_sexual_content` at the input router level.
 - [ ] Global non-overridable rules (`minors_romantic_or_sexual`,
   `self_harm_crisis`) cannot be weakened by any pack policy.
-- [ ] All four official packs pass `convsim validate-pack` with no warnings.
+- [ ] Every pack under `packs/official/` passes `convsim validate-pack` with no warnings.
 
 ---
 

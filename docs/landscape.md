@@ -100,10 +100,10 @@ experiment — it is a pattern with a track record:
 
 What Conversation Simulator borrows, per
 [README → How it's distributed](../README.md#how-its-distributed) and
-[DLC_MODEL.md](DLC_MODEL.md): the engine and four official packs are free forever
+[DLC_MODEL.md](DLC_MODEL.md): the engine and the official packs are free forever
 (Apache-2.0 / CC BY 4.0); the $9.99 Steam edition sells *packaging* — signed, notarized,
-auto-updating, Steam Deck–verified — never gated features; premium scenario packs are
-additive first-party DLC from a private repo; **nothing that ships free is ever relocked.**
+auto-updating — never gated features; premium scenario packs are additive first-party
+DLC from a private repo; **nothing that ships free is ever relocked.**
 
 What it refuses: open-core feature hostage-taking, telemetry-funded free tiers, and any
 cloud dependency for core play.

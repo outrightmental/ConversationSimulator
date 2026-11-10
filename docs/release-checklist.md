@@ -280,10 +280,10 @@ Manager.  Wait 5 seconds for the debounce to flush, then close the app.
 cat "$HOME/Library/Application Support/com.outrightmental.convsim/steam_cloud_settings.json"
 
 # Linux / Steam Deck
-cat "$HOME/.local/share/convsim/steam_cloud_settings.json"
+cat "$HOME/.local/share/com.outrightmental.convsim/steam_cloud_settings.json"
 
 # Windows (PowerShell)
-type "$env:LOCALAPPDATA\outrightmental\convsim\steam_cloud_settings.json"
+type "$env:LOCALAPPDATA\com.outrightmental.convsim\steam_cloud_settings.json"
 ```
 
 - [ ] File exists at the data root (not inside `db/`, `logs/`, or any other subdirectory)
@@ -369,7 +369,6 @@ Mark which platforms were manually tested for this release.
 | Platform | Source / dev | Desktop build | Tester | Date |
 |---|---|---|---|---|
 | macOS (Apple Silicon) | ☐ | ☐ | | |
-| macOS (Intel) | ☐ | ☐ | | |
 | Linux x86_64 | ☐ | ☐ | | |
 | Windows x86_64 | ☐ | ☐ | | |
 
@@ -413,7 +412,7 @@ On first launch, the Model Manager wizard should appear automatically.
   model name, source URL, license, download size, SHA-256 checksum,
   destination path on disk
 - [ ] Download button is inactive until the player confirms disclosure
-- [ ] Destination path shown is under `%LOCALAPPDATA%\outrightmental\convsim\models\`
+- [ ] Destination path shown is under `%LOCALAPPDATA%\com.outrightmental.convsim\models\`
   (not under `%USERPROFILE%\.convsim\` — that would indicate a stale migration)
 - [ ] Download completes, SHA-256 is verified, model status changes to `loaded`
 
@@ -421,14 +420,15 @@ On first launch, the Model Manager wizard should appear automatically.
 
 Select **Job Interview Basics → Behavioral Interview** and run a session.
 
-- [ ] Scenario library loads and all five official packs are listed
-  (Job Interview Basics, Everyday Negotiation, Language Café,
-  Difficult Conversations, Dating — Confidence & Boundaries)
+- [ ] Scenario library loads and every pack under `packs/official/` is listed
+  (the official scenario packs and the First Words tutorial)
 - [ ] Session starts without errors; NPC opening line is delivered
 - [ ] Player can submit a text turn; NPC responds with no timeout error (a CPU-only turn can take several minutes — the app waits for it)
 - [ ] Session ends cleanly via the Stop / End Session button
 - [ ] Debrief screen loads with rubric scores and an export option
-- [ ] Exporting the transcript saves a file to `%LOCALAPPDATA%\outrightmental\convsim\exports\`
+- [ ] On the debrief, *Export session JSON* downloads `session-<id>.json` and *Export transcript (Markdown)* downloads
+  `session-<id>-transcript.md`
+  (convsim-core writes nothing to the data folder's `exports\`)
 
 ### E.4 Log verification
 
@@ -436,10 +436,10 @@ After running a session, confirm logs are written to the expected location.
 
 ```powershell
 # Expected location (platform-native, not the old ~/.convsim path)
-Get-ChildItem "$env:LOCALAPPDATA\outrightmental\convsim\logs\"
+Get-ChildItem "$env:LOCALAPPDATA\com.outrightmental.convsim\logs\"
 ```
 
-- [ ] Log files are present in `%LOCALAPPDATA%\outrightmental\convsim\logs\`
+- [ ] Log files are present in `%LOCALAPPDATA%\com.outrightmental.convsim\logs\`
 - [ ] Logs contain no API keys, tokens, or PII
 - [ ] No log files exist under `%USERPROFILE%\.convsim\` on a fresh install
   (if they do, it indicates the migration from a prior alpha install occurred —
@@ -452,11 +452,11 @@ Uninstall via **Steam → right-click → Manage → Uninstall**.
 
 - [ ] Uninstall completes without errors
 - [ ] The Steam library directory for the app is removed
-- [ ] User data under `%LOCALAPPDATA%\outrightmental\convsim\` is **preserved**
-  (session history, downloaded models, exported transcripts must survive an
+- [ ] User data under `%LOCALAPPDATA%\com.outrightmental.convsim\` is **preserved**
+  (session history and downloaded models must survive an
   uninstall — Steam uninstallers must not touch `%LOCALAPPDATA%`)
 - [ ] Downloaded model weights are still present at
-  `%LOCALAPPDATA%\outrightmental\convsim\models\` after uninstall
+  `%LOCALAPPDATA%\com.outrightmental.convsim\models\` after uninstall
 
 ### E.6 Reinstall behavior
 
@@ -498,7 +498,7 @@ Navigate to **Settings → Privacy** (or the Privacy section of Settings).
 
 - [ ] Transcript history view is accessible and lists the sessions played above
 - [ ] "Clear all local data" button is present and functional
-- [ ] Local data path (`%LOCALAPPDATA%\outrightmental\convsim\`) is displayed in the UI
+- [ ] Local data path (`%LOCALAPPDATA%\com.outrightmental.convsim\`) is displayed in the UI
 - [ ] Clearing data removes all sessions from the session library without requiring
   file-manager navigation
 - [ ] After clearing, `GET /api/health` shows `privacy.telemetry_enabled: false`
@@ -521,7 +521,7 @@ Navigate to **Settings → Support** (or the Help / Support screen).
 
 - [ ] Log directory path is shown or linked in the UI
 - [ ] User can copy the log path without file-manager navigation
-- [ ] Opening the log directory via the UI shows `%LOCALAPPDATA%\outrightmental\convsim\logs\`
+- [ ] Opening the log directory via the UI shows `%LOCALAPPDATA%\com.outrightmental.convsim\logs\`
 - [ ] Log files contain startup events and session lifecycle info with no raw
   conversation text or NPC responses
 
@@ -683,8 +683,8 @@ Run this checklist on a **clean macOS machine** (fresh Steam library, no prior
 Conversation Simulator data) before declaring the macOS Stage 3 gate open.
 It is the macOS equivalent of Part E.
 
-Minimum hardware: macOS 14 Sonoma or newer, Apple Silicon (arm64) or Intel
-(x86-64).  See `docs/platform-notes.md` for system requirements.
+Minimum hardware: macOS 14 Sonoma or newer, Apple Silicon (arm64); the Steam
+build has no Intel slice (#563).  See `docs/platform-notes.md` for system requirements.
 
 ### G.1 Gatekeeper and notarization
 
@@ -763,13 +763,14 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 
 Select **Job Interview Basics → Behavioral Interview** and run a session.
 
-- [ ] Scenario library loads and all five official packs are listed
+- [ ] Scenario library loads and every pack under `packs/official/` is listed
 - [ ] Session starts without errors; NPC opening line is delivered
 - [ ] Player can submit a text turn; NPC responds with no timeout error (a CPU-only turn can take several minutes — the app waits for it)
 - [ ] Session ends cleanly via the Stop / End Session button
 - [ ] Debrief screen loads with rubric scores and an export option
-- [ ] Exporting the transcript saves a file under
-  `~/Library/Application Support/com.outrightmental.convsim/exports/`
+- [ ] On the debrief, *Export session JSON* downloads `session-<id>.json` and *Export transcript (Markdown)* downloads
+  `session-<id>-transcript.md`
+  (convsim-core writes nothing to the data folder's `exports/`)
 
 ### G.5 Offline play after model download
 
@@ -876,9 +877,9 @@ ldd --version | head -1
 
 - [ ] Tauri window opens and displays the home screen
 - [ ] No terminal window visible (convsim-core runs as hidden child process)
-- [ ] `~/.local/share/convsim/` (or `$XDG_DATA_HOME/convsim` when `XDG_DATA_HOME`
-  is set) is created on first launch (platform-native data directory; confirm in
-  startup log)
+- [ ] `~/.local/share/com.outrightmental.convsim/` (or
+  `$XDG_DATA_HOME/com.outrightmental.convsim/` when `XDG_DATA_HOME` is set) is
+  created on first launch (platform-native data directory; confirm in startup log)
 
 ### H.3 First-run model wizard
 
@@ -886,18 +887,20 @@ ldd --version | head -1
 - [ ] All six mandatory disclosure fields visible (name, source, license, size,
   SHA-256, destination path)
 - [ ] Download button inactive until disclosure confirmed
-- [ ] Destination path shown is under `~/.local/share/convsim/models/`
+- [ ] Destination path shown is under `~/.local/share/com.outrightmental.convsim/models/`
 - [ ] Download completes; SHA-256 verified; model status changes to `loaded`
 
 ### H.4 Text scenario and debrief
 
 Select **Job Interview Basics → Behavioral Interview** and run a session.
 
-- [ ] All five official packs listed in the scenario library
+- [ ] Every pack under `packs/official/` listed in the scenario library
 - [ ] Session starts; NPC opening line delivered
 - [ ] Player text turn submitted; NPC responds with no timeout error (a CPU-only turn can take several minutes)
 - [ ] Session ends cleanly; debrief screen loads with rubric scores and export option
-- [ ] Exported transcript saved under `~/.local/share/convsim/exports/`
+- [ ] On the debrief, *Export session JSON* downloads `session-<id>.json` and *Export transcript (Markdown)* downloads
+  `session-<id>-transcript.md`
+  (convsim-core writes nothing to the data folder's `exports/`)
 
 ### H.5 Offline play after model download
 
@@ -931,7 +934,7 @@ See **Part B.11** for the full Steam Cloud sync verification procedure.
 Navigate to **Settings → Support**.
 
 - [ ] Log directory path shown or linked in the UI
-- [ ] Opening via the UI confirms logs in `~/.local/share/convsim/logs/`
+- [ ] Opening via the UI confirms logs in `~/.local/share/com.outrightmental.convsim/logs/`
 - [ ] Log files contain diagnostic context with no raw conversation text
 
 ### H.9 Achievements, stats, and rich presence (if included in build)
@@ -948,7 +951,7 @@ Navigate to **Settings → Support**.
 ### H.10 Log verification
 
 ```bash
-ls -la ~/.local/share/convsim/logs/
+ls -la ~/.local/share/com.outrightmental.convsim/logs/
 ```
 
 - [ ] Log files present
@@ -1037,9 +1040,9 @@ Navigate to **Settings → Privacy** and **Settings → Support** via controller
 
 ```bash
 # In Desktop Mode — Konsole:
-cat "$HOME/.local/share/convsim/steam_cloud_settings.json"
+cat "$HOME/.local/share/com.outrightmental.convsim/steam_cloud_settings.json"
 for d in data db logs models/llm packs exports cache crashes; do
-    echo "$d: $(ls "$HOME/.local/share/convsim/$d/.nosteamcloudpath" 2>/dev/null \
+    echo "$d: $(ls "$HOME/.local/share/com.outrightmental.convsim/$d/.nosteamcloudpath" 2>/dev/null \
       && echo PRESENT || echo MISSING)"
 done
 ```
@@ -1099,7 +1102,6 @@ be on each required platform.
 |----------|-----------------|--------|
 | Windows 10 / 11 (x86-64) | ≥ 2 | TBD |
 | macOS — Apple Silicon | ≥ 1 | TBD |
-| macOS — Intel | ≥ 1 | TBD |
 | Linux (x86-64) | ≥ 1 | TBD |
 | Steam Deck (SteamOS 3.x, Gaming Mode) | ≥ 1 | TBD for G4-02 |
 
@@ -1265,7 +1267,7 @@ Release version  : vX.Y.Z-alpha.N
 Date             : YYYY-MM-DD
 Tester           :
 Platform         : macOS 14.x / Ubuntu 22.04.x / Windows 11
-CPU              : Apple M2 / Intel Core i7-xxxx / AMD Ryzen xxxx
+CPU              : Apple M2 (macOS) / AMD Ryzen xxxx / Intel Core i7-xxxx
 RAM              : xx GB
 VRAM             : xx GB (or "none — CPU only")
 Model tested     : Qwen3 4B Q4_K_M / (none — fake runtime only)

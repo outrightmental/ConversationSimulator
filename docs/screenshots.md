@@ -2,46 +2,46 @@
 # Screenshots and demo assets
 
 Every image in `docs/assets/` is a capture of the app running a real session against a
-real local model. Nothing here is a mockup, a composite, or a retouched frame. This
-document records what each asset shows, the alt text that must travel with it, the
-machine it was captured on, and the single command that remakes the whole set.
+real local model. Nothing here is a mockup, a composite, or a retouched frame. The one
+edit is the hero recording's playback speed, and every frame of it says so (see
+[Demo asset](#demo-asset-readme-hero)). This document records what each asset shows,
+the alt text that must travel with it, the machine it was captured on, and the single
+command that remakes the whole set.
 
 ---
 
-
-> **Stale against v0.4:** `03-conversation.png` and the README's `demo.gif` show
-> the amber "first token took…" advisory and the meters below the transcript.
-> Both are gone (#501, #539) and the reply now arrives sentence by sentence
-> (#538). The recapture is tracked in #554 and needs a real local-model session.
-
 ## Capture environment
 
-Recorded 2 October 2026 from the development build.
+Recorded 10 November 2026 from the development build of the v0.4.0 release (#554).
 
 | | |
 |---|---|
-| Hardware | Apple M1 Pro, 16 GB unified memory, macOS 14.8.2 |
-| Model | Qwen3 4B Instruct Q4_K_M (Apache-2.0), 2.5 GB on disk (2.3 GiB), loaded as a local GGUF |
-| Engine | llama.cpp `b9415` `llama-server`, `--ctx-size 8192 --n-gpu-layers 99` |
+| Hardware | Cloud VM: 4 vCPU Intel Xeon @ 2.10 GHz, 15 GB RAM, no GPU, Ubuntu 24.04 |
+| Model | Qwen3 4B Instruct Q4_K_M (Apache-2.0), 2.5 GB, installed by the app's own one-click set-up: download, SHA-256 verify, warm-up |
+| Engine | llama.cpp `b9415` `llama-server`, CPU only, launched by convsim-core with `--ctx-size 8192` and its one-conversation profile (#523) |
+| Measured speed | about 63 tokens/s reading the prompt and 6.5 tokens/s writing, so a turn late in the session takes one to two minutes |
 | App | `./scripts/dev.sh` — UI on `http://127.0.0.1:7354`, core on `http://127.0.0.1:7355` |
-| Profile | a throwaway `CONVSIM_DATA_ROOT` with the six official packs seeded and no personal data |
-| Scenario | **Making the Case** (Job Interview Basics), standard difficulty, seed `455`, text input, NPC state meters enabled |
-| Browser | Chromium (Playwright), 1280 CSS px wide at `devicePixelRatio` 2 |
+| Profile | a throwaway `CONVSIM_DATA_ROOT` with the official packs seeded, onboarding completed through the real welcome screen ("Set me up"), and no personal data |
+| Scenario | **Making the Case** (Job Interview Basics), standard difficulty, seed `455`, text input, conversation meters on |
+| Browser | Chromium (Playwright 1.63), 1280 CSS px wide at `devicePixelRatio` 2 |
 
-Two things visible in the captures are the app reporting on **this machine**, not on the
+This machine is slower than any the app recommends: it has no graphics card and four
+cores. Two things in the captures are the app reporting on **this machine**, not on the
 product, and are kept rather than staged away:
 
-- **The amber performance advisories.** The app raises two, and both are in frame here:
-  "NPC response is slow" on `03-conversation.png`, where the first token took 9.6 s, and
-  "Full NPC response is very slow" at the end of the hero recording, where the whole
-  reply took 14.0 s. The product budgets 2.5 s to first token and 10 s to a full response
-  on the recommended tier ([`packages/shared/src/types/metrics.ts`](../packages/shared/src/types/metrics.ts)); a 2021
-  laptop running a 4B model at a ~1,500-token prompt lands well past both and the app
-  says so. Capturing on faster hardware removes the banners; editing them out would be a
-  lie about the thing the README is selling.
-- **STT and TTS reading "Not installed"** on the home screen. Voice needs whisper.cpp and
-  a local Kokoro server, which are optional runtimes a text-only install does not have
-  (see [`docs/install.md`](install.md)). The app runs fully in text mode without them.
+- **How long the turn takes.** The hero recording is played back at 6x, with the factor
+  and the real length of the turn on every frame. In real time the player waits through
+  the staged panel ("Elena Vasquez is thinking…", the reading bar) for most of a minute
+  before the reply starts, and then watches it arrive a sentence at a time. On the
+  reference hardware in the release checklist the same turn takes a few seconds.
+- **Voice input and output reading "Not installed"** on the home screen. Voice needs
+  whisper.cpp and a local Kokoro server, which are optional runtimes a text-only install
+  does not have (see [`docs/install.md`](install.md)). The app runs fully in text mode
+  without them.
+
+The Status panel names the model by its file, `qwen3-4b-instruct-q4_k_m.gguf`, because
+that is what the engine reports once the one-click set-up has installed it; shorter,
+friendlier model names are #555.
 
 No real people, faces, voices, or private data appear in any asset. Every NPC, company
 and transcript line is fictional scenario content or model output responding to it.
@@ -87,6 +87,25 @@ script does not write — or a pair of flags that cancel out, like `--skip-hero
 --only=hero` — is rejected before the playthrough starts, so neither can cost a run. The
 scenario, player turns and seed are constants at the top of the file.
 
+`--hero-speed=N` (1 to 16, default 1) plays the hero recording back N times faster and
+draws "Played at Nx speed — this turn took S s on the capture machine" on every frame.
+Use it only where a real-time turn would make the recording minutes long; on the
+recommended hardware the default real-time recording fits the GIF budget. The label needs
+ffmpeg's `drawtext` filter (libfreetype) and the Inter font through fontconfig; with an
+ffmpeg that has no fontconfig, set `CONVSIM_HERO_FONTFILE` to a `.ttf`/`.otf` file. The
+script renders the label once before the playthrough and stops if it cannot.
+
+Two things that cost a run: `./scripts/dev.sh` serves convsim-core with `--reload`, so
+editing anything under `services/convsim-core/` mid-capture restarts the core and its
+engine and fails the turn in flight; and a run that stops mid-session leaves that session
+open, so the next run's screens carry a "Conversation in progress" banner. End it first
+(`POST /api/sessions/<id>/end`).
+
+The demo app's Steam store screenshots are a separate set, made by
+[`scripts/capture-store-screenshots.mjs`](../scripts/capture-store-screenshots.mjs)
+against a demo-edition engine on a fresh profile; see
+[`publishing/STEAM_NEXT_FEST_DEMO.md`](../publishing/STEAM_NEXT_FEST_DEMO.md) §4.2.
+
 A run that loses a screen keeps going — the other outputs are worth more than the one
 that failed — but it **exits non-zero** and names what it missed. Those files still hold
 the previous capture, so check the exit status before committing: a partial run is
@@ -98,21 +117,22 @@ re-encoded by hand instead of replayed.
 
 ## Demo asset (README hero)
 
-| File | `docs/assets/demo.gif` (3.1 MB) · `docs/assets/demo.mp4` (0.6 MB fallback) |
+| File | `docs/assets/demo.gif` (3.7 MB) · `docs/assets/demo.mp4` (0.4 MB fallback) |
 |------|-----------------------------------------------------------------------------|
 | Used in | `README.md` — the GIF. The MP4 is the same segment kept as a video source for the Steam trailer and store page (`publishing/STEAM_ASSETS_SPEC.md`); nothing embeds it today. |
 | License | CC0-1.0 |
-| Shows | 25 s of one real turn: the player types a reply, the local model answers as the NPC, and the state meters under the transcript move as the turn resolves |
+| Shows | One real turn of 111 s, played back at 6x in 18.5 s (`--hero-speed=6`): the player types a reply, the staged panel says what the turn is doing and when the reply will start, the reply streams in a sentence at a time, the scene updates, and the meters above the transcript move. "Played at 6x speed — this turn took 111 s on the capture machine" is drawn on every frame. |
 | Fictional content | NPC "Elena Vasquez" (Head of Product, stretch-hire interview) — no real person |
 
 **Alt text used in README:**
 
-> One turn of "Making the Case" in Conversation Simulator: the player types a reply into
-> the composer, the local model answers as the NPC with event flags beneath it, and the
-> NPC state meters below the transcript — trust, patience, rapport, openness,
-> objective_progress, conviction, preparation_score — update as the turn resolves. An
-> amber advisory above the transcript reports that the full response took 14.0 seconds on
-> this machine.
+> One turn of "Making the Case" in Conversation Simulator, played back at 6x with that
+> factor and the turn's real length, 111 seconds, labelled along the bottom: the player
+> types a reply into the composer, the panel under the transcript reads "Elena Vasquez
+> is thinking…" with a reading bar and "Reply starts in about 9–15 s", the NPC's reply
+> arrives a sentence at a time, the transcript reads "Updating the scene…", and the
+> Conversation meters above the transcript move as the turn lands — Trust up 10 to 95
+> and Openness up 5 to 70.
 
 ---
 
@@ -128,18 +148,19 @@ subset of what is recorded here, never a different claim.
 ### 01-home.png — Home screen
 
 **What it shows:** The home screen on a ready text-only install. Navigation links, the
-"Your training" card summarising the three sessions played in this capture profile
-(streak, strongest and weakest rubric dimension, last session's delta), a three-scenario
-training plan, and the Status panel: Local runtime ready, the loaded model named, voice
-runtimes not installed, no network required, six packs installed.
+"Your training" card for the two sessions played in this capture profile (session count,
+streak, a link to the Logbook), a three-scenario training plan, and the Status panel: the
+AI engine ready, the installed model named by its file, voice runtimes not installed, no
+network required, six packs installed.
 
 **Alt text:**
-> Conversation Simulator home screen. Links run down the page — Start a scenario,
-> Create / edit a scenario, Install model, Import pack, Creator workbench guide, Read
-> docs — above a "Your training" card summarising the three sessions played in this
-> profile, and a three-scenario training plan. The Status panel reports Local runtime:
-> Ready, LLM: Qwen3 4B Instruct Q4_K_M, STT and TTS: Not installed, Network required to
-> play: No, and Packs: 6 installed.
+> Conversation Simulator home screen. Links run down the page — Start a scenario, Create
+> / edit a scenario, Install model, Import pack, Creator workbench guide, Read docs —
+> above a "Your training" card showing two sessions, a one-day streak and a link to the
+> full logbook, and a three-scenario training plan: At the Convenience Store, Checking
+> In at Hôtel Lumière and Coffee at Café Sol. The Status panel reports AI engine: Ready,
+> AI model: qwen3-4b-instruct-q4_k_m.gguf, Voice input and Voice output: Not installed,
+> Network required to play: No, and Packs: 6 installed.
 
 ---
 
@@ -151,31 +172,35 @@ expanded to its four scenario cards with metadata chips and Launch buttons.
 
 **Alt text:**
 > Scenario Library filtered by the search word "interview": four scenarios in one pack.
-> The Job Interview Basics pack lists Making the Case, The Behavioral Interview, The
-> Executive Gauntlet and The Foreman's Interview. Each card carries a summary, chips for
-> content rating, player role, length, language, difficulty and tags, and a blue Launch
-> button.
+> Rating, language, difficulty and tag filters and a Voice only checkbox sit beside the
+> search box. The Job Interview Basics pack, with Open folder and Validate pack buttons,
+> lists Making the Case, The Behavioral Interview, The Executive Gauntlet and The
+> Foreman's Interview. Each card carries a summary, chips for content rating, player
+> role, length, language, difficulty and tags, and a Launch button.
 
 ---
 
 ### 03-conversation.png — Conversation (mid-session with state meters)
 
-**What it shows:** Turn 10 of the session. NPC panel (emotion "Impressed", status
-"Listening"), the scene card, the performance advisory this machine earned, four turns of
-transcript with per-turn event flags, the NPC state variable meters — the five visible
-baseline variables plus the two the scenario adds, `conviction` and `preparation_score` —
-the accumulated event-flag strip, and the text composer. The hidden variables (baseline
-`pressure`, the scenario's `stretch_potential` and `gap_acknowledged`) have no meter here;
-they surface only in the debrief telemetry on `04-debrief.png`.
+**What it shows:** Three whole turns in, once the third has committed. The NPC card
+("Mood: Impressed", "Listening"), the scene card, the "Something changed" banner for the
+scenario event that turn fired, the labelled Conversation meters panel above the
+transcript with this turn's movement arrows — the five visible baseline variables plus
+the two the scenario adds, `conviction` and `preparation_score` — the transcript counted
+in whole turns with a Mood line under each reply, and the text composer. The hidden
+variables (baseline `pressure`, the scenario's `stretch_potential` and
+`gap_acknowledged`) have no meter here; they surface only in the debrief telemetry on
+`04-debrief.png`.
 
 **Alt text:**
-> The conversation screen mid-session in "Making the Case". The NPC panel reads Impressed
-> and Listening beside a scene card describing the stretch-hire interview, and an amber
-> advisory notes that the first token took 9.6 seconds on this machine. The transcript
-> alternates the player's turns in violet with the NPC's replies in green, each NPC turn
-> tagged with event flags such as honesty_demonstrated. Below the transcript, NPC state
-> variable meters read trust 95, patience 75, rapport 50, openness 80, objective_progress
-> 0, conviction 35 and preparation_score 55.
+> The conversation screen mid-session in "Making the Case". Elena Vasquez's card reads
+> Mood: Impressed and Listening beside a scene card describing the stretch-hire
+> interview, under a "Something changed: Gap probing" banner. The Conversation meters
+> panel above the transcript reads Trust 85 (up 15 this turn), Patience 85 (up 10),
+> Rapport 70 (up 20), Openness 65, Objective progress 0, Conviction 35 and Preparation
+> score 45. The transcript numbers whole turns — Turn 2 · You, Turn 2 · Elena Vasquez,
+> Turn 3 — with the player's lines in violet, the NPC's replies in green and a Mood line
+> under each reply, above the text composer.
 
 ---
 
@@ -185,17 +210,19 @@ they surface only in the debrief telemetry on `04-debrief.png`.
 badge, a model-written summary, the rubric scorecard, the telemetry panel with
 conversation metrics and a sparkline per state variable, then strengths — each citing the
 turn it came from — and areas for improvement. The frame ends at the improvements
-section; key moments, replay suggestions and the transcript continue below.
+section; key moments, replay suggestions and the transcript continue below. The scorecard's
+dimension names are the model's own: the turn prompt does not give it the rubric's ids
+(#578), and this frame was shot before spellings of one id were scored together, so
+Self-Awareness appears twice.
 
 **Alt text:**
-> Session Debrief scoring the session 53 out of 100 with a "Player Exit" outcome badge
-> and four turns. A written summary is followed by a six-dimension scorecard — Experience
-> Gap Acknowledged 59, Transferable Skills Demonstrated 52, Learning Velocity
-> Demonstrated 52, Specific Evidence Transferable Skills 52, Honesty About Experience Gap
-> 51, Transferable Evidence 52 — then a Telemetry panel showing talk ratio, words per
-> turn, question counts, response latency and a sparkline for each state meter. Strengths
-> are listed in green, each citing the turn it came from, and areas for improvement in
-> amber.
+> Session Debrief scoring the session 52 out of 100 with a "Player Exit" outcome badge
+> and four turns. A written summary is followed by a five-row scorecard — Experience Gap
+> 53, Learning Velocity 53, Self-Awareness 52, Transferable Skills 51 and a second Self
+> Awareness row at 52 — then a Telemetry panel showing talk ratio, words per turn,
+> question counts, a median response latency of 99 seconds on the capture machine, and a
+> sparkline for each conversation meter across the four turns. Strengths are listed in
+> green, each quoting the turn it came from, and areas for improvement in amber.
 
 ---
 
@@ -204,18 +231,19 @@ section; key moments, replay suggestions and the transcript continue below.
 **What it shows:** The workbench after using "Create local copy to edit" on an official
 pack: the green validation banner, the pack list with six read-only official packs and
 one editable local-dev copy, that copy's file tree, and the YAML editor open on a
-scenario file with the YAML/Form toggle, Save, and Export .zip. Both columns are
+scenario file with the Edit/Test Chat tabs, the YAML/Form toggle, Save, and Export .zip.
+Both columns are
 viewport-height panels that scroll on their own, so the frame shows the top of
 the file tree and the top of the open file rather than all of either.
 
 **Alt text:**
 > Creator Workbench. A green "Pack is valid" banner sits above a two-column layout. On
-> the left, the pack list — six official packs and one editable local-dev copy of Job
+> the left, the pack list — six official packs and an editable local-dev copy of Job
 > Interview Basics — sits above that copy's file tree, with
-> scenarios/stretch_role_interview.yaml selected. On the right, a YAML editor shows the
-> file — schema_version, scenario_id, title, summary, player_role, and the npc, scene
-> and rubric references — with YAML and Form editor toggles, a Save button and an
-> Export .zip button.
+> scenarios/stretch_role_interview.yaml selected. On the right, Edit and Test Chat tabs
+> sit over a YAML editor showing the file — schema_version, scenario_id, title, summary,
+> player_role, and the npc, scene and rubric references — with YAML and Form editor
+> toggles, a Save button and an Export .zip button.
 
 ---
 
@@ -227,10 +255,11 @@ at a GGUF file already on disk — with size, licence, VRAM requirement and an e
 speed class on the recommended card.
 
 **Alt text:**
-> Model Manager. "Set up your model" offers three cards: install the recommended Qwen3 4B
-> Instruct Q4_K_M (2.5 GB, Apache-2.0, requires 4 GB VRAM, tagged Fast with an expected
-> 0.8 to 2.4 second time to first token), use a model already installed in local Ollama,
-> or point the app at a GGUF file already on the machine.
+> Model Manager. "Set up your model" offers three cards: install the recommended Qwen3
+> 4B Instruct Q4_K_M (2.5 GB, Apache-2.0, requires 4 GB VRAM, tagged Fast with an
+> expected 0.8 to 2.4 second time to first token on the recommended tier), use a model
+> already installed in local Ollama, or point the app at a GGUF file already on the
+> machine.
 
 ---
 
@@ -243,6 +272,8 @@ Completed for the current set; re-run it whenever the assets are replaced.
 - [x] PNG screenshots exported at 2× (2560 px wide), heights fitted per screen.
 - [x] Hero recording exported under 5 MB (`ffmpeg` palette optimisation), with an MP4
       fallback alongside it.
+- [x] The hero's playback speed is drawn on every frame of the GIF and the MP4, with the
+      turn's real length, whenever it is not real time (`--hero-speed`).
 - [x] Files placed in `docs/assets/screenshots/`, and derived web copies placed in
       `website/static/images/screenshots/` and `docs-site/public/images/screenshots/`:
       `magick <png> -resize 1280x -colors 256 -strip <dest>` (about a quarter the bytes,
@@ -252,7 +283,7 @@ Completed for the current set; re-run it whenever the assets are replaced.
 - [x] `README.md` image tags updated with the real filenames and the alt text above.
 - [x] Manual content and safety review: no real faces, no sensitive data, no identifiable
       voices, nothing above PG-13.
-- [x] File sizes verified for GitHub rendering (largest screenshot 0.5 MB, hero 3.1 MB).
+- [x] File sizes verified for GitHub rendering (largest screenshot 0.5 MB, hero 3.7 MB).
 - [x] `NOTICE` updated for the captured assets (CC0-1.0).
 
 ---

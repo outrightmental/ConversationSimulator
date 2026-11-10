@@ -84,12 +84,17 @@ Usage:
 Only the demo set is committed.  The base set in apps/desktop/src-tauri/icons/
 is the original `tauri icon` output and is deliberately left alone; rendering
 it here is for side-by-side comparison when the mark changes — and for the
-full game's own Steamworks icons, which come from `--edition base` and not
-from gen_capsules.py's `community_icon`.  That one is also 184 x 184, so it
-looks like the right file, but it draws a #6D28D9 bubble on the near-black
-with no plate: #6D28D9 is the demo's plate colour, and uploading it against
-the full game would hand the demo's distinguishing hue to the app it is meant
-to be told apart from.
+full game's own Steamworks icons, which come from `--edition base`.
+gen_capsules.py no longer draws a 184 x 184 `community_icon` (issue #551):
+it looked like the right file, but drew a #6D28D9 bubble on the near-black
+with no plate, and #6D28D9 is the demo's plate colour — uploading a copy left
+over from an old run against the full game would hand the demo's
+distinguishing hue to the app it is meant to be told apart from.
+
+gen_capsules.py also borrows the ribbon from here — ``ribbon_shapes()``, pinned
+to each capsule's lower-right corner — and ``PLATE["demo"]`` as the demo
+capsules' plate, so a change to either restyles the demo capsule set too:
+re-run ``gen_capsules.py --edition demo`` after it.
 """
 from __future__ import annotations
 
@@ -258,22 +263,33 @@ def _letter_o(h: float) -> tuple[float, list[tuple[list[tuple[float, float]], bo
 _GLYPHS = {"D": _letter_d, "E": _letter_e, "M": _letter_m, "O": _letter_o}
 
 
-def _word(text: str, cx: float, cy: float, h: float) -> str:
-    """Render ``text`` centred on (cx, cy) in the upright pre-rotation frame."""
+Shape = tuple[list[tuple[float, float]], str]   # (polygon, fill)
+
+
+def _word(text: str, cx: float, cy: float, h: float) -> list[Shape]:
+    """Lay ``text`` out centred on (cx, cy) in the upright pre-rotation frame,
+    then rotate every letterform onto the diagonal."""
     glyphs = [_GLYPHS[ch](h) for ch in text]
     total = sum(w for w, _ in glyphs) + WORD_TRACKING * (len(glyphs) - 1)
     pen, top = cx - total / 2.0, cy - h / 2.0
-    out = []
+    out: list[Shape] = []
     for w, shapes in glyphs:
         for points, is_counter in shapes:
-            moved = [(pen + px, top + py) for px, py in points]
-            out.append(_poly(moved, RIBBON_BG if is_counter else RIBBON_FG, rotate=True))
+            moved = [_rot45(pen + px, top + py) for px, py in points]
+            out.append((moved, RIBBON_BG if is_counter else RIBBON_FG))
         pen += w + WORD_TRACKING
-    return "".join(out)
+    return out
 
 
-def _ribbon() -> str:
-    """The lower-right "DEMO" corner band, already clipped to the plate."""
+def ribbon_shapes() -> list[Shape]:
+    """The lower-right "DEMO" corner band as polygons in the 256-unit frame.
+
+    The band comes first, already clipped to the plate, then the letterforms
+    in paint order (each counter after the shape it is cut from).  Only the
+    plate's two straight edges meet the band — its rounded corner starts at
+    u = 316, beyond RIBBON_U_OUTER — which is what lets gen_capsules.py pin
+    the same shapes to a square-cornered capsule's lower-right corner.
+    """
     k = math.sqrt(2.0)
     band = _plate_outline()
     band = _clip_halfplane(band, 1.0, 1.0, RIBBON_U_OUTER * k)    # x + y <= outer
@@ -286,8 +302,12 @@ def _ribbon() -> str:
     c = VIEW / 2.0
     u_centre = (c + c) / k
     y_word = c + ((RIBBON_U_INNER + RIBBON_U_OUTER) / 2.0 - u_centre)
-    return (_poly(band, RIBBON_BG, rotate=False)
-            + _word("DEMO", c, y_word, WORD_HEIGHT))
+    return [(band, RIBBON_BG)] + _word("DEMO", c, y_word, WORD_HEIGHT)
+
+
+def _ribbon() -> str:
+    """The lower-right "DEMO" corner band, already clipped to the plate."""
+    return "".join(_poly(points, fill, rotate=False) for points, fill in ribbon_shapes())
 
 
 def icon_svg(edition: str, ribbon: bool) -> str:

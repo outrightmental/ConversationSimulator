@@ -194,9 +194,17 @@ Upload destinations are in the runbook (§4.2).
 
 [steam-icons]: https://partner.steamgames.com/doc/store/assets/community
 
-The demo's capsule set is **still outstanding**: the intended treatment is the
-base capsules with a ribbon matching the icon's, but `gen_capsules.py` does not
-draw one yet. Screenshots are demo-edition screenshots of the five
+**The demo has its own capsule and library art** (issue #551: without it the
+demo's library entry and store presence rendered blank).
+`gen_capsules.py --edition demo` draws the full game's capsules on the demo
+icon's purple plate, with the player bubble white as on the icon and the
+icon's "DEMO" ribbon in the lower-right corner of every asset allowed to carry
+the name; the library hero, which Valve keeps free of text, gets the plate
+without the ribbon. The set is committed under
+`publishing/assets/capsules/demo/` and still has to be uploaded on App 5343430
+(runbook §4.2).
+
+Screenshots are demo-edition screenshots of the five
 conversations (the Home picker, one conversation, one debrief) so nothing shown
 is unreachable in the demo. No separate trailer: the base trailer is used.
 Details in the runbook.
@@ -228,7 +236,7 @@ own promise.
 | D-07 | Depot audit and signing | CI + manual | `steam-deploy.yml` with `edition: demo` passes the depot audit and artifact inspection for all three platforms; macOS notarised and Windows signed (G3-01) — a demo is under Valve review like any build. |
 | D-08 | Offline after install | Manual | With the network disconnected after the download, all five conversations play (G2-01 / F-07 for the demo depot). |
 | D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text only) and what the full app adds; no "free" claims about the paid app. |
-| D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, and the two library entries read apart at a glance. |
+| D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only; every demo capsule and library asset is at Valve's size, on the demo plate, ribboned where it may carry the name and not on the hero. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, its capsules and library assets from `publishing/assets/capsules/demo/` under Store Assets and Library Assets on the same page, and the two library entries read apart at a glance. |
 
 ---
 

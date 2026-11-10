@@ -58,9 +58,9 @@ That is the whole procedure. Skip to [Set up your AI](#3-set-up-your-ai-first-la
 
 ## 2. Build from source — free
 
-The engine is Apache-2.0, five of the six official scenario packs are CC BY 4.0
-and the sixth, the First Words tutorial, is Apache-2.0, so you can always build
-and run the app yourself at no cost. It is the same software; you are supplying
+The engine and the First Words tutorial are Apache-2.0 and the official scenario
+packs are CC BY 4.0, so you can always build and run the app yourself at no
+cost. It is the same software; you are supplying
 the build instead of paying for one.
 
 Check out a **release tag** rather than `main` — tags are the versions we test
@@ -174,9 +174,12 @@ through to convsim-core. `CONVSIM_DATA_ROOT` moves the whole tree, but only when
 convsim-core runs without the desktop shell: the shell always sets it to the
 folder above. If you run the services from source without the desktop shell,
 convsim-core uses `%LOCALAPPDATA%\outrightmental\convsim\` on Windows and
-`~/.local/share/convsim/` on Linux instead. Data from older builds that used
-`~/.convsim/` is copied to the new folder on first launch; model weights are not,
-so download the model again.
+`~/.local/share/convsim/` on Linux instead. Run that way, convsim-core copies
+data from older builds that used `~/.convsim/` into the new folder on first
+start, but only while the folder is still empty, and never the model weights, so
+download the model again. The desktop app does not copy it (the shell creates the
+folder first); [Troubleshooting](/start/troubleshooting/#data-dir-writable) says how to bring
+old sessions across by hand.
 
 A few things still live under `~/.convsim/`: the AI engine that a source build
 downloads on first run (`~/.convsim/bin/`; the Steam build has it bundled), the

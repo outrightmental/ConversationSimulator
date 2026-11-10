@@ -290,9 +290,12 @@ through to convsim-core. `CONVSIM_DATA_ROOT` moves the whole tree, but only when
 convsim-core runs without the desktop shell: the shell always sets it to the
 folder above. If you run the services from source without the desktop shell
 (Path A), convsim-core uses `%LOCALAPPDATA%\outrightmental\convsim\` on Windows
-and `~/.local/share/convsim/` on Linux instead. Data from older builds that used
-`~/.convsim/` is copied to the new folder on first launch; model weights are not,
-so download the model again.
+and `~/.local/share/convsim/` on Linux instead. Run that way, convsim-core copies
+data from older builds that used `~/.convsim/` into the new folder on first
+start, but only while the folder is still empty, and never the model weights, so
+download the model again. The desktop app does not copy it (the shell creates the
+folder first); [Troubleshooting](troubleshooting.md#data-directory) says how to bring old
+sessions across by hand.
 
 A few things still live under `~/.convsim/`: the AI engine that a source build
 downloads on first run (`~/.convsim/bin/`; the Steam build has it bundled), the

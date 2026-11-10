@@ -14,13 +14,17 @@
 |----------|---------------------|--------------|------------------|------|
 | **Windows** | Windows 10 (build 19041+), Windows 11 | x86-64 | NSIS `.exe`, MSI | Required |
 | **macOS — Apple Silicon** | macOS 14 Sonoma, macOS 15+ | arm64 | `.dmg` | Required |
-| **macOS — Intel** | macOS 14 Sonoma | x86-64 | `.dmg` | Required |
 | **Linux (glibc)** | Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Fedora 40+ | x86-64 | AppImage, `.deb` | Required |
 | **Steam Deck / SteamOS** | SteamOS 3.x (based on Arch Linux) | x86-64 | Flatpak / AppImage | Required for public release |
 
 ### OS versions explicitly out of scope for v1
 
 - Windows 8.1 and earlier — no WebView2 support
+- macOS on Intel (x86-64) — not built (issue #563): `release.yml` builds macOS
+  for Apple Silicon only, so the Steam macOS depot holds an arm64 bundle that
+  an Intel Mac cannot run. The store page's system requirements say Apple
+  Silicon only. A source build at a release tag still works on an Intel Mac
+  (`download-runtime.sh` has a `macos-x64` engine asset).
 - macOS 12 Monterey — dropped from QA matrix; may still work but is untested
 - macOS 13 Ventura — dropped (issue #472): no upstream llama.cpp prebuilt
   targets macOS 13, so the bundled engine cannot launch there; the shipped
@@ -135,8 +139,8 @@ hardware.
 
 | # | Step | Pass criterion | Method |
 |---|------|----------------|--------|
-| 03.1 | All four official packs present without additional download | Job Interview Basics, Everyday Negotiation, Language Café, Difficult Conversations all appear in the scenario picker | Manual |
-| 03.2 | Pack schema validation | `convsim validate-pack` exits 0 for all four packs; zero errors, zero warnings | Automated |
+| 03.1 | All official packs present without additional download | Every pack under `packs/official/` appears in the scenario picker | Manual |
+| 03.2 | Pack schema validation | `convsim validate-pack` exits 0 for every pack under `packs/official/`; zero errors, zero warnings | Automated |
 | 03.3 | Start a session in each official pack | NPC opening line delivered within 10 s (fake runtime) / 60 s (real model, CPU minimum tier) | Manual |
 | 03.4 | Complete a multi-turn session in Job Interview Basics | At least 3 player turns completed; NPC responds to each; session ends cleanly | Manual |
 
@@ -274,7 +278,6 @@ PASS.
 |----------|-----------------|----------------------------|--------|
 | Windows 10 / 11 (x86-64) | ≥ 2 | Mid-range gaming laptop (RTX 3060), budget office desktop (integrated GPU) | TBD |
 | macOS — Apple Silicon | ≥ 1 | MacBook Air M2 / Mac Mini M2 | TBD |
-| macOS — Intel | ≥ 1 | MacBook Pro Intel (2019–2020) | TBD |
 | Linux (x86-64) | ≥ 1 | Ubuntu 22.04 desktop or VM; Fedora 40 | TBD |
 | Steam Deck | ≥ 1 | Physical Steam Deck (OLED preferred) running SteamOS 3.x in Gaming Mode | TBD |
 
@@ -372,7 +375,7 @@ Stage 3 gate (G3-06) can be declared PASS.
 Before opening the Stage 4 gate, the publishing owner must complete the
 following Valve-facing sign-off in addition to the platform QA sign-offs above.
 
-- [ ] All platform QA sign-offs (§7 above) are filed and show PASS for Windows, macOS Apple Silicon, macOS Intel, Linux, and Steam Deck.
+- [ ] All platform QA sign-offs (§7 above) are filed and show PASS for Windows, macOS Apple Silicon, Linux, and Steam Deck.
 - [ ] Valve has approved the store page for public release (G4-01).
 - [ ] Valve has granted the Steam Deck Verified tier (G4-02).
 - [ ] Steam depot content audit (G3-02) confirmed: no model weights in depot.

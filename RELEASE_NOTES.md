@@ -194,8 +194,31 @@ install and returned by the install status API, and a `NETWORK` failure shows
   panel above replaces it whenever the core reports stages, and falls back to
   it when no socket delivers them.
 - The README and docs carry six screenshots and a demo recording captured from
-  a real local-model session (#455). They predate the v0.4 conversation
-  screen; see Known gaps.
+  a real local-model session (#455), recaptured on the v0.4 conversation
+  screen with the starter model (#554). The recording plays at 6x and says so
+  on every frame; `docs/screenshots.md` records the machine and how long the
+  turn really took.
+- The macOS build is Apple Silicon only, and the store page's system
+  requirements, the QA matrix, the depot template and the publishing docs now
+  say so (#563). `tests/acceptance/test_macos_architecture.py` fails if any of
+  them claims Intel while the release builds no Intel leg; an Intel build is
+  tracked in #575.
+- A session ended while one of its turns was still with the model stays ended.
+  The turn used to commit its state over the ending when it returned, so a
+  player who ended a slow turn's session, or whose debrief had started, found
+  the conversation back in progress. The late turn is kept in the transcript.
+- The debrief shows the conversation's transcript again, and *Replay same
+  setup* replays it. Exporting a session failed with a server error once any
+  NPC turn had recorded rubric observations, which is every real-model
+  session, and the debrief read the export in a shape convsim-core does not
+  produce; both are fixed, so *Export session JSON* works too.
+- A debrief scores one rubric dimension once however the model spells its id
+  (`self-awareness`, `Self Awareness`); the turn prompt does not yet give the
+  model the rubric's own ids (#578).
+- The README, website and docs no longer state an official-pack count (it had
+  drifted to four, five and six in different places), no longer call the Steam
+  edition Steam Deck Verified, name the files the build actually produces, and
+  give the desktop app's data folder rather than the source build's (#565).
 - Diagnostics and the crash and beta reports name the release version instead
   of the package version, which always read 0.1.0 (#490, #498).
 - The issue tracker's labels, fields and milestones are declared in
@@ -232,12 +255,9 @@ install and returned by the install status API, and a `NETWORK` failure shows
 
 ## Known gaps
 
-- The screenshots and the README's demo recording show the pre-v0.4
-  conversation screen, with the old performance advisory and the meters below
-  the transcript. Recapturing them needs a real local-model session (#554).
-- The macOS build is Apple Silicon only (the release workflow builds
-  `macOS-aarch64` alone), while the Steam store copy's macOS requirements list
-  Intel processors too (#563).
+- The macOS build runs on Apple Silicon only; Intel Macs are not supported
+  from Steam (#575). A source build at a release tag still runs on an Intel
+  Mac.
 - Model names are shown as the registry writes them, for example "Qwen3 4B
   Instruct Q4_K_M" (#555).
 - The reply-start estimate needs turns measured on this machine with the same

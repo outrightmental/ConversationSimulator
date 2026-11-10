@@ -95,8 +95,9 @@ generation.
   modelling, scenario events, scoring, and debrief.
 - **Schema reference:** `schemas/` — JSON Schema definitions for scenarios,
   NPCs, rubrics, safety policies, and pack tests.
-- **Example packs:** `packs/official/` — four fully worked packs covering
-  interviews, negotiations, language practice, and difficult conversations.
+- **Example packs:** `packs/official/` — fully worked packs covering
+  interviews, negotiations, language practice, difficult conversations, and
+  dating confidence and boundaries.
 
 ### Safety reviewers
 
