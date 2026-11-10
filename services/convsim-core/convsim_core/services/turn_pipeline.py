@@ -96,6 +96,58 @@ def _apply_reply_speed(scenario_data: ScenarioData, speed: str) -> ScenarioData:
 
 MAX_TURN_CONTENT_CHARS = 2000
 
+#: Flow states a session has finished in — the same set as ENDED_FLOW_STATES in
+#: routers/sessions.py, which tests/test_turn_pipeline.py holds this to. A turn
+#: commits its session state at the end of a model call that can take minutes
+#: on a slow machine; a player who ends the session meanwhile (the end button
+#: on the in-progress banner, or after the client gave up waiting) must not see
+#: it come back. The commit leaves a finished session's state alone.
+FINISHED_FLOW_STATES = ("Ended", "DebriefGenerating", "DebriefReady", "Error")
+_FINISHED_STATES_SQL = ", ".join(f"'{state}'" for state in FINISHED_FLOW_STATES)
+
+
+def _commit_session_state(
+    conn: sqlite3.Connection,
+    session_id: str,
+    *,
+    turn_number: int,
+    flow_state: str,
+    ending_type: Optional[str],
+    extra_sets: str = "",
+    extra_params: tuple = (),
+) -> tuple[str, Optional[str]]:
+    """Write a turn's outcome to its session row; return the state it holds after.
+
+    ``flow_state`` and ``ending_type`` are written only while the session is
+    still in play. Once it has finished, a late turn's transcript rows are still
+    kept — the player did say it, and the NPC did answer — but the session stays
+    ended, keeps its ending, and its debrief is not reopened. SQLite evaluates
+    every SET expression against the row as it was before the update, so the
+    CASE tests the state the turn is racing with, not the one it writes.
+    """
+    conn.execute(
+        "UPDATE turn_sessions SET "
+        + extra_sets
+        + "turn_count = ?, "
+        f"flow_state = CASE WHEN flow_state IN ({_FINISHED_STATES_SQL}) THEN flow_state ELSE ? END, "
+        f"ending_type = CASE WHEN flow_state IN ({_FINISHED_STATES_SQL}) THEN ending_type ELSE ? END "
+        "WHERE session_id = ?",
+        (*extra_params, turn_number, flow_state, ending_type, session_id),
+    )
+    row = conn.execute(
+        "SELECT flow_state, ending_type FROM turn_sessions WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        return flow_state, ending_type
+    if row[0] != flow_state:
+        logger.info(
+            "Turn %d for session %s landed after the session finished (%s); "
+            "its transcript is kept and the session stays %s",
+            turn_number, session_id, row[0], row[0],
+        )
+    return row[0], row[1]
+
 # Default safety policy used when no scenario-specific policy is configured.
 _DEFAULT_SAFETY_POLICY = SafetyPolicy(
     policy_id="default_pg",
@@ -387,10 +439,12 @@ def _persist_input_safety_stop(
                     (session_id, npc_turn_number, "npc", npc_utterance),
                 ],
             )
-        conn.execute(
-            "UPDATE turn_sessions SET turn_count = ?, flow_state = ?, ending_type = ? "
-            "WHERE session_id = ?",
-            (turn_number, new_flow_state, ending_type, session_id),
+        new_flow_state, ending_type = _commit_session_state(
+            conn,
+            session_id,
+            turn_number=turn_number,
+            flow_state=new_flow_state,
+            ending_type=ending_type,
         )
 
     return TurnPipelineResult(
@@ -989,18 +1043,16 @@ async def process_turn(
                 ],
             )
 
-        conn.execute(
-            "UPDATE turn_sessions SET "
-            "state_vars_json = ?, fired_events_json = ?, turn_count = ?, "
-            "flow_state = ?, ending_type = ? "
-            "WHERE session_id = ?",
-            (
+        new_flow_state, ending_type = _commit_session_state(
+            conn,
+            session_id,
+            turn_number=turn_number,
+            flow_state=new_flow_state,
+            ending_type=ending_type,
+            extra_sets="state_vars_json = ?, fired_events_json = ?, ",
+            extra_params=(
                 json.dumps(delta_result.new_state),
                 json.dumps(list(fired_event_ids)),
-                turn_number,
-                new_flow_state,
-                ending_type,
-                session_id,
             ),
         )
 

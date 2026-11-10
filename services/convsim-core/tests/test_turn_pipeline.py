@@ -2126,3 +2126,88 @@ class TestScenarioStateIntegration:
         npc_payload = res.json()["events"][1]["payload"]
         assert "triggered_scenario_events" in npc_payload
         assert isinstance(npc_payload["triggered_scenario_events"], list)
+
+
+# ---------------------------------------------------------------------------
+# A turn that lands after its session finished
+# ---------------------------------------------------------------------------
+
+
+class _FinishesSessionMidTurnRuntime(FakeChatRuntime):
+    """Runtime that moves the session to a finished state while it 'generates'.
+
+    Stands in for the race a slow machine opens up: the model call takes
+    minutes, and the player ends the session (or the debrief starts) before the
+    turn commits.
+    """
+
+    def __init__(self, app, session_id: str, finished_state: str) -> None:
+        super().__init__()
+        self._app = app
+        self._session_id = session_id
+        self._finished_state = finished_state
+
+    def chat_stream(self, request: ChatRequest):
+        return self._stream(request)
+
+    async def _stream(self, request: ChatRequest):
+        conn = self._app.state.db.connection()
+        conn.execute(
+            "UPDATE turn_sessions SET flow_state = ?, ending_type = 'player_exit' "
+            "WHERE session_id = ?",
+            (self._finished_state, self._session_id),
+        )
+        conn.commit()
+        response = {
+            "npc_utterance": "Let me think about that.",
+            "npc_emotion": "neutral",
+            "state_delta": {"trust": 5},
+            "event_flags": [],
+            "rubric_observations": [],
+            "safety": {"status": "ok"},
+            "session_control": {"continue_session": True},
+        }
+        text = json.dumps(response)
+        yield ChatFinal(
+            text=text,
+            model_id="fake-small",
+            input_tokens=10,
+            output_tokens=len(text.split()),
+            structured=response,
+        )
+
+
+class TestTurnAfterSessionFinished:
+    @pytest.mark.parametrize("finished_state", ["Ended", "DebriefGenerating", "DebriefReady"])
+    def test_late_turn_does_not_reopen_the_session(self, tmp_config, finished_state):
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
+            session_id = res.json()["session_id"]
+            client.post(f"/api/sessions/{session_id}/start")
+
+            app.state.runtime = _FinishesSessionMidTurnRuntime(app, session_id, finished_state)
+            res = client.post(
+                f"/api/sessions/{session_id}/turn",
+                json={"content": "I owned the billing migration end to end."},
+            )
+            assert res.status_code == 200
+            # The response reports the state the session really holds.
+            assert res.json()["state"] == finished_state
+
+            session = client.get(f"/api/sessions/{session_id}").json()
+            assert session["state"] == finished_state
+            assert session["ending_type"] == "player_exit"
+
+            # The turn itself is kept: the player said it and the NPC answered.
+            transcript = client.get(f"/api/sessions/{session_id}/transcript").json()
+            contents = json.dumps(transcript)
+            assert "I owned the billing migration end to end." in contents
+            assert "Let me think about that." in contents
+
+    def test_finished_states_match_the_router(self):
+        from convsim_core.routers.sessions import ENDED_FLOW_STATES
+        from convsim_core.services.turn_pipeline import FINISHED_FLOW_STATES
+
+        assert set(FINISHED_FLOW_STATES) == set(ENDED_FLOW_STATES)
