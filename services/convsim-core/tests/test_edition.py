@@ -734,3 +734,234 @@ def test_demo_plays_its_own_install_when_another_model_is_selected(earlier_start
 
         assert client.get("/api/setup/status").json()["kind"] == "ready"
         assert client.get("/api/health").json()["runtime"]["llm_ready"] is True
+
+
+# ── Demo edition: the full app's selection stays the full app's ───────────────
+#
+# The same shared data root (D-06), with the full app's selection naming a
+# model the demo does not play: the earlier starter, the player's own GGUF or
+# an Ollama tag. The demo's one-click install must leave that selection alone,
+# every request the demo sends must be sampled for the demo model its engine
+# runs, its records and checks must name that model, and it must boot the
+# managed engine, never Ollama.
+
+_OLLAMA_TAG = "llama3.1:8b"
+
+
+def _select_earlier_starter(conn, models_dir: Path) -> str:
+    """A pre-v0.4 full app: the earlier starter installed and selected."""
+    from convsim_core.services.model_manager_service import set_active_config
+    from convsim_core.services.model_registry_service import upsert_registry_models
+
+    upsert_registry_models(conn, [_registry_entry(_EARLIER_STARTER_ID, "starter")])
+    earlier = _install_ready(conn, models_dir, _EARLIER_STARTER_ID)
+    set_active_config(conn, runtime_id="llama_cpp", model_id=earlier)
+    return earlier
+
+
+def _select_own_gguf(conn, models_dir: Path) -> str:
+    """The full app's player registered their own GGUF and selected it."""
+    from convsim_core.services.model_manager_service import register_user_gguf, set_active_config
+
+    models_dir.mkdir(parents=True, exist_ok=True)
+    path = models_dir / "my-own-model.gguf"
+    path.write_bytes(b"GGUF")
+    register_user_gguf(conn, path=str(path))
+    set_active_config(conn, runtime_id="llama_cpp", model_id=str(path))
+    return str(path)
+
+
+def _select_ollama(conn, models_dir: Path) -> str:
+    """The full app's player chose a model they run in Ollama."""
+    from convsim_core.services.model_manager_service import set_active_config
+
+    set_active_config(conn, runtime_id="ollama", model_id=_OLLAMA_TAG)
+    return _OLLAMA_TAG
+
+
+def _install_demo_model_file(conn, models_dir: Path) -> str:
+    return _install_ready(conn, models_dir, _STARTER_MODEL_ID)
+
+
+@pytest.fixture()
+def shared_root(tmp_path, monkeypatch):
+    """Factory: the data root the full app leaves once its *selects* ran.
+
+    No engine is started or reached: the llama.cpp and Ollama URLs point at a
+    loopback port nothing listens on, an engine executable is "present" so a
+    missing model is the only reason an autostart can skip, and the engine
+    start is recorded, never run. With no *selects* the root is left fresh.
+    """
+    from types import SimpleNamespace
+
+    from convsim_core.runtime.sidecar import LlamaCppSidecar
+
+    monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "no-whisper-cli"))
+    monkeypatch.setenv("CONVSIM_LLAMA_CPP_BASE_URL", _unreachable_llama_url())
+    monkeypatch.setenv("CONVSIM_OLLAMA_BASE_URL", _unreachable_llama_url())
+    monkeypatch.setattr(
+        "convsim_core.runtime.sidecar.find_executable", lambda: "/fake/llama-server"
+    )
+    start = AsyncMock()
+    monkeypatch.setattr(LlamaCppSidecar, "start", start)
+    models_dir = tmp_path / "models" / "llm"
+
+    def _make(*selects) -> SimpleNamespace:
+        saved = None
+        if selects:
+            full = create_app(_config(tmp_path))
+            with TestClient(full) as client:
+                conn = full.state.db.connection()
+                saved = [select(conn, models_dir) for select in selects][0]
+                resp = client.post("/api/setup/outcome", json={"outcome": "completed-with-model"})
+                assert resp.status_code == 204
+        start.reset_mock()
+        return SimpleNamespace(tmp_path=tmp_path, models_dir=models_dir, start=start, saved=saved)
+
+    return _make
+
+
+def _install_demo_model(client: TestClient, app, models_dir: Path) -> str:
+    """Run the one-click install pipeline for the demo model; return its file.
+
+    The file is already on disk, so the pipeline takes its repair path (no
+    download), and the engine reports running, so the warmup start and its
+    probe are skipped: nothing is started or reached. What these tests check
+    is the pipeline's last step: whether it saves its model as the selection.
+    """
+    import asyncio
+    from unittest.mock import MagicMock
+
+    from convsim_core.routers import setup_install
+    from convsim_core.runtime.sidecar import SidecarState
+    from convsim_core.services.setup_install_service import create_job, get_job
+
+    conn = app.state.db.connection()
+    path = _install_demo_model_file(conn, models_dir)
+    job_id = create_job(conn, registry_id=_STARTER_MODEL_ID, model_label="Downloading the model")
+    sidecar = MagicMock()
+    sidecar.state = SidecarState.RUNNING
+
+    async def _run() -> None:
+        with patch.object(setup_install, "find_executable", return_value="/fake/llama-server"), \
+             patch.object(setup_install, "seed_official_packs", return_value=0):
+            await setup_install._run_pipeline(
+                job_id=job_id,
+                registry_id=_STARTER_MODEL_ID,
+                model_label="Downloading the model",
+                conn=conn,
+                config=app.state.service_config,
+                sidecar=sidecar,
+                model_cancel_events={},
+                cancel_event=asyncio.Event(),
+                app=app,
+            )
+
+    client.portal.call(_run)
+    assert get_job(conn, job_id)["status"] == "complete"
+    return path
+
+
+@pytest.mark.parametrize(
+    "select",
+    [_select_earlier_starter, _select_own_gguf, _select_ollama],
+    ids=["earlier-starter", "own-gguf", "ollama"],
+)
+def test_demo_install_leaves_the_full_apps_selection_alone(shared_root, select):
+    from convsim_core.runtime.active import find_ready_model_path
+    from convsim_core.services.model_manager_service import get_active_config
+
+    root = shared_root(select)
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        conn = demo.state.db.connection()
+        before = get_active_config(conn)
+        assert before["model_id"] == root.saved
+        demo_path = _install_demo_model(client, demo, root.models_dir)
+        assert get_active_config(conn) == before
+        # The demo finds its own install without the selection naming it.
+        assert find_ready_model_path(conn, demo.state.service_config) == demo_path
+        assert client.get("/api/setup/status").json()["kind"] == "ready"
+        assert client.get("/api/health").json()["runtime"]["llm_ready"] is True
+
+    # The full app, opened next, plays what its player selected.
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        _settle_autostart(client, full)
+        assert get_active_config(full.state.db.connection()) == before
+        assert full.state.runtime.id == before["runtime_id"]
+        if before["runtime_id"] == "llama_cpp":
+            assert root.start.await_args.kwargs["model_path"] == root.saved
+
+
+def test_demo_install_saves_its_model_when_nothing_is_selected(shared_root):
+    """On a root with no selection the demo saves its model, so a full app
+    installed later finds it and offers no download (D-06)."""
+    from convsim_core.services.model_manager_service import get_active_config
+
+    root = shared_root()
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        conn = demo.state.db.connection()
+        assert get_active_config(conn) == {"runtime_id": None, "model_id": None}
+        demo_path = _install_demo_model(client, demo, root.models_dir)
+        assert get_active_config(conn) == {"runtime_id": "llama_cpp", "model_id": demo_path}
+        resp = client.post("/api/setup/outcome", json={"outcome": "completed-with-model"})
+        assert resp.status_code == 204
+
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        _settle_autostart(client, full)
+        assert full.state.runtime.id == "llama_cpp"
+        assert root.start.await_args.kwargs["model_path"] == demo_path
+        assert client.get("/api/setup/status").json()["kind"] == "ready"
+
+
+def test_full_edition_install_still_saves_its_model_over_another_selection(shared_root):
+    from convsim_core.services.model_manager_service import get_active_config
+
+    root = shared_root(_select_own_gguf)
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        installed = _install_demo_model(client, full, root.models_dir)
+        assert get_active_config(full.state.db.connection()) == {
+            "runtime_id": "llama_cpp",
+            "model_id": installed,
+        }
+
+
+@pytest.mark.parametrize(
+    ("runtime_id", "model_id", "demo_saves"),
+    [
+        (None, None, True),
+        ("fake", None, True),
+        ("scripted", None, True),
+        ("llama_cpp", "<demo>", True),
+        ("llama_cpp", None, False),
+        ("llama_cpp", "<other>", False),
+        ("ollama", _OLLAMA_TAG, False),
+    ],
+    ids=[
+        "nothing", "fake", "scripted", "the-demo-model", "llama-cpp-newest-install",
+        "another-file", "ollama",
+    ],
+)
+def test_which_selections_the_demo_install_replaces(tmp_path, runtime_id, model_id, demo_saves):
+    from convsim_core.routers.setup_install import _install_saves_selection
+    from convsim_core.services.model_manager_service import set_active_config
+    from convsim_core.storage.database import Database
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        load_and_persist_registry(conn, _REGISTRY_PATH)
+        paths = {
+            "<demo>": _install_demo_model_file(conn, tmp_path / "models"),
+            "<other>": _install_ready(conn, tmp_path / "models", "qwen3-8b-instruct-q4_k_m"),
+        }
+        if runtime_id is not None:
+            set_active_config(conn, runtime_id=runtime_id, model_id=paths.get(model_id, model_id))
+        assert _install_saves_selection(conn, _config(tmp_path, edition="demo")) is demo_saves
+        assert _install_saves_selection(conn, _config(tmp_path)) is True
+    finally:
+        db.close()

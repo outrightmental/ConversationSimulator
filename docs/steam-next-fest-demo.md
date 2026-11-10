@@ -183,9 +183,18 @@ installed and selected. In the demo only the demo model's own files count: the
 engine autostart (`runtime/active.py`) starts the engine only on the demo
 model's install, never on the full app's selection or its other installs, and
 the setup status and the Home screen count only that install. A player who
-does not have it is offered the demo's one download, as a new player is. The
-full app's selection and files are left as they are, and the full app keeps
-playing them.
+does not have it is offered the demo's one download, as a new player is.
+
+The full app's selection is left as it is. When the demo's one-click install
+finishes (`routers/setup_install.py`), it saves the demo model as the
+selection only when nothing is selected yet, only a model-free runtime
+(`fake`, `scripted`) is, or the selection already names one of the demo
+model's files. A selection that names Ollama, or llama.cpp with any other
+file or none (the earlier starter, the player's own GGUF, or no file, which
+plays the newest ready install), is kept, so the full app keeps playing it;
+the demo finds its own install without it. A player who installs the demo
+model on a fresh profile and then the full app gets the model selected there,
+and no download. The demo never deletes the full app's files.
 
 ### Store assets
 

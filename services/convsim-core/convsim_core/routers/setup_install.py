@@ -23,9 +23,15 @@ import httpx
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from convsim_core.edition import EDITION_RESTRICTED, demo_model_allowed, is_demo
+from convsim_core.edition import (
+    EDITION_RESTRICTED,
+    demo_model_allowed,
+    demo_model_paths,
+    is_demo,
+)
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.seeder import seed_official_packs
+from convsim_core.runtime.active import MODEL_FREE_RUNTIME_IDS
 from convsim_core.runtime.launch import resolve_launch_config
 from convsim_core.runtime.llama_cpp_download import DownloadProgress, download_binary
 from convsim_core.runtime.sidecar import LlamaCppSidecar, SidecarState, find_executable
@@ -35,6 +41,7 @@ from convsim_core.services.model_download_service import (
 )
 from convsim_core.services.model_manager_service import (
     create_install_record,
+    get_active_config,
     get_install_record,
     set_active_config,
 )
@@ -111,6 +118,29 @@ def _get_registry_row(conn: sqlite3.Connection, registry_id: str) -> dict[str, A
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
+
+
+def _install_saves_selection(conn: sqlite3.Connection, config: Any) -> bool:
+    """Whether a finished install saves its model as the active selection.
+
+    The full edition always does. The demo edition shares the full app's data
+    root (D-06), so a saved selection there is the full app's. When it names
+    another runtime (Ollama), or llama.cpp with any model but one of the demo
+    model's own files (the earlier starter, the player's own GGUF, or no file,
+    which plays the newest ready install), the demo leaves it alone and the
+    full app keeps playing it. The demo's own lookups
+    (``find_ready_model_path``, setup status, health) find its install without
+    the selection. With nothing selected, or only a model-free runtime (no
+    model, issue #473), the demo saves its model, so a full app installed
+    later finds it and offers no download.
+    """
+    if not is_demo(config):
+        return True
+    active = get_active_config(conn)
+    runtime_id = active.get("runtime_id")
+    if runtime_id is None or runtime_id in MODEL_FREE_RUNTIME_IDS:
+        return True
+    return runtime_id == "llama_cpp" and active.get("model_id") in demo_model_paths(conn, config)
 
 
 async def _run_pipeline(
@@ -474,7 +504,14 @@ async def _run_pipeline(
     # (e.g. too large for available RAM) as the active selection, so the next
     # app boot would try to load it and crash-loop — exactly the failure this
     # stage exists to catch before the user's first conversation.
-    set_active_config(conn, runtime_id="llama_cpp", model_id=model_file_path)
+    if _install_saves_selection(conn, config):
+        set_active_config(conn, runtime_id="llama_cpp", model_id=model_file_path)
+    else:
+        logger.info(
+            "setup-install(%d): the demo keeps the full app's model selection; "
+            "it plays its own install without it",
+            job_id,
+        )
 
     # Swap the LIVE runtime too: sessions read app.state.runtime, and without
     # this swap the process keeps serving conversations on the startup runtime
