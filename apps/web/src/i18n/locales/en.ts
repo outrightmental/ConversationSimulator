@@ -128,6 +128,54 @@ export const en = {
     appliedPlain: 'Plain wording it is.',
     appliedTechnical: 'Technical detail is on.',
   },
+  // The live turn panel (issue #539): what the turn is doing while the player
+  // waits, in the fiction, with the character's name where the pack gives one.
+  // Whole sentences with parameters, so German can reorder them.
+  turnProgress: {
+    named: {
+      waiting: '{{name}} is getting ready…',
+      reading: '{{name}} is thinking…',
+      writing: '{{name}} is replying…',
+      finishing: 'Updating the scene…',
+      checking: '{{name}} is trying that again…',
+      voice: 'Getting the voice ready…',
+    },
+    unnamed: {
+      waiting: 'Getting ready…',
+      reading: 'Thinking…',
+      writing: 'Replying…',
+      finishing: 'Updating the scene…',
+      checking: 'Trying that again…',
+      voice: 'Getting the voice ready…',
+    },
+    progressLabel: 'Reply progress',
+    replyStartsInSeconds: 'Reply starts in about {{low}}–{{high}} s.',
+    replyStartsInMinutes: 'Reply starts in about {{low}}–{{high}} min.',
+    replyStartsInSecondsToMinutes: 'Reply starts in about {{low}} s–{{high}} min.',
+    readingProgress: '{{percent}}% of the conversation read',
+    timingThisTurn: 'Timing this turn so the next one can be estimated.',
+    toGo: 'About {{remaining}} to go, based on recent turns (usually {{estimate}}).',
+    longerThanUsual: 'Longer than the usual {{estimate}} on this machine — the reply is not lost.',
+    elapsedOf: '{{elapsed}} elapsed of about {{estimate}}',
+    elapsedLonger: '{{elapsed}} elapsed, longer than the usual {{estimate}}',
+    statusWithEstimate: '{{phrase}} Usually about {{estimate}} on this machine.',
+    statusNoEstimate: '{{phrase}} No turn has been timed on this machine yet.',
+    stillWaitingNamed: 'Still waiting on {{name}} — {{elapsed}} so far. The reply is not lost.',
+    stillWaitingUnnamed: 'Still waiting — {{elapsed}} so far. The reply is not lost.',
+    stillWaitingOfNamed: 'Still waiting on {{name}} — {{elapsed}} of about {{estimate}}. The reply is not lost.',
+    stillWaitingOfUnnamed: 'Still waiting — {{elapsed}} of about {{estimate}}. The reply is not lost.',
+    stillWaitingLongerNamed: 'Still waiting on {{name}} — {{elapsed}}, longer than the usual {{estimate}}. The reply is not lost.',
+    stillWaitingLongerUnnamed: 'Still waiting — {{elapsed}}, longer than the usual {{estimate}}. The reply is not lost.',
+    yourTurn: 'Your turn.',
+    // The footnote the panel adds once a wait passes five seconds (issue #501
+    // §1). It names the setting as text, never a link: leaving mid-turn loses
+    // the pending message on resume. Honest about the timing, too: changing it
+    // now does not shorten this reply.
+    speedHint: 'Once this reply arrives, you can shorten the next ones under Reply speed, in Settings.',
+    // Demo only: its model is fixed and its Settings has no engine panel, so
+    // this is the one thing its hardware can do.
+    closeOtherApps: 'Closing other apps usually helps.',
+  },
   // What a session is doing, in plain language rather than the flow-state
   // identifier (issue #501 §2). Keyed by the identifier itself; `unknown`
   // covers a state this build does not know about. Mirrors FLOW_STATE_LABELS

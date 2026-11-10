@@ -51,8 +51,8 @@
 
 ### Graceful-degradation expectations
 
-- **Minimum tier:** text-only is the default recommendation; app must surface a visible performance warning when first-token latency exceeds 10 s; STT/TTS disabled by default.
-- **Starter tier:** app recommends a 4 B model and CPU+GPU split; performance warning at > 5 s.
+- **Minimum tier:** text-only is the default recommendation; STT/TTS disabled by default. For the whole of a slow turn the conversation screen must show the turn panel with the stage the turn is in and a running clock, and from five seconds the footnote naming Reply speed in Settings. There is no fixed-threshold performance warning to look for: #539 removed it.
+- **Starter tier:** app recommends a 4 B model and CPU+GPU split; the turn panel behaves as on the Minimum tier.
 - **All tiers:** a slow turn is not a failed turn — the app waits a local model out and reports how long it has been waiting, so no turn may be failed at 60 s. A turn that genuinely stalls (the engine sends nothing for 180 s, or the request is still unanswered after 10 minutes) must produce an in-app error with a recovery action; the session must remain open for retry.
 - **Out-of-memory:** the app must display a readable error message; it must not crash silently or corrupt the session database.
 
@@ -250,7 +250,7 @@ These thresholds are **pass/fail** criteria for QA sign-off. A platform + tier c
 
 ### Graceful-degradation expectations
 
-- When first-token latency exceeds the threshold for the detected tier, the app must surface an in-app performance tip linking to Runtime Settings.
+- When a turn is slow on the detected tier, the conversation screen must show the turn panel with the stage the turn is in and a running clock for the whole wait, and from five seconds the text footnote naming Reply speed in Settings. The footnote is deliberately not a link, since leaving mid-turn loses the pending message. There is no first-token threshold tip to look for: #539 removed it.
 - When RAM is insufficient for the selected model, the app must reject the model load with a clear "Insufficient memory" message before any OOM condition occurs.
 - When VRAM is insufficient for full GPU offload, the app must fall back to CPU+GPU split or CPU-only mode automatically and inform the player.
 - All degradation messages must be actionable (link to settings or model manager) and must not expose a stack trace to the player.

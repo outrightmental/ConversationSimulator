@@ -148,10 +148,10 @@ export default function Settings() {
   // A router navigation to /settings#reply-speed does not scroll on its own, so
   // a deep link to the reply-speed section would land the player at the top of
   // a long settings page with nothing obviously changed (issue #501 §1). The
-  // conversation screen's slow-response notice names the section rather than
-  // linking to it — leaving mid-turn loses the pending message on resume — so
-  // nothing links here today; the anchor is kept as the stable target for
-  // whatever does next.
+  // reply-speed footnote in the conversation screen's turn panel
+  // (NpcTurnProgress) names the section rather than linking to it, because
+  // leaving mid-turn loses the pending message on resume. So nothing links
+  // here today; the anchor is kept as the stable target for whatever does next.
   useEffect(() => {
     if (!hash) return
     const target = document.getElementById(hash.slice(1))

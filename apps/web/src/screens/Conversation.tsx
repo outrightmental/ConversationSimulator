@@ -4,6 +4,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   InputMode,
+  RollingSpeeds,
   ScenarioInfo,
   SessionCreateRequest,
   TurnResponse,
@@ -12,16 +13,19 @@ import type {
 } from '@convsim/shared'
 import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
-import PerformanceWarningBanner from '../components/PerformanceWarning'
 import NpcTurnProgress from '../components/NpcTurnProgress'
 import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
 import { useApiHealth } from '../api/useApiHealth'
 import {
+  estimateReplyStartMs,
   estimateTurnMs,
   readTurnSamples,
   recordTurnSample,
+  replyStartRange,
+  REPLY_START_THRESHOLD_MS,
   UNKNOWN_MODEL_KEY,
 } from '../lib/turnEstimate'
+import { useTranslation } from '../i18n'
 import { isDevModeEnabled } from '../privacyPrefs'
 import { getVoiceTimingPrefs } from '../components/VoiceSettingsPanel'
 import type { ApiError } from '../api/errors'
@@ -32,13 +36,6 @@ import { useUiLanguageLevel } from '../hooks/useUiLanguageLevel'
 import { humanizeEndingType, humanizeFlags, plainFlowState } from '../lib/plainLanguage'
 import StateMeters from '../components/StateMeters'
 
-// How long a wait is allowed to look normal before the UI says something.
-const SLOW_RESPONSE_MS = 5_000
-// Second stage: past this point the advisory adds that the turn has not been
-// thrown away. The clock itself is on screen for the whole wait
-// (NpcTurnProgress), so this stage only changes what the notice says, not
-// whether a wait is visible.
-const VERY_SLOW_RESPONSE_MS = 30_000
 // When to stop trusting the in-flight request and start asking convsim-core what
 // it actually recorded. It is NOT a latency budget: a local model on CPU-only
 // hardware spends real minutes on one turn — the Windows machine in issue #489
@@ -109,6 +106,9 @@ type TurnProgress = {
   prompt: { processed: number | null; total: number | null; cached: number | null } | null
   outputTokens: number
   elapsedMs: number
+  /** When this report arrived, on the screen's own wait clock: the estimate
+   *  built from it counts down from here, not from whenever it is drawn. */
+  receivedAtMs: number
 }
 
 type Banner = {
@@ -220,6 +220,9 @@ export default function Conversation() {
   // progress panel (#539 reads it); this screen uses it to keep the request's
   // deadline alive while the core is visibly working.
   const [turnProgress, setTurnProgress] = useState<TurnProgress | null>(null)
+  // Whether the session socket is open, so the panel can tell a turn whose
+  // first stage report is still on its way from a turn with no socket at all.
+  const [socketOpen, setSocketOpen] = useState(false)
   // True once the NPC's whole line has arrived over the socket but the turn
   // has not committed yet (issue #538). The reply box works again from here:
   // the player can read and answer while the core finishes its bookkeeping.
@@ -245,15 +248,22 @@ export default function Conversation() {
   // arrives over both the socket and the REST reply.
   const announcedEventsRef = useRef<Set<string>>(new Set())
   // Milliseconds the current turn has been waiting on the NPC. Drives the
-  // progress indicator and both stages of the slow-response notice, so one clock
-  // answers "how long has the player been waiting on this turn" — and, once the
-  // turn lands, is the measurement the next turn's estimate is built from.
+  // progress panel, including the moment its reply-speed footnote appears, so
+  // one clock answers "how long has the player been waiting on this turn" — and,
+  // once the turn lands, is the measurement the next turn's estimate is built
+  // from.
   const [waitElapsedMs, setWaitElapsedMs] = useState(0)
   // What a turn is expected to cost on this machine, from the turns it has
   // already finished (issue #488). Null until one has been timed.
   const [turnEstimateMs, setTurnEstimateMs] = useState<number | null>(null)
 
-  const { snapshot: latencySnapshot, mark, recordInterval, recordValue, warnings: perfWarnings } = useLatencyMetrics()
+  const { snapshot: latencySnapshot, mark, recordInterval, recordValue } = useLatencyMetrics()
+  const { t } = useTranslation()
+  // This machine's recent turn speeds (issue #519), read when the screen opens
+  // and again after every turn, so the panel's "reply starts in" estimate
+  // (issue #539) is built from measurements of this machine and nothing else.
+  const [rollingSpeeds, setRollingSpeeds] = useState<RollingSpeeds | null>(null)
+  const [turnsLanded, setTurnsLanded] = useState(0)
   // Turn timings are only comparable within one model, so the estimate is filed
   // under the loaded model's name — swapping in a smaller model (the app's own
   // advice when turns are slow) must not keep quoting the old one's minutes.
@@ -336,6 +346,15 @@ export default function Conversation() {
       ttsQueueRef.current = []
     }
   }, [])
+
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    void api.getRollingSpeeds().then((r) => {
+      if (!cancelled && r.ok) setRollingSpeeds(r.data)
+    })
+    return () => { cancelled = true }
+  }, [sessionId, turnsLanded])
 
   // Load the estimate for whichever model is loaded, and re-load it if the name
   // arrives late (health answers after mount) or changes mid-session.
@@ -653,6 +672,7 @@ export default function Conversation() {
                 prompt: event.payload.prompt,
                 outputTokens: event.payload.output_tokens,
                 elapsedMs: event.payload.elapsed_ms,
+                receivedAtMs: Date.now() - waitStartedAtRef.current,
               })
               // The core is working on this turn: give the request its full
               // deadline again rather than starting to poll for a reply that
@@ -765,7 +785,7 @@ export default function Conversation() {
             // are emitted by future streaming STT backends and are safe to ignore here.
             break
         }
-      })
+      }, { onStatus: (status) => setSocketOpen(status === 'open') })
     } catch {
       // WS unavailable — REST-only mode
     }
@@ -1032,6 +1052,10 @@ export default function Conversation() {
         // wedged, nothing about the model at all). Feeding that to the estimate
         // would quote minutes for turns that take seconds.
         _stopWaitClock()
+        // The turn did land, though, and the core recorded its timing: count
+        // it, so the measured speeds are read again and "Your turn." is
+        // announced, as they are for a reply the request itself delivered.
+        setTurnsLanded((n) => n + 1)
         return
       }
       // The request answered while the screen was polling. That answer replaces
@@ -1069,6 +1093,7 @@ export default function Conversation() {
     }
     const turnData = result.data
     _learnTurnDuration(waitedMs)
+    setTurnsLanded((n) => n + 1)
 
     if (!firstTokenMarkedRef.current) {
       recordInterval('first_token_ms', 'turn_submit')
@@ -1280,8 +1305,46 @@ export default function Conversation() {
   // reconcile interval long.
   const npcReplyOnScreen = turns[turns.length - 1]?.role === 'npc'
   const isAwaitingNpc = phase === 'submitting' && !npcReplyOnScreen
-  const isSlowResponse = isAwaitingNpc && waitElapsedMs >= SLOW_RESPONSE_MS
-  const isVerySlowResponse = isAwaitingNpc && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
+  // The stage the panel shows. Between submit and the core's first report
+  // (the input checks and prompt composition, tens of milliseconds) there is
+  // no stage yet; with the socket open that gap is the start of getting
+  // ready, not a turn without stage events. Treating it as the no-socket case
+  // made the panel say "thinking", quote and announce the whole-turn median,
+  // and step back to "getting ready" a moment later. If no report has come by
+  // the first tick of the clock the core is not sending any (an older core),
+  // and the panel falls back as before.
+  const panelStage: TurnStage | null =
+    turnProgress?.stage ?? (socketOpen && isAwaitingNpc && waitElapsedMs < 1_000 ? 'waiting' : null)
+  // When the reply will start (issue #539): from the engine's own progress
+  // report and this machine's measured speeds, as a range, only while nothing
+  // has arrived yet and only when the wait is worth a number.
+  const replyStart = (() => {
+    if (!isAwaitingNpc || streamingText.length > 0 || lineComplete) return null
+    // Only while the engine has yet to start the reply. Writing means words are
+    // on their way, and finishing and voice come after them. Checking is a
+    // second, unstreamed generation after the first one failed its check: the
+    // last progress report described the first one, and this machine's time to
+    // first words describes neither, so any number here would be invented.
+    if (panelStage !== 'waiting' && panelStage !== 'reading') return null
+    const prompt = turnProgress?.prompt ?? null
+    const unread =
+      prompt && prompt.total !== null && prompt.processed !== null
+        ? Math.max(0, prompt.total - prompt.processed)
+        : null
+    // Time from now, so it is recomputed on every tick of the wait clock: a
+    // figure that stood still while the clock beside it ran would be wrong
+    // by however long the player had already waited.
+    const ms = estimateReplyStartMs({
+      unreadPromptTokens: unread,
+      sinceReportMs: turnProgress ? Math.max(0, waitElapsedMs - turnProgress.receivedAtMs) : 0,
+      waitedMs: waitElapsedMs,
+      readingTps: rollingSpeeds?.reading_tps ?? null,
+      writingTps: rollingSpeeds?.writing_tps ?? null,
+      measuredFirstWordsMs: rollingSpeeds?.first_words_ms ?? null,
+    })
+    if (ms === null || ms < REPLY_START_THRESHOLD_MS) return null
+    return replyStartRange(ms)
+  })()
   const npcStatus = npcStatusLabel(sessionState, phase, isPlain)
   // The character's name when the pack provides one. "NPC" is the most
   // technical word on this screen and the only reason it was here is that the
@@ -1422,9 +1485,6 @@ export default function Conversation() {
 
       {/* Error alert */}
       {error && <ApiErrorView error={error} context="Conversation" />}
-
-      {/* Performance warnings — shown when latency thresholds are exceeded */}
-      <PerformanceWarningBanner warnings={perfWarnings} />
 
       {/* Event and safety banners */}
       {banners.map((banner) => (
@@ -1605,14 +1665,17 @@ export default function Conversation() {
             aria-busy="true"
             style={{ color: '#71717a', fontSize: '0.875rem', fontStyle: 'italic' }}
           >
-            {phase === 'submitting' ? 'Finishing the turn…' : 'Ending session…'}
+            {phase === 'submitting' ? t('turnProgress.unnamed.finishing') : 'Ending session…'}
           </div>
         )}
       </div>
 
       {/* How long this turn is taking, and how long it usually takes (issue #488).
           Deliberately outside the transcript: that region is a polite live region,
-          and a clock ticking inside it would be re-announced every second.
+          and a clock ticking inside it would be re-announced every second. The
+          panel is the whole of the wait's status: what the turn is doing, the
+          clock, and from five seconds on the reply-speed footnote issue #501
+          put here, so no second notice repeats it in other words (issue #539).
           Rendered on every pass rather than only while a turn is out: the panel
           itself draws nothing between turns, but its live regions have to be
           mounted before they have anything to say, or the announcement carrying
@@ -1623,50 +1686,13 @@ export default function Conversation() {
         elapsedMs={waitElapsedMs}
         estimateMs={turnEstimateMs}
         streaming={streamingText.length > 0 || turnProgress?.stage === 'writing'}
+        npcName={scenario?.npc_name ?? null}
+        stage={panelStage}
+        prompt={turnProgress?.prompt ?? null}
+        replyStart={replyStart}
+        yourTurn={phase === 'active' && sessionState === 'PlayerTurnListening' && turnsLanded > 0}
+        demo={isDemo}
       />
-
-      {/* isSlowResponse already implies a turn is out. */}
-      {isSlowResponse && (
-        <div
-          data-testid="slow-response-indicator"
-          role="status"
-          aria-live="polite"
-          style={{
-            padding: '0.5rem 0.75rem',
-            borderRadius: 6,
-            border: '1px solid #713f12',
-            background: '#1c1000',
-            color: '#fde68a',
-            fontSize: '0.8rem',
-          }}
-        >
-          {npcLabel} is taking longer than usual. The model may be slow on this
-          hardware{isDemo ? '; closing other apps usually helps.' : '.'}{' '}
-          {/* The moment the player actually wants the speed setting is this
-              one. Before #501 this sentence said "you can adjust settings" and
-              left them to find out which — the detour that lost them their
-              session. So it names the setting — but as text, not a link: this
-              notice only exists while a turn is in flight, and convsim-core
-              keeps the session in PlayerTurnListening until the reply commits,
-              so leaving now and resuming would rebuild the screen without the
-              pending message, re-enable the composer, and number the next
-              exchange one behind the server (issue #501 §4). The demo gets the
-              same sentence: its model is fixed, so reply speed is the one
-              lever it has. */}
-          <span data-testid="slow-response-speed-hint">
-            Once this reply arrives, you can shorten the next ones under Reply
-            speed, in Settings.
-          </span>
-          {isVerySlowResponse && (
-            // Past half a minute, say outright that the turn has not been
-            // thrown away — the panel above already reports the clock, so
-            // this stage adds the reassurance rather than a second timer.
-            <div data-testid="slow-response-reassurance" style={{ marginTop: 4, color: '#fbbf24' }}>
-              The reply is not lost; slow hardware can take a few minutes per turn.
-            </div>
-          )}
-        </div>
-      )}
 
       {/* The running list of raw flag identifiers is a developer's view of the
           session, not a player's — "Event flags: honesty_demonstrated,

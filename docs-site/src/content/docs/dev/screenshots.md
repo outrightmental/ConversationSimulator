@@ -12,6 +12,12 @@ machine it was captured on, and the single command that remakes the whole set.
 
 ---
 
+
+> **Stale against v0.4:** `03-conversation.png` and the README's `demo.gif` show
+> the amber "first token took…" advisory and the meters below the transcript.
+> Both are gone (#501, #539) and the reply now arrives sentence by sentence
+> (#538). The recapture is tracked in #554 and needs a real local-model session.
+
 ## Capture environment
 
 Recorded 2 October 2026 from the development build.

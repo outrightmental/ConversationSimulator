@@ -2,8 +2,8 @@
 
 /**
  * Latency budgets that define "fast enough" on the mid-spec reference machine.
- * All values in milliseconds. PerformanceWarning thresholds are derived from
- * these constants rather than scattered ad-hoc numbers.
+ * All values in milliseconds. These are targets, not measurements; #522 moves
+ * them into one shared definition.
  *
  * Reference machine: Apple M2 / NVIDIA RTX 3060 equivalent — the mid-spec
  * "Fast" tier documented in docs/performance.md. Nightly CI smoke tests fail
@@ -36,24 +36,6 @@ export interface LatencySnapshot {
   stt_final_ms?: number;
   /** Time for TTS to produce the first audio chunk. */
   tts_first_sentence_ms?: number;
-}
-
-/** Machine-readable codes for performance degradation suggestions. */
-export type PerformanceSuggestionCode =
-  | 'use_smaller_model'
-  | 'reduce_context_length'
-  | 'switch_to_push_to_talk'
-  | 'disable_tts'
-  | 'enable_transcript_summarization';
-
-/** A user-visible performance warning with an actionable suggestion. */
-export interface PerformanceWarning {
-  /** Machine-readable code, stable across releases. */
-  code: PerformanceSuggestionCode;
-  /** Short headline for the warning (shown in bold). */
-  title: string;
-  /** Detailed explanation with a specific suggested fix. */
-  detail: string;
 }
 
 // ---------------------------------------------------------------------------

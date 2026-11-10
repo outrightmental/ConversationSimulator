@@ -119,3 +119,96 @@ describe('clearTurnSamples', () => {
     expect(readTurnSamples(MODEL)).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------
+// When the reply will start (issue #539)
+// ---------------------------------------------------------------------------
+import {
+  estimateReplyStartMs,
+  FIRST_SENTENCE_TOKENS,
+  REPLY_START_THRESHOLD_MS,
+  replyStartRange,
+} from '../lib/turnEstimate'
+
+describe('estimateReplyStartMs', () => {
+  // A report that has just arrived, on a turn that has just gone out.
+  const now = { sinceReportMs: 0, waitedMs: 0 }
+  const speeds = { ...now, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null }
+
+  it('is longer for a turn that must read 2,000 tokens than for one that reads 200', () => {
+    const cold = estimateReplyStartMs({ ...speeds, unreadPromptTokens: 2000 })
+    const warm = estimateReplyStartMs({ ...speeds, unreadPromptTokens: 200 })
+    expect(cold).not.toBeNull()
+    expect(warm).not.toBeNull()
+    expect(cold!).toBeGreaterThan(warm!)
+    // 2000 / 87 s of reading plus one short sentence at 6.5 tokens/s.
+    expect(cold).toBe(Math.round((2000 / 87) * 1000 + (FIRST_SENTENCE_TOKENS / 6.5) * 1000))
+  })
+
+  it('returns none with no speeds and no measured first words', () => {
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: 2000, readingTps: null, writingTps: null, measuredFirstWordsMs: null })).toBeNull()
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: null })).toBeNull()
+  })
+
+  it('uses this machine\'s measured time to first words before the engine reports progress', () => {
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: null, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(12_400)
+  })
+
+  it('prefers the formula once a progress report says how much is left to read', () => {
+    expect(estimateReplyStartMs({ ...now, unreadPromptTokens: 0, readingTps: 87, writingTps: 6.5, measuredFirstWordsMs: 12_400 })).toBe(
+      Math.round((FIRST_SENTENCE_TOKENS / 6.5) * 1000),
+    )
+  })
+
+  it('counts the measured time to first words down with the wait, since it is a whole-wait figure', () => {
+    // The median runs from the moment the turn went out, so ten seconds in
+    // there are ten seconds fewer to go, and past the median there is no
+    // honest figure left to quote.
+    const fallback = { unreadPromptTokens: null, readingTps: null, writingTps: null, measuredFirstWordsMs: 27_000, sinceReportMs: 0 }
+    expect(estimateReplyStartMs({ ...fallback, waitedMs: 0 })).toBe(27_000)
+    expect(estimateReplyStartMs({ ...fallback, waitedMs: 10_000 })).toBe(17_000)
+    expect(estimateReplyStartMs({ ...fallback, waitedMs: 40_000 })).toBe(0)
+  })
+
+  it('counts the formula down from the report it was built from, not from the start of the wait', () => {
+    const read = { unreadPromptTokens: 870, readingTps: 87, writingTps: 6, measuredFirstWordsMs: null }
+    // 10 s of reading and 4 s of writing, as of the report.
+    expect(estimateReplyStartMs({ ...read, sinceReportMs: 0, waitedMs: 30_000 })).toBe(14_000)
+    expect(estimateReplyStartMs({ ...read, sinceReportMs: 5_000, waitedMs: 35_000 })).toBe(9_000)
+    expect(estimateReplyStartMs({ ...read, sinceReportMs: 20_000, waitedMs: 50_000 })).toBe(0)
+  })
+
+  it('quotes a range around the point estimate, never a single second', () => {
+    expect(replyStartRange(6_500)).toEqual({ lowMs: 5_000, highMs: 8_000 })
+    expect(replyStartRange(1_200)).toEqual({ lowMs: 1_000, highMs: 2_000 })
+  })
+
+  it('rounds each end to a grid that suits its size: seconds under a minute, minutes from one on', () => {
+    // A median of a few turns does not know a 43 s wait to the second, and a
+    // two-minute wait read out as "96–150 s" is a sum the player has to do.
+    expect(replyStartRange(43_000)).toEqual({ lowMs: 35_000, highMs: 55_000 })
+    expect(replyStartRange(27_000)).toEqual({ lowMs: 20_000, highMs: 35_000 })
+    expect(replyStartRange(108_000)).toEqual({ lowMs: 60_000, highMs: 120_000 })
+    expect(replyStartRange(120_000)).toEqual({ lowMs: 120_000, highMs: 180_000 })
+    expect(replyStartRange(185_000)).toEqual({ lowMs: 120_000, highMs: 240_000 })
+    // Where the range crosses the minute, each end keeps its own grid.
+    expect(replyStartRange(60_000)).toEqual({ lowMs: 50_000, highMs: 60_000 })
+  })
+
+  it('never rounds an end past the estimate, or the range down to a single figure', () => {
+    // 1.25 × 70 s is 87.5 s, which is 1 min to the nearest minute: below the
+    // 70 s the range is meant to hold. 0.8 × 115 s rounds up to 2 min.
+    expect(replyStartRange(70_000)).toEqual({ lowMs: 55_000, highMs: 120_000 })
+    expect(replyStartRange(115_000)).toEqual({ lowMs: 60_000, highMs: 120_000 })
+    for (let ms = REPLY_START_THRESHOLD_MS; ms <= 600_000; ms += 500) {
+      const { lowMs, highMs } = replyStartRange(ms)
+      expect(lowMs).toBeLessThanOrEqual(ms)
+      expect(highMs).toBeGreaterThanOrEqual(ms)
+      expect(highMs).toBeGreaterThan(lowMs)
+    }
+  })
+
+  it('has a threshold under which no estimate is shown', () => {
+    expect(REPLY_START_THRESHOLD_MS).toBe(4_000)
+  })
+})
