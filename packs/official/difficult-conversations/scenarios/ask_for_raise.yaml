@@ -41,6 +41,11 @@ goals:
     - "The player who names the cost to the company of not adjusting compensation will shift Diane's posture significantly; almost no one does this"
     - "Diane will probe any unsubstantiated claim — if the player asserts market rate without data, she will ask where that number comes from; if they cannot answer, her confidence in their judgment drops"
     - "Diane is watching whether the player tracks her questions closely enough to realize she is looking for budget justification language, not personal validation"
+# evidence_strength and case_clarity start above the thresholds of
+# vague_claim_probe (< 30) and no_number_anchor (< 25), so neither probe is
+# true at the defaults: each waits for a turn that weakens the case (#580).
+# The success threshold sits far enough above case_clarity's default that it
+# still takes at least three strong turns.
 state:
   variables:
     impression:
@@ -58,13 +63,13 @@ state:
     evidence_strength:
       min: 0
       max: 100
-      default: 0
+      default: 40
       visibility: hidden
       max_delta_per_turn: 20
     case_clarity:
       min: 0
       max: 100
-      default: 10
+      default: 30
       visibility: hidden
       max_delta_per_turn: 18
 difficulty:
@@ -150,7 +155,7 @@ ending_conditions:
   success:
     type: variable_above
     variable: case_clarity
-    threshold: 65
+    threshold: 70
   failure:
     type: variable_below
     variable: impression

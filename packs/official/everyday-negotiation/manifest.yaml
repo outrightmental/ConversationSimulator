@@ -2,7 +2,7 @@
 schema_version: "0.1"
 pack_id: official.everyday_negotiation
 name: Everyday Negotiation
-version: 0.1.0
+version: 0.1.1
 description: >-
   Practice realistic everyday negotiation conversations with configurable NPCs.
   Build confidence navigating competing goals and advocating for yourself in

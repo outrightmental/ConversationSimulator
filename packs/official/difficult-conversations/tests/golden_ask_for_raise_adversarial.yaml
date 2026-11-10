@@ -95,9 +95,9 @@ static_assertions:
     path: scenario.difficulty.options.adversarial.time_pressure
     check: "gte 75"
 
-  - description: Success condition still requires case_clarity above 65 even at adversarial
+  - description: Success condition still requires case_clarity above 70 even at adversarial
     path: ending_conditions.success
-    check: "type=variable_above AND variable=case_clarity AND threshold=65"
+    check: "type=variable_above AND variable=case_clarity AND threshold=70"
 
   - description: Failure condition still triggers on impression below 15
     path: ending_conditions.failure

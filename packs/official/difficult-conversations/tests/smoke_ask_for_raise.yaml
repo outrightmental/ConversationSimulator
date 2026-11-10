@@ -47,7 +47,7 @@ static_assertions:
     check: min_length_1
   - description: Success ending condition targets case_clarity
     path: ending_conditions.success
-    check: "type=variable_above AND variable=case_clarity AND threshold=65"
+    check: "type=variable_above AND variable=case_clarity AND threshold=70"
   - description: Failure ending condition targets impression
     path: ending_conditions.failure
     check: "type=variable_below AND variable=impression AND threshold=15"
