@@ -388,6 +388,23 @@ def secret_numbers(hidden_agenda: Sequence[str]) -> Dict[int, Tuple[int, str]]:
     return secrets
 
 
+def spoken_offers(item: str) -> List[List[str]]:
+    """The words of each 3+ digit number an agenda item gives the character to say.
+
+    Empty for an item that keeps its numbers back (``_KEEP_BACK``). A run of
+    agenda words that carries one of these is the character making an offer
+    its agenda scripts ("four new tires at 14,200"), not a leak.
+    """
+    if _KEEP_BACK.search(item):
+        return []
+    return [words(written) for value, written in numbers_in(item) if value >= SECRET_NUMBER_MIN]
+
+
+def _has_sequence(run: Sequence[str], seq: Sequence[str]) -> bool:
+    n = len(seq)
+    return n > 0 and any(list(run[i:i + n]) == list(seq) for i in range(len(run) - n + 1))
+
+
 # ---------------------------------------------------------------------------
 # Transcript shape
 # ---------------------------------------------------------------------------
@@ -479,17 +496,24 @@ def find_agenda_leaks(
     Two ways: a run of ``min_run``+ agenda words, or a number of 3+ digits
     from the agenda (a price floor, a budget) in any form ``numbers_in``
     reads, so "$13,800", "13800", "thirteen thousand eight hundred" and
-    "thirteen-eight" are all Ray's floor.
+    "thirteen-eight" are all Ray's floor. A run that carries a number the
+    agenda gives the character to say (``spoken_offers``) is that offer being
+    made, and does not count.
     """
-    agenda_words = [(i, words(item)) for i, item in enumerate(hidden_agenda, start=1)]
+    agenda_words = [
+        (i, words(item), spoken_offers(item)) for i, item in enumerate(hidden_agenda, start=1)
+    ]
     secrets = secret_numbers(hidden_agenda)
     findings: List[Finding] = []
     for line in lines:
         if line.authored:
             continue
         line_words = words(line.text)
-        for index, item_words in agenda_words:
-            runs = shared_runs(line_words, item_words, min_run)
+        for index, item_words, offers in agenda_words:
+            runs = [
+                r for r in shared_runs(line_words, item_words, min_run)
+                if not any(_has_sequence(r, offer) for offer in offers)
+            ]
             if runs:
                 findings.append(Finding(
                     turn=line.turn,

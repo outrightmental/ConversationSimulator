@@ -250,6 +250,27 @@ class TestAgendaLeak:
         assert found[0].message == "says a 5-word run of hidden agenda item 4 aloud"
         assert found[1].message == "says the number 13,800 of hidden agenda item 4 aloud"
 
+    def test_ray_making_his_scripted_offer_is_not_a_leak(self) -> None:
+        # Agenda item 3 gives Ray "four new tires at 14,200" to offer; the
+        # replay of wave 1 flagged him for saying it.
+        agenda = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
+        line = "I can't do that, but I can offer four new tires at 14,200 today."
+        assert checks.find_agenda_leaks(_lines(line), agenda) == []
+
+    def test_a_run_without_the_offer_number_still_counts(self) -> None:
+        agenda = ["If they push, offer the extended warranty at 1,200 and nothing more"]
+        assert checks.spoken_offers(agenda[0]) == [["1", "200"]]
+        assert checks.find_agenda_leaks(_lines("I'll offer the extended warranty at 1,200."), agenda) == []
+        found = checks.find_agenda_leaks(_lines("If they push, offer the extended warranty."), agenda)
+        assert [f.evidence for f in found] == ["if they push offer the extended warranty"]
+
+    def test_a_kept_back_number_has_no_spoken_offer(self) -> None:
+        item = "Your floor is 13,800. Never go below it, and never say it."
+        assert checks.spoken_offers(item) == []
+        found = checks.find_agenda_leaks(_lines("My floor is 13,800, never go below it."), [item])
+        # The agenda's words and its number both count when the number is kept back.
+        assert [f.evidence for f in found] == ["floor is 13 800 never go below it", "13,800"]
+
     def test_five_words_fail_four_pass(self) -> None:
         agenda = ["alpha beta gamma delta epsilon zeta"]
         assert checks.find_agenda_leaks(_lines("so alpha beta gamma delta, right"), agenda) == []
