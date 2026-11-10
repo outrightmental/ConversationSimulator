@@ -116,7 +116,16 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
 
   // Download error recovery (wizard-only detailed errors; manager shows generic)
   if (errMsg != null) {
-    const isNetworkError = /no[\s_-]?network|network[\s_-]?unavailable|network[\s_-]?error|connection[\s_-]?refused|failed[\s_-]?to[\s_-]?connect|offline|timed[\s_-]?out/i.test(errMsg)
+    // The engine records a machine-readable error_code with every failure
+    // (NETWORK, HTTP, CHECKSUM, UNKNOWN), so decide from it when present. The
+    // text match is the fallback for a job that failed before the engine
+    // recorded codes. It cannot be the main test: the texts the HTTP library
+    // gives for a lost connection ("All connection attempts failed", or none
+    // at all for a read timeout) match none of these phrases.
+    const errorCode = flow.actionError?.code ?? null
+    const isNetworkError = errorCode != null
+      ? errorCode === 'NETWORK'
+      : /no[\s_-]?network|network[\s_-]?unavailable|network[\s_-]?error|connection[\s_-]?refused|failed[\s_-]?to[\s_-]?connect|offline|timed[\s_-]?out/i.test(errMsg)
     const isDiskError = /insufficient[\s_-]?disk|not[\s_-]?enough[\s_-]?disk|disk[\s_-]?space|no[\s_-]?space[\s_-]?left|storage[\s_-]?full/i.test(errMsg)
     const isWarmupError = /warmup|failed[\s_-]?to[\s_-]?start|insufficient[\s_-]?ram/i.test(errMsg)
 

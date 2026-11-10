@@ -11,6 +11,8 @@ import sqlite3
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from convsim_core.services.model_download_service import ERROR_CODE_UNKNOWN
+
 
 @dataclass
 class StageState:
@@ -51,8 +53,8 @@ def create_job(
 def get_job(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
     """Return a single job by id, or None."""
     row = conn.execute(
-        "SELECT id, status, registry_id, stages_json, error_message, created_at, updated_at "
-        "FROM setup_install_jobs WHERE id = ?",
+        "SELECT id, status, registry_id, stages_json, error_message, error_code, "
+        "created_at, updated_at FROM setup_install_jobs WHERE id = ?",
         (job_id,),
     ).fetchone()
     if row is None:
@@ -65,8 +67,8 @@ def get_job(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
 def get_active_job(conn: sqlite3.Connection) -> dict[str, Any] | None:
     """Return the most recent non-terminal job, or None."""
     row = conn.execute(
-        "SELECT id, status, registry_id, stages_json, error_message, created_at, updated_at "
-        "FROM setup_install_jobs "
+        "SELECT id, status, registry_id, stages_json, error_message, error_code, "
+        "created_at, updated_at FROM setup_install_jobs "
         "WHERE status IN ('pending', 'running') ORDER BY id DESC LIMIT 1"
     ).fetchone()
     if row is None:
@@ -81,12 +83,24 @@ def update_job_status(
     job_id: int,
     status: str,
     error_message: str | None = None,
+    error_code: str | None = None,
 ) -> None:
-    """Update the top-level status (and optional error) of a job."""
+    """Update the top-level status (and optional error) of a job.
+
+    *error_code* is the machine-readable kind of a failure (NETWORK, HTTP,
+    CHECKSUM, UNKNOWN). A ``failed`` status always stores one: a failure the
+    caller did not classify is stored as UNKNOWN, so the only failed rows
+    without a code are those written before the column existed, and the
+    client's fallback of reading the message applies to those alone. Other
+    statuses store the code they are given, normally None.
+    """
+    if status == "failed" and error_code is None:
+        error_code = ERROR_CODE_UNKNOWN
     conn.execute(
         "UPDATE setup_install_jobs "
-        "SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?",
-        (status, error_message, job_id),
+        "SET status = ?, error_message = ?, error_code = ?, updated_at = datetime('now') "
+        "WHERE id = ?",
+        (status, error_message, error_code, job_id),
     )
     conn.commit()
 
