@@ -38,7 +38,12 @@ _HIDDEN_AGENDA = _compile(
     r"\bI(?:'m|\s+am)\s+secretly\s+(?:trying|here|attempting)\s+to\b",
     r"\bI(?:'m|\s+am)\s+(?:actually|really)\s+(?:trying|attempting)\s+to\b",
     r"\byou\s+shouldn'?t\s+know\s+(?:this|that)\s+but\b",
-    r"\bmy\s+hidden\s+(?:agenda|goal|objective|motivation)\b",
+    # The private persona is headed "Private goals" (issue #580), so a leak
+    # may name them that way: "my private goals", "one of my private goals".
+    r"\bmy\s+(?:own\s+)?(?:hidden|private)\s+(?:agendas?|goals?|objectives?|motivations?)\b",
+    # ...or quote the header itself. "Private goals" is the prompt's term, not
+    # an everyday phrase; asking about "your private goals" is not a leak.
+    r"(?<!\byour\s)\bprivate\s+goals\b",
     r"\bI\s+(?:secretly|actually|really)\s+(?:want|intend|plan|need)\s+(?:you|to)\b",
     r"\bbetween\s+(?:us|you\s+and\s+me)\b.{0,60}(?:goal|agenda|want|trying|really|actually)",
     r"\boff\s+(?:the\s+)?(?:record|script)\b.{0,60}(?:goal|agenda|want|trying|really)",
