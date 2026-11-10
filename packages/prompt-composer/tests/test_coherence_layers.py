@@ -138,8 +138,9 @@ class TestConversationRules:
 
     def test_rule_block_stays_short(self):
         # Read on every turn: keep it near 130 tokens at the composer's
-        # four-characters-per-token estimate. It sits in the stable system
-        # prompt, so a prompt cache pays for it once a session (issue #524).
+        # four-characters-per-token estimate. RESPONSE_STYLE follows the
+        # per-turn state and transcript, so until issue #524 reorders the
+        # layers a prompt cache cannot reuse it: each turn pays for it again.
         assert len(_rules_text(make_interview_scenario())) // 4 <= 135
 
     def test_a_long_occupation_contributes_only_its_first_clause(self):
