@@ -181,7 +181,9 @@ one is installed, otherwise *Not installed*), **Voice input**, **Voice output**,
 
 On first run the app shows the **welcome screen**. Click **Set me up** to
 download and load the recommended model. The card states the model's size and
-license, and the download starts as soon as you click. To use something else,
+license. The app first checks that the data folder is writable and the disk has
+room; if either check fails it shows a **Getting things ready** screen, otherwise
+the download starts. To use something else,
 expand **Advanced: use Ollama or a local GGUF file** and choose **Browse Ollama
 models** or **Use a GGUF file**.
 

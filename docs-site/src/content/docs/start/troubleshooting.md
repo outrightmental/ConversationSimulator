@@ -365,6 +365,10 @@ fails on its own step instead (see the next heading). Possible causes:
    **Getting the AI engine** stage before this one, so here the engine is
    present but stopped before it loaded the model. See
    [AI engine binary](#llama-cpp-binary).
+4. **Another program holds the AI model's port.** Setup starts the AI engine
+   unless the app's own engine is already running, so a stray `llama-server`,
+   or any other program on port 7356, makes that start fail with *Port 7356 on
+   127.0.0.1 is already in use*. See [Port conflicts](#port-conflicts).
 
 `runtime.log` in the [logs folder](#logs) holds the AI engine's own output from
 its last start, which usually names the reason; **Copy diagnostics** includes
