@@ -1411,9 +1411,16 @@ jobs:
           # that copy so the DLL always matches the import library the exe was
           # linked against.  Must be Valve-signed — it is the one depot PE the
           # project does not sign itself (issue #408 signing criterion).
+          #
+          # Where OUT_DIR sits depends on the Cargo version, and the toolchain is
+          # `stable` resolved at run time: up to Rust 1.99 it is
+          # build\steamworks-sys-<hash>\out, and from Rust 1.100 (stable
+          # 2026-11-12) Cargo's new build-dir layout makes it
+          # build\steamworks-sys\<hash>\out.  Accept both, so a release or a
+          # demo build started after a toolchain release still finds the DLL.
           $steamDll = Get-ChildItem -Path "$releaseDir\build" -Recurse -Filter "steam_api64.dll" `
             -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Directory.Name -eq 'out' -and $_.Directory.Parent.Name -like 'steamworks-sys-*' } |
+            Where-Object { $_.Directory.Name -eq 'out' -and ($_.Directory.Parent.Name -like 'steamworks-sys-*' -or $_.Directory.Parent.Parent.Name -eq 'steamworks-sys') } |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
           if (-not $steamDll) {
