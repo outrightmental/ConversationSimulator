@@ -1,6 +1,6 @@
 """convsim_prompt — Layered prompt composer for Conversation Simulator NPC turns."""
 
-from .composer import LAYER_ORDER, SYSTEM_LAYER_ORDER, compose_turn_prompt
+from .composer import LAYER_ORDER, SYSTEM_LAYER_ORDER, USER_LAYER_ORDER, compose_turn_prompt
 from .debrief_composer import DebriefComposerInput, DebriefTurnRecord, compose_debrief_prompt
 from .debrief_output import (
     DEBRIEF_NARRATIVE_SCHEMA,
@@ -49,6 +49,7 @@ __all__ = [
     "compose_turn_prompt",
     "LAYER_ORDER",
     "SYSTEM_LAYER_ORDER",
+    "USER_LAYER_ORDER",
     "UNTRUSTED_CONTENT_BEGIN",
     "UNTRUSTED_CONTENT_END",
     "PromptInspector",

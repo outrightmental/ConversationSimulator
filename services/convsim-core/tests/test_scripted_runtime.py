@@ -757,6 +757,39 @@ def test_the_prompt_scaffolding_is_not_matched_as_player_words(runtime):
     assert "engagement is how interested" in utterance("What are the meters?", 3).lower()
 
 
+@pytest.mark.parametrize("turn", range(1, 7))
+@pytest.mark.parametrize("player_text", ["ok", "What are the meters?", "I'm so excited!"])
+def test_the_npcs_previous_line_is_not_matched_as_player_words(runtime, turn, player_text):
+    """The user message also quotes the NPC's previous line (issue #580).
+
+    The composer puts the NPC's last line and "Do not reuse its sentences or
+    end with the same question" ahead of the player's input. Matched as the
+    player's words, the tutorial's own lines picked the interjection ("mood",
+    "finishes") and the ending branch ("love") instead of the player. Only the
+    framed player input counts, so every turn answers exactly as it would to
+    the bare words.
+    """
+    from convsim_core.runtime.scripted import _FIRST_WORDS_SCRIPT
+    from convsim_prompt import TranscriptEntry
+    from convsim_prompt.layers import (
+        build_player_utterance_layer,
+        build_previous_npc_line_layer,
+    )
+
+    previous = TranscriptEntry(
+        speaker="npc",
+        text=_FIRST_WORDS_SCRIPT[max(turn - 2, 0)]["npc_utterance"],
+        turn_number=turn - 1,
+    )
+    message = (
+        build_previous_npc_line_layer([previous])
+        + "\n\n"
+        + build_player_utterance_layer(player_text)
+    )
+    assert "Your previous line was" in message
+    assert _utterance_for(runtime, message, turn) == _utterance_for(runtime, player_text, turn)
+
+
 # ── Plain language in the tutorial copy (issue #501 §2) ──────────────────────
 # The report named the words that landed badly: 'runtime', 'event', 'state',
 # 'flag'. The tutorial itself used three of them plus "hidden prompt" and

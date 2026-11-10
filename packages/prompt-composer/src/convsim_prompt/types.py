@@ -33,11 +33,18 @@ class DifficultySettings:
 
     Each knob is 0-100.  The midpoint (50) is the neutral baseline; values above
     or below steer NPC behaviour in the direction described.
+
+    ``description`` is the preset's authored one-line description from the
+    scenario YAML (``difficulty.options.<preset>.description``), e.g. "Ray
+    holds his position but responds to good arguments". It is the only
+    behaviour text a mid-range preset such as ``standard`` has, since the knob
+    fragments only speak at the extremes.
     """
     patience: int = 50       # higher → NPC stays engaged longer
     volatility: int = 50     # higher → state meters shift more per turn
     disclosure: int = 50     # higher → NPC volunteers more information
     time_pressure: int = 50  # higher → NPC signals urgency / turn budget pressure
+    description: Optional[str] = None
 
 
 @dataclass

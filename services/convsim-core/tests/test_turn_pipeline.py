@@ -2249,3 +2249,80 @@ class TestTurnAfterSessionFinished:
         from convsim_core.services.turn_pipeline import FINISHED_FLOW_STATES
 
         assert set(FINISHED_FLOW_STATES) == set(ENDED_FLOW_STATES)
+
+
+# ---------------------------------------------------------------------------
+# What the model is sent for a turn (issue #580)
+# ---------------------------------------------------------------------------
+
+
+class _RecordingRuntime(FakeChatRuntime):
+    """The fake runtime, keeping every request it is sent."""
+
+    def __init__(self) -> None:
+        self.requests: list = []
+
+    def chat_stream(self, request: ChatRequest):
+        self.requests.append(request)
+        return super().chat_stream(request)
+
+
+class TestNpcCoherencePromptLayers:
+    @pytest.mark.asyncio
+    async def test_runtime_gets_named_speakers_and_the_previous_npc_line(self):
+        """The transcript names both sides; the NPC's last line rides in the user turn.
+
+        Turn 1 quotes the opening line, turn 2 the NPC's turn-1 reply. The
+        quote and its rule never enter the system message, whose stable layers
+        a prompt cache reuses (issue #524), and the player's words stay last.
+        """
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+        opening = "Good morning! Tell me about a project you led."
+        conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, flow_state_after, created_at) "
+            "VALUES ('sess-unit', 0, 'npc_opening', ?, 'PlayerTurnListening', "
+            "'2026-01-01T00:00:00+00:00')",
+            (opening,),
+        )
+        conn.commit()
+        scenario = get_scenario_data("behavioral_interview", "standard")
+        npc = scenario.npc.display_name
+        player = scenario.player_role_label
+        runtime = _RecordingRuntime()
+
+        await process_turn(
+            session_row=row,
+            player_text="I led our checkout rewrite.",
+            scenario_data=scenario,
+            max_turns=10,
+            runtime=runtime,
+            conn=conn,
+        )
+        system, user = runtime.requests[0].messages
+        assert (system.role, user.role) == ("system", "user")
+        assert f"{npc} (you): {opening}" in system.content
+        assert f'Your previous line was: "{opening}"' in user.content
+        assert "Your previous line was" not in system.content
+        assert user.content.index("LAYER:PREVIOUS_NPC_LINE") < user.content.index(
+            "I led our checkout rewrite."
+        )
+        assert user.content.endswith("=== END PLAYER INPUT ===")
+
+        row = conn.execute(
+            "SELECT * FROM turn_sessions WHERE session_id = 'sess-unit'"
+        ).fetchone()
+        await process_turn(
+            session_row=row,
+            player_text="We cut latency in half.",
+            scenario_data=scenario,
+            max_turns=10,
+            runtime=runtime,
+            conn=conn,
+        )
+        system, user = runtime.requests[1].messages
+        assert f"{player} (the player): I led our checkout rewrite." in system.content
+        assert f"{npc} (you): Hello there. I am a simulated NPC." in system.content
+        assert 'Your previous line was: "Hello there. I am a simulated NPC."' in user.content
+        assert opening not in user.content

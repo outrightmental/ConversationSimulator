@@ -488,11 +488,27 @@ def _extract_player_text(request: ChatRequest) -> str:
     return ""
 
 
+_PLAYER_INPUT_OPEN = "=== UNTRUSTED PLAYER INPUT"
+_PLAYER_INPUT_CLOSE = "=== END PLAYER INPUT ==="
+
+
 def _strip_prompt_scaffolding(content: str) -> str:
-    """Drop composer layer tags and sentinel lines, keeping the player's words."""
+    """Drop composer layer tags and sentinel lines, keeping the player's words.
+
+    The user message carries more than the player's words: the NPC's previous
+    line and the instruction not to reuse it come first (issue #580). That
+    instruction says "end", like the closing sentinel, so only the lines
+    inside the player-input frame are the player's, when there is one.
+    """
+    lines = content.splitlines()
+    opens = [i for i, line in enumerate(lines) if line.startswith(_PLAYER_INPUT_OPEN)]
+    if opens:
+        start = opens[0] + 1
+        closes = [i for i in range(start, len(lines)) if lines[i].startswith(_PLAYER_INPUT_CLOSE)]
+        lines = lines[start:closes[-1]] if closes else lines[start:]
     kept = [
         line
-        for line in content.splitlines()
+        for line in lines
         if not line.startswith("--- LAYER:") and not line.startswith("=== ")
     ]
     stripped = "\n".join(kept).strip()

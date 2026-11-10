@@ -11,6 +11,7 @@ from .layers import (
     build_npc_public_persona_layer,
     build_output_schema_layer,
     build_player_utterance_layer,
+    build_previous_npc_line_layer,
     build_recent_transcript_layer,
     build_relationship_memory_layer,
     build_response_style_layer,
@@ -46,8 +47,18 @@ SYSTEM_LAYER_ORDER: List[str] = [
     "OUTPUT_SCHEMA",           # always last in system prompt
 ]
 
+# User-turn layer ordering. Text that changes every turn goes here, after every
+# system layer, so it never sits in front of stable text (issue #524).
+#   - PREVIOUS_NPC_LINE is empty, and left out of the user prompt, until the
+#     transcript window holds an NPC line.
+#   - PLAYER_UTTERANCE is always last: it is the line the NPC answers.
+USER_LAYER_ORDER: List[str] = [
+    "PREVIOUS_NPC_LINE",       # the NPC's own last line, not to be reused (issue #580)
+    "PLAYER_UTTERANCE",        # always last
+]
+
 # Full ordering including the user turn.
-LAYER_ORDER: List[str] = SYSTEM_LAYER_ORDER + ["PLAYER_UTTERANCE"]
+LAYER_ORDER: List[str] = SYSTEM_LAYER_ORDER + USER_LAYER_ORDER
 
 
 def _estimate_tokens(text: str) -> int:
@@ -65,13 +76,24 @@ def _build_layers(inp: PromptComposerInput, max_transcript_turns: int) -> Dict[s
         "RECENT_TRANSCRIPT": build_recent_transcript_layer(
             inp.recent_transcript,
             max_turns=max_transcript_turns,
+            npc_name=inp.scenario.npc.display_name,
+            player_label=inp.scenario.player_role_label,
         ),
         "MEMORY_SUMMARY": build_memory_summary_layer(inp.memory_summary),
         "RELATIONSHIP_MEMORY": build_relationship_memory_layer(inp.relationship_recap),
         "RESPONSE_STYLE": build_response_style_layer(inp.scenario),
+        "PREVIOUS_NPC_LINE": build_previous_npc_line_layer(
+            inp.recent_transcript,
+            max_turns=max_transcript_turns,
+        ),
         "PLAYER_UTTERANCE": build_player_utterance_layer(inp.player_utterance),
         "OUTPUT_SCHEMA": build_output_schema_layer(),
     }
+
+
+def _join(layers: Dict[str, str], order: List[str]) -> str:
+    """Join the named layers in order, leaving out any that are empty."""
+    return "\n\n".join(layers[name] for name in order if layers[name])
 
 
 def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
@@ -86,8 +108,11 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
       explicit sentinel strings that adapters can verify.
     - OUTPUT_SCHEMA is always the final system-prompt section and cannot be
       displaced by scenario text or player input.
-    - PLAYER_UTTERANCE is always the user turn, kept separate from the system
-      prompt so chat-format adapters can enforce the boundary natively.
+    - PLAYER_UTTERANCE is always in the user turn, and last in it, kept
+      separate from the system prompt so chat-format adapters can enforce the
+      boundary natively. The only other user-turn text is PREVIOUS_NPC_LINE,
+      which changes every turn and so must not sit in front of stable system
+      text (issue #524).
 
     Token budget:
     - Estimates token count using a conservative chars-per-token heuristic.
@@ -97,20 +122,22 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
     max_turns = inp.max_transcript_turns
     layers = _build_layers(inp, max_turns)
 
-    system_prompt = "\n\n".join(layers[name] for name in SYSTEM_LAYER_ORDER)
-    estimated_tokens = _estimate_tokens(system_prompt + layers["PLAYER_UTTERANCE"])
+    system_prompt = _join(layers, SYSTEM_LAYER_ORDER)
+    user_prompt = _join(layers, USER_LAYER_ORDER)
+    estimated_tokens = _estimate_tokens(system_prompt + user_prompt)
     was_truncated = False
 
     if estimated_tokens > inp.token_budget and max_turns > 2:
         reduced_max = max(2, max_turns // 2)
         layers = _build_layers(inp, reduced_max)
-        system_prompt = "\n\n".join(layers[name] for name in SYSTEM_LAYER_ORDER)
-        estimated_tokens = _estimate_tokens(system_prompt + layers["PLAYER_UTTERANCE"])
+        system_prompt = _join(layers, SYSTEM_LAYER_ORDER)
+        user_prompt = _join(layers, USER_LAYER_ORDER)
+        estimated_tokens = _estimate_tokens(system_prompt + user_prompt)
         was_truncated = True
 
     return PromptBundle(
         system_prompt=system_prompt,
-        user_prompt=layers["PLAYER_UTTERANCE"],
+        user_prompt=user_prompt,
         layer_map=layers,
         estimated_token_count=estimated_tokens,
         was_truncated=was_truncated,

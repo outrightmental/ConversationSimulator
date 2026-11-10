@@ -491,6 +491,9 @@ def _difficulty_options_from_yaml(raw: Dict[str, Any]) -> Dict[str, DifficultySe
 
     Unknown/missing knobs fall back to the neutral 50 baseline. Always returns
     at least a ``standard`` preset so session creation can validate against it.
+    Each preset's authored ``description`` is carried too: the prompt's scenario
+    brief renders it, and at ``standard`` it is the only difficulty text the NPC
+    gets (issue #580).
     """
     difficulty_section = raw.get("difficulty") or {}
     options_raw = difficulty_section.get("options") if isinstance(difficulty_section, dict) else None
@@ -506,11 +509,13 @@ def _difficulty_options_from_yaml(raw: Dict[str, Any]) -> Dict[str, DifficultySe
                 except (TypeError, ValueError):
                     return 50
 
+            description = knobs.get("description")
             options[str(name)] = DifficultySettings(
                 patience=_knob("patience"),
                 volatility=_knob("volatility"),
                 disclosure=_knob("disclosure"),
                 time_pressure=_knob("time_pressure"),
+                description=(description.strip() or None) if isinstance(description, str) else None,
             )
     if not options:
         options["standard"] = DifficultySettings()
