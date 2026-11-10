@@ -33,10 +33,15 @@ No model and no server: the in-process app is a FastAPI TestClient.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.util
 import json
+import socket
+import struct
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -784,12 +789,35 @@ class TestPlayerTurns:
 # ---------------------------------------------------------------------------
 
 
+class _ScriptedListener:
+    """The session socket of a ``ScriptedApi`` session: each turn's events, queued."""
+
+    def __init__(self, api: "ScriptedApi", session_id: str):
+        self.api = api
+        self.session_id = session_id
+        self.closed = False
+
+    def turn_events(self, turn_number: int, timeout: Optional[float] = None) -> List[Dict[str, Any]]:
+        events, self.api.socket_events = self.api.socket_events, []
+        assert any(
+            e["type"] == "scenario.state_delta" and e["payload"]["turn_number"] == turn_number for e in events
+        )
+        return events
+
+    def close(self) -> None:
+        self.closed = True
+        self.api.listening = False
+
+
 class ScriptedApi:
     """A stand-in for convsim-core's REST API, one scripted conversation per session.
 
     Like the engine, each debrief stores a relationship recap for the
     session's NPC (keyed by npc_id and scenario id), and ``/start`` notes the
     recaps that exist when a session starts, the ones its prompt would read.
+    While the replay listens on a session, each turn also queues the socket
+    events the engine would send: the line as it streamed (``streamed_as``
+    replaces it for the turns it names), then the commit.
     """
 
     def __init__(
@@ -806,8 +834,13 @@ class ScriptedApi:
         memory_api: bool = True,
         fallback_turns: Tuple[int, ...] = (),
         raise_at_debrief: Optional[BaseException] = None,
+        streamed_as: Optional[Dict[int, str]] = None,
     ):
         self.npc_lines = npc_lines
+        self.streamed_as = streamed_as or {}
+        self.listening = False
+        self.listeners: List[_ScriptedListener] = []
+        self.socket_events: List[Dict[str, Any]] = []
         self.deltas = deltas or [{} for _ in npc_lines]
         self.scores = scores if scores is not None else {}
         self.end_after = end_after
@@ -826,6 +859,13 @@ class ScriptedApi:
         self.recaps_at_start: List[List[tuple]] = []
         self.transcript: List[Dict[str, Any]] = []
         self.turn = 0
+
+    def listen(self, session_id: str) -> _ScriptedListener:
+        self.calls.append(("WS", f"/ws/session/{session_id}", None))
+        self.listening = True
+        listener = _ScriptedListener(self, session_id)
+        self.listeners.append(listener)
+        return listener
 
     def request(self, method: str, path: str, body: Any = None, *, timeout: float = 30.0):
         self.calls.append((method, path, body))
@@ -871,6 +911,16 @@ class ScriptedApi:
                 {"turn_number": 2 * self.turn, "role": "npc", "content": line},
             ]
             ended = self.end_after is not None and self.turn >= self.end_after
+            if self.listening:
+                shown = self.streamed_as.get(self.turn, line)
+                self.socket_events += [
+                    {"type": "turn.progress", "payload": {"stage": "waiting"}},
+                    {"type": "turn.progress", "payload": {"stage": "writing"}},
+                    {"type": "npc.token", "payload": {"text": shown}},
+                    {"type": "npc.final", "payload": {"content": shown}},
+                    {"type": "scenario.state_delta", "payload": {"turn_number": self.turn}},
+                    {"type": "session.state", "payload": {"state": "PlayerTurnListening"}},
+                ]
             return 200, {
                 "state": "Ended" if ended else "PlayerTurnListening",
                 "ending_type": "success" if ended else None,
@@ -968,6 +1018,51 @@ class TestPlayConversation:
         assert [x["turn"] for x in f["findings"]] == [2]
         assert record["verdict"] == "fail"
 
+    def test_listening_records_what_each_turn_streamed(self) -> None:
+        api = ScriptedApi(self.lines)
+        record = replay.play_conversation(
+            api, _facts(), ["uno", "dos"], run=1, seed=1, listen=True, log=_quiet,
+        )
+        assert record["error"] is None
+        assert record["listened"] is True
+        # The socket opens after the start, before the first turn, as the
+        # conversation screen's does, and is closed before the session ends.
+        assert [p.rsplit("/", 1)[-1] for _, p, _ in api.calls[2:5]] == ["start", "s1", "turn"]
+        assert [lst.closed for lst in api.listeners] == [True]
+        assert [t["streamed"] for t in record["turns"]] == [
+            {"text": line, "sentences": 1, "final": line, "stages": ["waiting", "writing"]}
+            for line in self.lines[:2]
+        ]
+
+    def test_a_streamed_line_that_is_not_the_committed_line_is_a_run_error(self) -> None:
+        api = ScriptedApi(self.lines, streamed_as={2: "Something the player never kept."})
+        record = replay.play_conversation(
+            api, _facts(), ["uno", "dos", "tres"], run=1, seed=1, listen=True, log=_quiet,
+        )
+        assert len(record["turns"]) == 3
+        assert record["error"] == "turn(s) 2: the line streamed to the screen is not the line committed"
+        replay.evaluate_record(record, _facts(), checks.resolve_severity())
+        assert record["verdict"] == "fail"
+
+    def test_over_rest_alone_nothing_is_streamed(self) -> None:
+        api = ScriptedApi(self.lines)
+        record = replay.play_conversation(api, _facts(), ["uno"], run=1, seed=1, log=_quiet)
+        assert record["listened"] is False
+        assert record["turns"][0]["streamed"] is None
+        assert api.listeners == []
+
+    def test_a_socket_that_cannot_open_is_a_run_error(self) -> None:
+        api = ScriptedApi(self.lines)
+
+        def refuse(session_id: str):
+            raise replay.SocketError("the engine refused the session socket: HTTP/1.1 403 Forbidden")
+
+        api.listen = refuse  # type: ignore[method-assign]
+        record = replay.play_conversation(api, _facts(), ["uno"], run=1, seed=1, listen=True, log=_quiet)
+        assert record["error"].startswith("session socket: the engine refused")
+        assert record["turns"] == []
+        assert record["debrief"]["status"] == 200
+
     def test_the_canned_line_fails_check_f_without_the_flag(self) -> None:
         api = ScriptedApi(self.lines, fallback_turns=(1,))
         record = replay.play_conversation(api, _facts(), ["1"], run=1, seed=1, log=_quiet)
@@ -1027,6 +1122,37 @@ class TestMain:
         summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
         assert "**Verdict: FAIL.**" in summary
         assert "(a) repetition: **FAIL**" in summary
+
+    def test_turns_are_played_with_the_session_socket_open(self, tmp_path: Path) -> None:
+        api = self._clean_api(deltas=[{"comprehension": 5}] + [{}] * 5)
+        assert self._run(tmp_path, api) == 0
+        assert len(api.listeners) == 2 and all(lst.closed for lst in api.listeners)
+        summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "- Turns played with the session socket open" in summary
+        assert "Not a D-05 result" not in summary
+        latency = summary.split("## Latency (noted, not judged)", 1)[1]
+        assert "| Repetition retries | Streamed | Debrief s |" in latency
+        assert latency.count(" | 6/6 | ") == 2
+
+    def test_rest_only_is_not_a_d05_result(self, tmp_path: Path) -> None:
+        api = self._clean_api(deltas=[{"comprehension": 5}] + [{}] * 5)
+        assert self._run(tmp_path, api, "--rest-only") == 0
+        assert api.listeners == []
+        summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "- **Not a D-05 result:** turns played over REST alone (--rest-only)" in summary
+        assert "Turns played with the session socket open" not in summary
+        assert "(not a D-05 result)" in summary
+        latency = summary.split("## Latency (noted, not judged)", 1)[1]
+        assert latency.count(" | - | ") >= 2
+
+    def test_a_transport_that_cannot_listen_needs_rest_only(self, tmp_path: Path, capsys) -> None:
+        class RestOnly:
+            def __init__(self, api: ScriptedApi) -> None:
+                self.request = api.request
+
+        assert self._run(tmp_path / "a", RestOnly(self._clean_api())) == 2  # type: ignore[arg-type]
+        assert "cannot open the session socket; pass --rest-only" in capsys.readouterr().err
+        assert self._run(tmp_path / "b", RestOnly(self._clean_api()), "--rest-only") == 0  # type: ignore[arg-type]
 
     def test_setup_errors_exit_two(self, tmp_path: Path) -> None:
         assert replay.main(["--only", "not_a_demo"], transport=ScriptedApi([]), log=_quiet) == 2
@@ -1185,6 +1311,239 @@ class TestNpcMemory:
         assert "**NPC memory not cleared at the end:**" in summary
 
 
+# ---------------------------------------------------------------------------
+# The replay's session-socket client, against a scripted engine end
+# ---------------------------------------------------------------------------
+#
+# The client speaks RFC 6455 on the standard library. Its peer here is the
+# other end of a socket.socketpair, played by a thread: no port is opened.
+
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+_ENGINE_URL = "http://127.0.0.1:8123"
+
+
+def _server_frame(opcode: int, payload: bytes, *, fin: bool = True) -> bytes:
+    """A frame as a server sends it: unmasked."""
+    first = (0x80 if fin else 0) | opcode
+    n = len(payload)
+    if n < 126:
+        head = struct.pack(">BB", first, n)
+    elif n < 65536:
+        head = struct.pack(">BBH", first, 126, n)
+    else:
+        head = struct.pack(">BBQ", first, 127, n)
+    return head + payload
+
+
+def _event_frame(event_type: str, payload: Dict[str, Any]) -> bytes:
+    return _server_frame(0x1, json.dumps({"type": event_type, "payload": payload}).encode("utf-8"))
+
+
+class _EngineEnd:
+    """The engine's end of the connection: reads the upgrade, answers, then scripts frames."""
+
+    def __init__(self, sock: socket.socket) -> None:
+        self.sock = sock
+        self.buf = b""
+        self.request = ""
+
+    def read_exact(self, n: int) -> bytes:
+        while len(self.buf) < n:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                raise EOFError
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def read_upgrade(self) -> str:
+        while b"\r\n\r\n" not in self.buf:
+            self.buf += self.sock.recv(65536)
+        head, self.buf = self.buf.split(b"\r\n\r\n", 1)
+        self.request = head.decode("latin-1")
+        key = next(
+            line.split(":", 1)[1].strip() for line in self.request.split("\r\n")
+            if line.lower().startswith("sec-websocket-key:")
+        )
+        return base64.b64encode(hashlib.sha1((key + _WS_GUID).encode()).digest()).decode()
+
+    def accept(self, first: bytes = b"", accept: Optional[str] = None) -> None:
+        answer = self.read_upgrade() if accept is None else (self.read_upgrade(), accept)[1]
+        self.sock.sendall(
+            b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            + f"Sec-WebSocket-Accept: {answer}\r\n\r\n".encode() + first
+        )
+
+    def read_client_frame(self) -> Tuple[int, bytes, bool]:
+        b0, b1 = self.read_exact(2)
+        n = b1 & 0x7F
+        if n == 126:
+            (n,) = struct.unpack(">H", self.read_exact(2))
+        mask = self.read_exact(4) if b1 & 0x80 else b""
+        payload = self.read_exact(n)
+        if mask:
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        return b0 & 0x0F, payload, bool(mask)
+
+
+def _socket_pair() -> Tuple[socket.socket, _EngineEnd, Any]:
+    client, engine = socket.socketpair()
+    connects: List[Tuple[Any, float]] = []
+
+    def connect(address: Any, timeout: float) -> socket.socket:
+        connects.append((address, timeout))
+        return client
+
+    connect.calls = connects  # type: ignore[attr-defined]
+    return client, _EngineEnd(engine), connect
+
+
+class TestSessionSocket:
+    def test_a_turn_is_read_from_handshake_to_commit(self) -> None:
+        _, engine, connect = _socket_pair()
+        go = threading.Event()
+        seen: Dict[str, Any] = {}
+
+        def run() -> None:
+            # The first event rides in the same write as the handshake answer.
+            engine.accept(first=_event_frame("session.state", {"state": "PlayerTurnListening"}))
+            go.wait(5)
+            long_line = "Hola. " + "Un café con leche, por favor. " * 8
+            engine.sock.sendall(
+                _server_frame(0x9, b"are you there")
+                + _event_frame("turn.progress", {"stage": "writing"})
+                # One event split over a text frame and a continuation frame.
+                + _server_frame(0x1, b'{"type": "npc.token", "payload": {"te', fin=False)
+                + _server_frame(0x0, b'xt": "Hello there."}}')
+                # Over 125 bytes: a 16-bit length.
+                + _event_frame("npc.final", {"content": long_line})
+                + _event_frame("scenario.state_delta", {"turn_number": 1})
+                + _event_frame("session.state", {"state": "PlayerTurnListening"})
+            )
+            seen["pong"] = engine.read_client_frame()
+            seen["close"] = engine.read_client_frame()
+            try:
+                engine.sock.sendall(_server_frame(0x8, struct.pack(">H", 1000)))
+            except OSError:
+                pass  # the client may already have shut its end after its own close frame
+            engine.sock.close()
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        listener = replay.SessionSocket(_ENGINE_URL, "s 1", timeout=5, connect=connect).open()
+        assert connect.calls == [(("127.0.0.1", 8123), 5)]
+        request = engine.request.split("\r\n")
+        assert request[0] == "GET /ws/session/s%201 HTTP/1.1"
+        assert "Host: 127.0.0.1:8123" in request and "Sec-WebSocket-Version: 13" in request
+        assert not any(line.lower().startswith("origin:") for line in request)
+        go.set()
+        events = listener.turn_events(1)
+        listener.close()
+        thread.join(5)
+        assert [e["type"] for e in events] == [
+            "turn.progress", "npc.token", "npc.final", "scenario.state_delta", "session.state",
+        ]
+        streamed = replay.streamed_turn(events)
+        assert streamed["text"] == "Hello there."
+        assert streamed["final"].startswith("Hola. Un café con leche")
+        assert streamed["stages"] == ["writing"]
+        # The ping was answered, and every client frame is masked.
+        assert seen["pong"] == (0xA, b"are you there", True)
+        assert seen["close"][0] == 0x8 and seen["close"][2] is True
+
+    def test_events_are_split_by_turn(self) -> None:
+        _, engine, connect = _socket_pair()
+
+        def run() -> None:
+            engine.accept(first=_event_frame("session.state", {}))
+            for turn in (1, 2):
+                engine.sock.sendall(
+                    _event_frame("npc.token", {"text": f"Line {turn}."})
+                    + _event_frame("scenario.state_delta", {"turn_number": turn})
+                    + _event_frame("session.state", {})
+                )
+
+        threading.Thread(target=run, daemon=True).start()
+        listener = replay.SessionSocket(_ENGINE_URL, "s1", timeout=5, connect=connect).open()
+        try:
+            assert replay.streamed_turn(listener.turn_events(1))["text"] == "Line 1."
+            assert replay.streamed_turn(listener.turn_events(2))["text"] == "Line 2."
+        finally:
+            listener.close()
+
+    def test_a_refused_upgrade_is_a_socket_error(self) -> None:
+        _, engine, connect = _socket_pair()
+
+        def run() -> None:
+            engine.read_upgrade()
+            engine.sock.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+
+        threading.Thread(target=run, daemon=True).start()
+        with pytest.raises(replay.SocketError, match="refused the session socket .*403 Forbidden"):
+            replay.SessionSocket(_ENGINE_URL, "s1", timeout=5, connect=connect).open()
+
+    def test_a_handshake_that_does_not_answer_the_key_is_refused(self) -> None:
+        _, engine, connect = _socket_pair()
+        threading.Thread(target=lambda: engine.accept(accept="bm90IHRoZSBhbnN3ZXI="), daemon=True).start()
+        with pytest.raises(replay.SocketError, match="did not answer its key"):
+            replay.SessionSocket(_ENGINE_URL, "s1", timeout=5, connect=connect).open()
+
+    def test_a_socket_that_closes_before_the_commit_is_an_error(self) -> None:
+        _, engine, connect = _socket_pair()
+
+        def run() -> None:
+            engine.accept(first=_event_frame("session.state", {}))
+            engine.sock.sendall(_event_frame("npc.token", {"text": "Half"}))
+            engine.sock.close()
+
+        threading.Thread(target=run, daemon=True).start()
+        listener = replay.SessionSocket(_ENGINE_URL, "s1", timeout=5, connect=connect).open()
+        with pytest.raises(replay.SocketError, match="closed before commit of turn 1"):
+            listener.turn_events(1)
+        listener.close()
+
+    def test_a_commit_that_never_comes_times_out(self) -> None:
+        _, engine, connect = _socket_pair()
+        threading.Thread(
+            target=lambda: engine.accept(first=_event_frame("session.state", {})), daemon=True,
+        ).start()
+        listener = replay.SessionSocket(_ENGINE_URL, "s1", timeout=0.2, connect=connect).open()
+        with pytest.raises(replay.SocketError, match="no commit of turn 1 on the session socket"):
+            listener.turn_events(1)
+        listener.close()
+
+    def test_only_a_plain_http_engine_address(self) -> None:
+        with pytest.raises(replay.SocketError, match="needs an http:// engine address"):
+            replay.SessionSocket("https://example.test", "s1")
+
+
+class _TestClientListener:
+    """The replay's listener interface over the in-process app's session socket.
+
+    The engine sends a turn's events before it answers the turn's POST, so
+    they are queued on the test socket by the time the replay reads them.
+    """
+
+    def __init__(self, client: Any, session_id: str):
+        self._cm = client.websocket_connect(f"/ws/session/{session_id}")
+        self.ws = self._cm.__enter__()
+        assert self.ws.receive_json()["type"] == "session.state"
+
+    def turn_events(self, turn_number: int, timeout: Optional[float] = None) -> List[Dict[str, Any]]:
+        events: List[Dict[str, Any]] = []
+        committed = False
+        while True:
+            event = self.ws.receive_json()
+            events.append(event)
+            if event["type"] == "scenario.state_delta" and event["payload"]["turn_number"] == turn_number:
+                committed = True
+            elif committed and event["type"] == "session.state":
+                return events
+
+    def close(self) -> None:
+        self._cm.__exit__(None, None, None)
+
+
 class _TestClientTransport:
     """The replay's transport interface over an in-process FastAPI app."""
 
@@ -1197,6 +1556,9 @@ class _TestClientTransport:
         if resp.status_code >= 400:
             raise replay.ApiError(method, path, resp.status_code, data)
         return resp.status_code, data
+
+    def listen(self, session_id: str) -> _TestClientListener:
+        return _TestClientListener(self.client, session_id)
 
 
 def _engine_config(tmp_path: Path, monkeypatch, **overrides: Any):
@@ -1223,7 +1585,9 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
     same line every turn, so the repetition check must fail every run, and the
     run must still be played to the debrief. Every debrief stores the NPC's
     relationship recap; the replay must find it under the key the engine
-    uses, delete it before the next run, and leave none behind.
+    uses, delete it before the next run, and leave none behind. Played over
+    REST alone (``--rest-only``), so no turn streams and the guard retries
+    every repeat; the streamed path is the next test's.
     """
     from fastapi.testclient import TestClient
 
@@ -1234,7 +1598,7 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
     with TestClient(create_app(config)) as client:
         code = replay.main(
             ["--only", "behavioral_interview,spanish_coffee", "--repeat", "2",
-             "--runtime-id", "fake", "--out", str(out)],
+             "--runtime-id", "fake", "--rest-only", "--out", str(out)],
             transport=_TestClientTransport(client),
             log=_quiet,
         )
@@ -1280,8 +1644,12 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
             ]
     summary = (out / "summary.md").read_text(encoding="utf-8")
     assert "model-free `fake` runtime" in summary
+    assert "turns played over REST alone (--rest-only)" in summary
     latency = summary.split("## Latency (noted, not judged)", 1)[1]
-    assert "| Conversation | Run | Mean turn s | Max turn s | Repetition retries | Debrief s |" in latency
+    assert (
+        "| Conversation | Run | Mean turn s | Max turn s | Repetition retries | Streamed | Debrief s |"
+        in latency
+    )
     rows = [line.split(" | ") for line in latency.splitlines() if line.startswith("| ") and "Conversation" not in line]
     assert [(row[0].lstrip("| "), row[1], row[4]) for row in rows] == [
         (scenario_id, run, retries)
@@ -1290,6 +1658,61 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
     ]
     assert "edition (--allow-full-edition)" not in summary
     assert "(4 recap(s) written during the replay deleted; none existed before it)" in summary
+
+
+def test_replay_streams_every_demo_conversation_like_the_conversation_screen(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """D-05 sees what players see: every turn of all five plays on the streamed path.
+
+    By default the replay holds each session's socket open, as the
+    conversation screen does, so the engine streams every turn and its
+    streamed-path rules apply (issue #580). The fake runtime's line, "Hello
+    there. I am a simulated NPC.", repeats itself from turn 2 on, but its
+    first sentence repeats nothing on its own: it streams, the rest follows,
+    and with part of a line on screen the engine keeps it. So, unlike over
+    REST, nothing is retried, and check (a) fails the repeats the player saw.
+    What streamed is what was committed, on every turn.
+    """
+    from fastapi.testclient import TestClient
+
+    from convsim_core.app import create_app
+
+    config = _engine_config(tmp_path, monkeypatch, edition="demo")
+    out = tmp_path / "out"
+    with TestClient(create_app(config)) as client:
+        code = replay.main(
+            ["--repeat", "1", "--runtime-id", "fake", "--out", str(out)],
+            transport=_TestClientTransport(client),
+            log=_quiet,
+        )
+    assert code == 1
+    for demo in DEMO_SCENARIOS:
+        record = json.loads((out / f"{demo.scenario_id}-run1.json").read_text(encoding="utf-8"))
+        assert record["error"] is None, record["error"]
+        assert record["listened"] is True
+        assert record["turns"], demo.scenario_id
+        for turn in record["turns"]:
+            streamed = turn["streamed"]
+            assert streamed["text"] == streamed["final"] == turn["npc"] == "Hello there. I am a simulated NPC."
+            assert streamed["sentences"] == 2
+            assert streamed["stages"] == ["waiting", "reading", "writing", "finishing"]
+            assert [c["kind"] for c in turn["timing"]["extra_calls"]] == []
+        assert replay.repetition_retries(record) == 0
+        by_letter = {c["letter"]: c for c in record["checks"]}
+        assert by_letter["a"]["status"] == "FAIL"
+        assert by_letter["f"]["status"] == "pass"
+        assert record["debrief"]["status"] == 200
+    summary = (out / "summary.md").read_text(encoding="utf-8")
+    assert "- Turns played with the session socket open" in summary
+    assert "--rest-only" not in summary.split("## Findings", 1)[0]
+    latency = summary.split("## Latency (noted, not judged)", 1)[1]
+    rows = [line.split(" | ") for line in latency.splitlines() if line.startswith("| ") and "Conversation" not in line]
+    assert len(rows) == len(DEMO_SCENARIOS)
+    for row in rows:
+        streamed, played = row[5].split("/")
+        assert streamed == played and int(played) >= 1
+        assert row[4] == "0"
 
 
 def test_replay_refuses_an_in_process_full_edition_engine(tmp_path: Path, monkeypatch) -> None:

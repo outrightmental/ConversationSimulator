@@ -249,8 +249,12 @@ agenda aloud and no 3+ digit number from it (Ray's $13,800 floor, in digits or
 words), never answers with the engine's canned fallback line, applies a
 non-zero change to at least one variable the scenario authors, and gets a
 debrief that generated without the template fallback and scored only the
-rubric's own dimension ids. It writes a JSON record per run and a markdown
-summary, and exits non-zero on a hard failure. The authored-state and rubric
+rubric's own dimension ids. It plays each turn with the session's socket open,
+as the conversation screen holds it, so the engine streams every line as it
+does for a player and the checks read what reached the screen; a streamed
+line that differs from the one committed fails the run (`--rest-only` plays
+over REST alone, which is not a D-05 result). It writes a JSON record per run
+and a markdown summary, and exits non-zero on a hard failure. The authored-state and rubric
 checks are warnings until the engine wires both into play (issue #580);
 `--strict` makes them blocking. The engine must run the demo edition
 (`CONVSIM_EDITION=demo`), which plays the five from their curated packs; the
