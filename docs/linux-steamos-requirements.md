@@ -9,15 +9,20 @@ Conversation Simulator Linux depot on Steam.
 
 ## Installer formats
 
-Two Linux artifacts are produced by the CI release build:
+Two Linux artifacts are produced by the CI release build. Tauri names both
+after the product name, which contains a space, so quote the name in a shell:
 
 | Format | File | Use case |
 |--------|------|----------|
-| **AppImage** | `ConversationSimulator_<ver>_amd64.AppImage` | Portable — runs on any compatible x86_64 Linux without installation. Recommended for Steam Deck and Flatpak-style installs. |
-| **Debian package** | `conversation-simulator_<ver>_amd64.deb` | Ubuntu 22.04+ and Debian 12+. Installs to `/usr/bin/` with system-managed runtime dependencies. |
+| **AppImage** | `Conversation Simulator_<ver>_amd64.AppImage` | Portable — runs on any compatible x86_64 Linux without installation. Recommended for Steam Deck and Flatpak-style installs. |
+| **Debian package** | `Conversation Simulator_<ver>_amd64.deb` | Ubuntu 22.04+ and Debian 12+. Installs to `/usr/bin/` with system-managed runtime dependencies. |
 
-The Steam depot ships the AppImage as the primary artifact. The `.deb` is
-available as a GitHub release asset for users who prefer system packages.
+The Steam depot ships only the AppImage, renamed to the version-stable
+`ConversationSimulator.AppImage` so the Steamworks launch option keeps working
+across releases (`.github/workflows/steam-deploy.yml`). The `.deb` is not
+staged, because a depot must not contain installer packages, and GitHub
+releases carry no binaries. To get the `.deb`, build it yourself with
+`scripts/build-linux.sh`.
 
 ---
 
@@ -77,8 +82,9 @@ The AppImage does **not** bundle:
 > ships FUSE 3 by default), run the AppImage with `--appimage-extract-and-run`
 > to bypass FUSE mounting and extract to a temporary directory instead:
 > ```bash
-> ./ConversationSimulator.AppImage --appimage-extract-and-run
+> ./"Conversation Simulator_"*.AppImage --appimage-extract-and-run
 > ```
+> In a Steam install the file is `ConversationSimulator.AppImage`.
 > Alternatively, install FUSE 2: `sudo apt-get install libfuse2`
 
 ### Debian package (.deb)
@@ -134,15 +140,15 @@ SteamOS 3.x is based on Arch Linux and ships with glibc 2.37+, satisfying the
 Via the Steam library (after depot upload):
 
 1. Install from the Steam library entry — no terminal required.
-2. On first launch the Model Manager wizard appears — download the recommended
-   starter model (Qwen3 4B Q4_K_M, ≈ 2.6 GB).
+2. On first launch the app shows the welcome screen. Click **Set me up** to
+   download the recommended starter model (Qwen3 4B Instruct Q4_K_M, 2.5 GB).
 
 Manual AppImage install for testing (Desktop Mode):
 
 ```bash
-# In Desktop Mode, open Konsole:
-chmod +x ConversationSimulator_*.AppImage
-./ConversationSimulator_*.AppImage
+# In Desktop Mode, open Konsole in the folder that holds the AppImage:
+chmod +x "Conversation Simulator_"*.AppImage
+./"Conversation Simulator_"*.AppImage
 ```
 
 To add as a non-Steam game for Gaming Mode launch:
@@ -190,9 +196,10 @@ the general QA matrix in `docs/QA_STEAM_PLATFORM_MATRIX.md`.
 | First-token latency during text session | ≤ 30 s |
 | Battery draw during text session | < 15 W average |
 
-> The Steam Deck GPU can run the Qwen3 4B Q4_K_M model with partial GPU
-> offload. Set the number of GPU layers in the Model Manager settings to
-> maximise performance. CPU-only inference is slower but fully functional.
+> The Linux release build bundles llama.cpp's CPU build of `llama-server`
+> (`runtimes/llama_cpp/download-runtime.sh` fetches the `ubuntu-x64` archive),
+> so on Steam Deck the model runs on the CPU. CPU-only inference is slower but
+> fully functional.
 
 ---
 
