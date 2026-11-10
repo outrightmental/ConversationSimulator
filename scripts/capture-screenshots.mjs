@@ -131,6 +131,13 @@ const OUTPUT_IDS = ['01', '02', '03', '04', '05', '06', 'hero']
 
 const args = process.argv.slice(2)
 const SKIP_HERO = args.includes('--skip-hero')
+// Playback speed of the hero recording. 1 (the default) is real time. On a
+// machine where one turn takes minutes, a real-time hero is minutes of a
+// waiting screen and blows GIF_BUDGET_BYTES; a higher value plays the segment
+// back faster and burns the factor and the real turn length into every frame,
+// so the recording never passes for real time.
+const HERO_SPEED_ARG = args.find((a) => a.startsWith('--hero-speed='))
+const HERO_SPEED = HERO_SPEED_ARG ? Number(HERO_SPEED_ARG.split('=')[1]) : 1
 const ONLY = (args.find((a) => a.startsWith('--only=')) ?? '').replace('--only=', '')
 const only = ONLY ? new Set(ONLY.split(',').map((s) => s.trim())) : null
 const wanted = (id) => !only || only.has(id)
@@ -157,6 +164,10 @@ if (only) {
         `       Valid values: ${OUTPUT_IDS.join(', ')} (screen numbers are zero-padded).`,
     )
   }
+}
+
+if (!Number.isFinite(HERO_SPEED) || HERO_SPEED < 1 || HERO_SPEED > 16) {
+  fail(`--hero-speed must be a number from 1 to 16 (got '${HERO_SPEED_ARG}').`)
 }
 
 // What this invocation would actually write, after `--only` and `--skip-hero`
@@ -520,6 +531,17 @@ async function main() {
         before,
         { timeout: 300_000 },
       )
+      // The reply streams in before the turn commits (#538): the staged panel
+      // stays up through "Updating the scene…" until the state deltas land, and
+      // only then do the meters move. Moving on as soon as the reply text shows
+      // captures 03 mid-commit with last turn's meters, and ends the hero before
+      // the meters it is meant to show have moved — on a slower machine that
+      // stage is seconds long. Wait for the panel to go; a panel that never
+      // leaves is logged and the capture carries on with what is on screen.
+      await page
+        .locator('[data-testid="npc-turn-progress"]')
+        .waitFor({ state: 'detached', timeout: 300_000 })
+        .catch(() => log('WARNING: the turn panel was still up — capturing the turn as rendered'))
       // Let the meters animate to their new values and the banner land.
       await page.waitForTimeout(isHero ? 2600 : 800)
       if (isHero) mark('heroEnd')
@@ -682,12 +704,26 @@ async function encodeHero(webm, marks) {
   const crop = c
     ? `crop=${c.width - (c.width % 2)}:${c.height - (c.height % 2)}:${c.x}:${c.y},`
     : ''
-  log(`encoding hero segment ${start.toFixed(1)}s +${duration.toFixed(1)}s`)
+  // Faster playback is an honest recording only while it says so: the factor
+  // and the turn's real length are drawn on every frame, after scaling so the
+  // label is the same size in the GIF and the MP4. `:` and `'` are filter
+  // syntax, so the text avoids both.
+  const speed = HERO_SPEED
+  const pts = speed > 1 ? `setpts=PTS/${speed},` : ''
+  const label =
+    speed > 1
+      ? `,drawtext=font=Inter:text='Played at ${speed}x speed — this turn took ${Math.round(duration)} s on the capture machine'` +
+        ':fontsize=18:fontcolor=white:box=1:boxcolor=black@0.7:boxborderw=8:x=12:y=h-th-20'
+      : ''
+  log(
+    `encoding hero segment ${start.toFixed(1)}s +${duration.toFixed(1)}s` +
+      (speed > 1 ? ` at ${speed}x (${(duration / speed).toFixed(1)}s of playback)` : ''),
+  )
 
   await run('ffmpeg', [
     '-y', '-loglevel', 'error',
     '-ss', String(start), '-t', String(duration), '-i', webm,
-    '-vf', `${crop}scale=900:-2:flags=lanczos`,
+    '-vf', `${crop}${pts}scale=900:-2:flags=lanczos${label}`,
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '26', '-movflags', '+faststart',
     '-an', mp4,
   ])
@@ -699,7 +735,7 @@ async function encodeHero(webm, marks) {
   let gifSize = 0
   for (const [fps, width, colors] of [[10, 880, 96], [10, 800, 64], [8, 760, 48]]) {
     const filter =
-      `${crop}fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];` +
+      `${crop}${pts}fps=${fps},scale=${width}:-1:flags=lanczos${label},split[a][b];` +
       `[a]palettegen=max_colors=${colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`
     await run('ffmpeg', [
       '-y', '-loglevel', 'error',
