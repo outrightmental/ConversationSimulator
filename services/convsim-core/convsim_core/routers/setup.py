@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from convsim_core.edition import is_demo, resolve_demo_model_id
 from convsim_core.services.model_manager_service import get_active_config
 from convsim_core.services.setup_install_service import get_active_job
 from convsim_core import __version__
@@ -94,13 +95,31 @@ async def get_setup_status(request: Request) -> SetupStatusResponse:
     # no-model demo path, issue #473) deliberately does NOT satisfy this any
     # more: those profiles resolve to 'incomplete', which surfaces the
     # non-blocking finish-setup banner steering them to install a real model.
-    installed_row = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM installed_models "
-        "WHERE install_status IN ('ready', 'complete')"
-    ).fetchone()
+    config = request.app.state.service_config
+    if is_demo(config):
+        # The demo shares the full app's data root (D-06) and plays only its
+        # own model, so only that model's install counts: neither another
+        # model the full app installed (the earlier starter, a larger tier)
+        # nor the full app's saved selection. A profile without the demo
+        # model goes to the demo's one-click install.
+        demo_id = resolve_demo_model_id(conn, config)
+        installed_row = None
+        if demo_id is not None:
+            installed_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM installed_models "
+                "WHERE install_status IN ('ready', 'complete') AND registry_id = ?",
+                (demo_id,),
+            ).fetchone()
+        model_selected = False
+    else:
+        installed_row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM installed_models "
+            "WHERE install_status IN ('ready', 'complete')"
+        ).fetchone()
+        model_selected = bool(active_model_id)
     installed_count = installed_row["cnt"] if installed_row else 0
 
-    if installed_count == 0 and not active_model_id:
+    if installed_count == 0 and not model_selected:
         missing.append("llm-present")
 
     # Check packs
