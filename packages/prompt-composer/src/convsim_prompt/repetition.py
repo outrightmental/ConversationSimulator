@@ -25,6 +25,12 @@ Words are compared case- and punctuation-insensitively: text is NFKC
 normalised and case-folded, apostrophes are dropped (so "What's" and
 "What’s" are one word), and every other non-word character separates words.
 
+A repeat the player asked for is not a loop. In spanish_coffee asking Rosa to
+say it again, more slowly, is a repair strategy the rubric rewards, and the
+pack's smoke and golden tests play it. ``asks_for_repeat`` tells such a
+player line apart, and the guard and check (a) both leave the NPC's answer to
+it alone.
+
 Standard library only, like the rest of this package: the D-05 replay script
 imports it and runs with the standard library and PyYAML.
 """
@@ -240,6 +246,63 @@ def check_repetition(
             if score > SIMILARITY_THRESHOLD:
                 matches.append(RepetitionMatch(kind=SIMILAR, against=index, similarity=score))
     return RepetitionReport(matches=tuple(matches))
+
+
+# ---------------------------------------------------------------------------
+# A player who asks for the line again
+# ---------------------------------------------------------------------------
+
+#: Ways a player asks the NPC to say it again, or more slowly, in the
+#: languages the official packs play (en, es, fr, ja). Word phrases match whole
+#: words, compared without case, punctuation or accents, so "mas despacio"
+#: typed without its accent counts.
+REPEAT_REQUEST_WORDS: Tuple[Tuple[str, ...], ...] = tuple(
+    tuple(phrase.split())
+    for phrase in (
+        # English
+        "repeat", "say that again", "say it again", "come again", "pardon",
+        "one more time", "more slowly", "slower",
+        # Spanish
+        "repetir", "repite", "repita", "repitelo", "repitalo", "repetirlo",
+        "repitemelo", "repitamelo", "repetirmelo", "otra vez", "mas despacio",
+        "mas lento", "mas lentamente",
+        # French
+        "repeter", "repetez", "repete", "encore une fois", "plus lentement",
+    )
+)
+#: Phrases of languages written without spaces, matched as text.
+REPEAT_REQUEST_TEXT: Tuple[str, ...] = ("もう一度", "もう一回", "ゆっくり")
+#: Words after "repeat" that make it a complaint about the NPC, not a request
+#: ("don't repeat yourself"). "Repeating" is not a request word at all.
+_REPEAT_NOT_A_REQUEST = frozenset({"yourself", "yourselves"})
+
+
+def _bare_words(text: str) -> List[str]:
+    """``words`` with accents removed as well, for matching typed phrases."""
+    decomposed = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", text or ""))
+    bare = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return _WORD.findall(_APOSTROPHES.sub("", bare.casefold()))
+
+
+def asks_for_repeat(player_line: str) -> bool:
+    """Whether the player's line asks the NPC to say it again, or more slowly.
+
+    The NPC's answer to such a line is meant to repeat what it said, so the
+    repetition guard does not retry it and check (a) does not fail it.
+    """
+    text = unicodedata.normalize("NFKC", player_line or "").casefold()
+    if any(phrase in text for phrase in REPEAT_REQUEST_TEXT):
+        return True
+    ws = _bare_words(text)
+    for phrase in REPEAT_REQUEST_WORDS:
+        n = len(phrase)
+        for i in range(len(ws) - n + 1):
+            if tuple(ws[i:i + n]) != phrase:
+                continue
+            if phrase == ("repeat",) and i + 1 < len(ws) and ws[i + 1] in _REPEAT_NOT_A_REQUEST:
+                continue
+            return True
+    return False
 
 
 def less_repetitive(candidate: RepetitionReport, incumbent: RepetitionReport) -> bool:

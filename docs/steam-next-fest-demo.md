@@ -243,7 +243,8 @@ of the five conversations to the debrief against a running convsim-core on the
 real model, twice by default, with scripted player turns that press on each
 NPC's hidden agenda (`tests/fixtures/demo-gate/player-turns.yaml`). On every
 turn and run it asserts that the NPC repeats no 6-word run and no closing
-question of 4+ words from its previous line, says no 5-word run of its hidden
+question of 4+ words from its previous line (unless the player asked it to say
+it again, as spanish_coffee's third turn does), says no 5-word run of its hidden
 agenda aloud and no 3+ digit number from it (Ray's $13,800 floor, in digits or
 words), never answers with the engine's canned fallback line, applies a
 non-zero change to at least one variable the scenario authors, and gets a

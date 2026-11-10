@@ -13,6 +13,7 @@ repeats less. These tests pin:
     quoted in the user turn, the temperature +0.1, recorded as a
     ``repetition_retry`` extra call;
   * which reply is kept, and that any failure keeps the first reply;
+  * a player who asks for the line again gets the repeat, unretried;
   * streaming (#538): released text is committed text. A first sentence that
     would repeat is never shown, so the line can still be retried; a repeat
     after the first sentence streams with the line and is noted, never cut
@@ -533,6 +534,75 @@ class TestStreamedLines:
         assert "".join(streamer.tokens) == streamer.finals[0] == result.npc_utterance == _FRESH
         assert len(runtime.requests) == 1
         assert not any(k.startswith("repetition") for k in _kinds(conn))
+
+
+# ---------------------------------------------------------------------------
+# A player who asks for the line again
+# ---------------------------------------------------------------------------
+
+# spanish_coffee: asking for a repeat is a repair strategy the rubric rewards.
+_ROSA = "¡Claro! Un café con leche. ¿Quieres algo para comer?"
+_ROSA_AGAIN = "¡Claro! Te lo repito más despacio: un café con leche. ¿Quieres algo para comer?"
+_ASKS_AGAIN = "Perdón, ¿puede repetir más despacio?"
+_ROSA_HISTORY = (
+    ("npc_opening", "¡Hola! Buenos días. ¿Qué vas a tomar hoy?"),
+    ("player", "Quisiera un café con leche, por favor."),
+    ("npc", _ROSA),
+)
+# A line whose first sentence repeats Rosa's previous one word for word.
+_ROSA_TOTAL = "Un café con leche y un cruasán, ¿verdad? Son cuatro euros con cincuenta."
+_ROSA_TOTAL_HISTORY = (
+    ("npc_opening", "¡Hola! Buenos días. ¿Qué vas a tomar hoy?"),
+    ("player", "Un café con leche y un cruasán. ¿Cuánto es?"),
+    ("npc", _ROSA_TOTAL),
+)
+
+
+class TestRepeatRequested:
+    @pytest.mark.asyncio
+    async def test_the_repeat_the_player_asked_for_is_kept_without_a_retry(self):
+        runtime = _Replies(_ROSA_AGAIN)
+        result, conn = await _play(runtime, *_ROSA_HISTORY, player=_ASKS_AGAIN)
+        assert result.npc_utterance == _ROSA_AGAIN
+        assert len(runtime.requests) == 1
+        assert result.timing.extra_calls == []
+        assert _kinds(conn) == ["repetition_detected", "repetition_retry_skipped"]
+        assert _parse_events(conn)[1]["reason"] == "the player asked for the line again"
+
+    @pytest.mark.asyncio
+    async def test_the_same_reply_to_any_other_line_is_retried(self):
+        runtime = _Replies(_ROSA_AGAIN, "Tenemos cruasanes recién hechos.")
+        result, conn = await _play(runtime, *_ROSA_HISTORY, player="Gracias. ¿Algo más?")
+        assert len(runtime.requests) == 2
+        assert result.npc_utterance == "Tenemos cruasanes recién hechos."
+
+    @pytest.mark.asyncio
+    async def test_a_repeated_first_sentence_streams_when_the_player_asked(self):
+        streamer = _Streamer()
+        runtime = _Replies(_ROSA_TOTAL)
+        result, conn = await _play(
+            runtime, *_ROSA_TOTAL_HISTORY, streamer=streamer, player="Perdón, ¿otra vez, más despacio?",
+        )
+        assert "".join(streamer.tokens) == streamer.finals[0] == result.npc_utterance == _ROSA_TOTAL
+        assert len(runtime.requests) == 1
+        assert _kinds(conn) == ["repetition_detected", "repetition_retry_skipped"]
+        assert _parse_events(conn)[1]["reason"] == "the player asked for the line again"
+        # Asked anything else, the same first sentence is held for the guard.
+        held = _Streamer()
+        runtime = _Replies(_ROSA_TOTAL, "Son cuatro euros con cincuenta, gracias.")
+        result, _ = await _play(runtime, *_ROSA_TOTAL_HISTORY, streamer=held, player="Vale. ¿Algo más?")
+        assert held.tokens == [] and held.finals == []
+        assert len(runtime.requests) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_broken_request_check_guards_the_turn_as_usual(self, monkeypatch):
+        def boom(_line):
+            raise RuntimeError("broken")
+
+        monkeypatch.setattr(turn_pipeline, "asks_for_repeat", boom)
+        runtime = _Replies(_ROSA_AGAIN, "Tenemos cruasanes recién hechos.")
+        result, _ = await _play(runtime, *_ROSA_HISTORY, player=_ASKS_AGAIN)
+        assert len(runtime.requests) == 2
 
 
 # ---------------------------------------------------------------------------

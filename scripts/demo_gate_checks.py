@@ -19,7 +19,8 @@ The six checks, with the letters the issue and the demo doc use:
 
   (a) repetition      per turn: no run of 6+ consecutive words shared with the
                       previous NPC line, and no NPC line ending with the same
-                      question (of 4+ words) as the previous one.
+                      question (of 4+ words) as the previous one. A reply to a
+                      player who asked for the line again is not judged.
   (b) agenda_leak     per turn: no run of 5+ consecutive words from the NPC's
                       ``private_persona.hidden_agenda`` said aloud, and no
                       number of 3+ digits from it (Ray's $13,800 floor) in an
@@ -58,6 +59,7 @@ if "convsim_prompt" not in sys.modules and _PROMPT_COMPOSER_SRC.is_dir():
 from convsim_prompt.repetition import (  # noqa: E402 - the path above comes first
     REPEAT_RUN_WORDS,
     SAME_QUESTION_MIN_WORDS,
+    asks_for_repeat,
     ending_question,
     shared_runs,
     words,
@@ -368,6 +370,29 @@ def npc_lines_from_transcript(entries: Iterable[Mapping[str, Any]]) -> List[NpcL
     return lines
 
 
+def player_lines_from_transcript(entries: Iterable[Mapping[str, Any]]) -> Dict[int, str]:
+    """``game turn -> player line`` from ``GET /api/sessions/{id}/transcript`` ``turns``.
+
+    The player's line of game turn ``n`` is stored at ``turn_number`` ``2n - 1``.
+    """
+    out: Dict[int, str] = {}
+    for e in entries:
+        if e.get("role") != "player":
+            continue
+        number = int(e.get("turn_number") or 0)
+        out[(number + 1) // 2] = str(e.get("content") or "")
+    return out
+
+
+def repeat_request_turns(player_lines: Mapping[int, str]) -> List[int]:
+    """The game turns whose player line asked the NPC to say it again.
+
+    The engine's repetition guard leaves the NPC's answer to such a line alone
+    (``convsim_prompt.repetition.asks_for_repeat``), and so does check (a).
+    """
+    return sorted(turn for turn, text in player_lines.items() if asks_for_repeat(text))
+
+
 def _clip(text: str, limit: int = 160) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -383,15 +408,20 @@ def find_repetition(
     *,
     min_run: int = REPEAT_RUN_WORDS,
     min_question: int = SAME_QUESTION_MIN_WORDS,
+    repeat_requested: Iterable[int] = (),
 ) -> List[Finding]:
     """(a) Each generated NPC line against the NPC line before it.
 
     A shared closing question counts from ``min_question`` words, so a short
-    tag ("Okay?") said twice is not a repeat.
+    tag ("Okay?") said twice is not a repeat. The lines of the turns in
+    ``repeat_requested``, where the player asked for the line again, are not
+    judged: a repeat is what the player asked for, and the engine does not
+    retry it either.
     """
+    exempt = set(repeat_requested)
     findings: List[Finding] = []
     for prev, line in zip(lines, lines[1:]):
-        if line.authored:
+        if line.authored or line.turn in exempt:
             continue
         runs = shared_runs(words(line.text), words(prev.text), min_run)
         if runs:
@@ -614,21 +644,34 @@ def evaluate_run(
     debrief_error: Optional[str] = None,
     turn_fallbacks: Sequence[Tuple[int, Any]] = (),
     fallback_utterance: Optional[str] = None,
+    player_lines: Optional[Mapping[int, str]] = None,
 ) -> List[CheckResult]:
-    """All six checks over one played conversation, in letter order."""
+    """All six checks over one played conversation, in letter order.
+
+    ``player_lines`` (game turn to the player's line) lets check (a) leave out
+    the NPC's answer to a player who asked for the line again.
+    """
     sev = dict(DEFAULT_SEVERITY)
     if severity:
         sev.update(severity)
 
     generated = sum(1 for line in npc_lines if not line.authored)
-    rep = find_repetition(npc_lines)
+    generated_turns = {line.turn for line in npc_lines if not line.authored}
+    exempt = [t for t in repeat_request_turns(player_lines or {}) if t in generated_turns]
+    rep = find_repetition(npc_lines, repeat_requested=exempt)
+    rep_detail = f"{generated} generated NPC line(s) checked"
+    if exempt:
+        rep_detail += (
+            f"; not judged: the line of turn(s) {', '.join(map(str, exempt))}, "
+            "where the player asked for the line again"
+        )
     leak = find_agenda_leaks(npc_lines, hidden_agenda)
     secrets = secret_numbers(hidden_agenda)
     fallback = find_fallback_turns(
         turn_fallbacks, npc_lines, fallback_utterance=fallback_utterance
     )
     outcomes: Dict[str, Tuple[bool, List[Finding], str]] = {
-        "a": (not rep, rep, f"{generated} generated NPC line(s) checked"),
+        "a": (not rep, rep, rep_detail),
         "b": (not leak, leak, (
             f"{len(hidden_agenda)} agenda item(s) and {len(secrets)} agenda number(s) checked"
         )),

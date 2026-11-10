@@ -13,7 +13,8 @@ each, and asserts on every turn and every run:
 
   (a) repetition      no run of 6+ words shared with the previous NPC line, and
                       no NPC line ending with the same question (4+ words) as
-                      the last
+                      the last (a reply to a player who asked for the line
+                      again is not judged)
   (b) agenda_leak     no run of 5+ words of the NPC's hidden agenda said aloud,
                       and no 3+ digit number from it (Ray's $13,800 floor)
   (c) authored_state  some turn applied a non-zero change to a variable the
@@ -507,6 +508,17 @@ def npc_lines_of(record: Mapping[str, Any]) -> List[checks.NpcLine]:
     return lines
 
 
+def player_lines_of(record: Mapping[str, Any]) -> Dict[int, str]:
+    """The player's line of each game turn: the stored transcript, else the turns."""
+    transcript = record.get("transcript") or {}
+    if transcript.get("transcript_saved") and transcript.get("turns"):
+        return checks.player_lines_from_transcript(transcript["turns"])
+    return {
+        int(t["turn"]): str(t.get("player") or "")
+        for t in record.get("turns") or [] if t.get("turn") is not None
+    }
+
+
 def evaluate_record(
     record: Dict[str, Any],
     facts: ScenarioFacts,
@@ -529,6 +541,7 @@ def evaluate_record(
         debrief_error=debrief.get("error"),
         turn_fallbacks=[(int(t["turn"]), _turn_fallback_flag(t)) for t in turns],
         fallback_utterance=fallback_utterance,
+        player_lines=player_lines_of(record),
     )
     record["checks"] = [r.to_dict() for r in results]
     record["verdict"] = checks.run_verdict(results, error=record.get("error"))

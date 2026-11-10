@@ -45,6 +45,7 @@ from convsim_prompt.output_validator import validate_npc_output
 from convsim_prompt.repetition import (
     GUARD_WINDOW,
     RepetitionReport,
+    asks_for_repeat,
     check_repetition,
     less_repetitive,
 )
@@ -718,28 +719,47 @@ def _repetition_event(event_type: str, reason: str) -> TurnEvent:
     return TurnEvent(event_type=event_type, category="repetition", reason=reason)
 
 
-def _note_released_repetition(
+#: Why a repeat was kept without a retry, for the debug drawer.
+_ALREADY_RELEASED = "the line had already been released to the player"
+_REPEAT_REQUESTED = "the player asked for the line again"
+
+
+def _player_asked_for_repeat(player_line: str) -> bool:
+    """Whether the player asked the NPC to say it again (see ``asks_for_repeat``).
+
+    In spanish_coffee that is a repair strategy the rubric rewards; the NPC's
+    answer is meant to repeat its line, and retrying it with "do not repeat
+    this" would contradict the request. A broken check means no exemption.
+    """
+    try:
+        return asks_for_repeat(player_line)
+    except Exception:  # noqa: BLE001 — the guard must never cost the player a turn
+        logger.exception("Repeat-request check failed; guarding the turn as usual")
+        return False
+
+
+def _note_repetition(
     line: str,
     previous_lines: List[str],
     events: List[TurnEvent],
+    why_kept: str,
 ) -> None:
-    """Record a streamed line that repeats, though the gate let it out.
+    """Record a line that repeats an earlier one but is kept without a retry.
 
-    The gate judges only the first release; a repeat later in the line, or one
-    only the whole line's similarity shows, is on screen by the time it is
-    complete. The line is committed text then: it is noted for the debug
-    drawer, not retried.
+    A streamed line: the gate judges only the first release, so a repeat later
+    in the line, or one only the whole line's similarity shows, is on screen
+    by the time the line is complete, and committed text. Or a line answering
+    a player who asked for the line again. Either way it is noted for the
+    debug drawer, not retried.
     """
     try:
         report = check_repetition(line, previous_lines) if previous_lines else RepetitionReport()
     except Exception:  # noqa: BLE001 — a note is never worth a turn
-        logger.exception("Repetition check failed on a released line")
+        logger.exception("Repetition check failed on a kept line")
         return
     if report.flagged:
         events.append(_repetition_event("repetition_detected", report.describe()))
-        events.append(_repetition_event(
-            "repetition_retry_skipped", "the line had already been released to the player",
-        ))
+        events.append(_repetition_event("repetition_retry_skipped", why_kept))
 
 
 async def _retry_repetitive_reply(
@@ -1026,9 +1046,13 @@ async def process_turn(
     # gate also holds back a first sentence that would make the line a repeat
     # of one of the NPC's last two lines (issue #580), so the repetition
     # guard's retry only ever replaces a line nobody has seen.
+    # A player who asked for the line again gets it: neither the gate nor the
+    # guard holds a repeat back on that turn, and one is only noted.
     previous_npc_lines = _previous_npc_lines(recent_transcript)
+    repeat_requested = _player_asked_for_repeat(normalized)
+    guarded_lines = [] if repeat_requested else previous_npc_lines
     extractor = UtteranceStreamExtractor() if streamer is not None else None
-    gate = SentenceGate(hidden_agenda=hidden_agenda, previous_lines=previous_npc_lines)
+    gate = SentenceGate(hidden_agenda=hidden_agenda, previous_lines=guarded_lines)
     stream_state = {"writing_announced": False, "finishing_announced": False}
 
     async def _on_chunk(chunk: Any) -> bool:
@@ -1122,7 +1146,12 @@ async def process_turn(
             ))
         # The gate let the first sentence out, so nothing it held back was for
         # repetition; a repeat later in the line is noted (issue #580).
-        _note_released_repetition(released_line, previous_npc_lines, turn_parse_events)
+        _note_repetition(
+            released_line,
+            previous_npc_lines,
+            turn_parse_events,
+            _REPEAT_REQUESTED if repeat_requested else _ALREADY_RELEASED,
+        )
         used_fallback = False
     else:
         # 8b. Validate / repair / fallback, exactly as before streaming existed.
@@ -1149,10 +1178,14 @@ async def process_turn(
             logger.warning("Turn output fell back to safe utterance for session %s turn %d", session_id, turn_number)
         # 8c. Repetition guard (issue #580): nothing of this line has been
         # shown, so a reply that repeats one of the NPC's last two lines may
-        # still be replaced by one retry.
+        # still be replaced by one retry; unless the player asked for it.
+        if repeat_requested and _is_model_line(turn_output):
+            _note_repetition(
+                turn_output.npc_utterance, previous_npc_lines, turn_parse_events, _REPEAT_REQUESTED,
+            )
         turn_output = await _guard_repetition(
             turn_output,
-            previous_npc_lines,
+            guarded_lines,
             runtime=runtime,
             request=request,
             prompt=prompt,

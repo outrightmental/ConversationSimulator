@@ -314,7 +314,10 @@ response carries the result. Once the first sentence is out, the rest of the
 line streams as usual, held back only by the output check: cutting it for a
 repeat would leave the player a stub, an answer without its question, that no
 retry could replace. A repeat there is kept and noted in the turn's debug
-events (`repetition_retry_skipped`).
+events (`repetition_retry_skipped`). When the player asks for the line again
+("¿Puede repetir más despacio?", "Say that again?", もう一度), the NPC's answer
+is neither held nor retried: there the repeat is the answer, and in the
+language packs asking for it is a repair strategy the rubric rewards.
 
 Reserved for future speech support (clients should accept and ignore):
 

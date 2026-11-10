@@ -27,6 +27,7 @@ from .output_validator import (
 from .repetition import (
     RepetitionMatch,
     RepetitionReport,
+    asks_for_repeat,
     check_repetition,
     less_repetitive,
 )
@@ -97,6 +98,7 @@ __all__ = [
     "OutputValidationResult",
     "OutputViolation",
     # Repetition guard (issue #580)
+    "asks_for_repeat",
     "check_repetition",
     "less_repetitive",
     "RepetitionMatch",

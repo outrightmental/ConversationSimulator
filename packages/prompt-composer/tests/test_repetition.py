@@ -38,6 +38,7 @@ from convsim_prompt.repetition import (
     SIMILARITY_THRESHOLD,
     RepetitionMatch,
     RepetitionReport,
+    asks_for_repeat,
     check_repetition,
     ending_question,
     less_repetitive,
@@ -211,6 +212,40 @@ class TestCheckRepetition:
         assert q.describe() == "ends with the same 4-word question as the previous NPC line"
         s = RepetitionMatch(kind=SIMILAR, against=0, similarity=0.6667)
         assert s.describe() == "has trigram similarity 0.67 with the previous NPC line"
+
+
+class TestAsksForRepeat:
+    """A repeat the player asked for is not a loop (the language rubric rewards
+    asking; the packs' smoke and golden tests play it)."""
+
+    @pytest.mark.parametrize("line", [
+        # The language-cafe packs' own repair turns.
+        "Perdón, ¿puede repetir más despacio, por favor? No entendí bien.",
+        "Perdón, no entendí bien. ¿Puedes repetir más despacio, por favor?",
+        "Perdón, no entendí bien. ¿Puede repetirlo más despacio, por favor?",
+        "もう一度お願いします。ゆっくり話してもらえますか？",
+        "Excusez-moi, pourriez-vous parler plus lentement, s'il vous plaît ?",
+        "Sorry — I did not understand the last thing you say. Can you speak again more slowly?",
+        # Other ways to ask, accents typed or not.
+        "mas despacio, por favor", "¿Otra vez?", "Repite, por favor.", "¿Me lo repites? Repítemelo.",
+        "Can you repeat that?", "Sorry, say that again?", "Come again?", "Pardon?",
+        "One more time, please.", "Pouvez-vous répéter ?", "Encore une fois ?",
+        "ゆっくりお願いします",
+    ])
+    def test_a_request_for_the_line_again(self, line):
+        assert asks_for_repeat(line)
+
+    @pytest.mark.parametrize("line", [
+        "¡Hola, buenos días! Quisiera un café con leche, por favor.",
+        "Vale, quiero uno cruasán también, por favor.",
+        "Last offer: thirteen thousand six hundred out the door.",
+        "You keep repeating yourself.",
+        "Don't repeat yourself, just give me a number.",
+        "Perdón.",
+        "",
+    ])
+    def test_anything_else(self, line):
+        assert not asks_for_repeat(line)
 
 
 class TestLessRepetitive:

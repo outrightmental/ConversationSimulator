@@ -226,6 +226,17 @@ class TestRepetition:
         assert [f.evidence for f in found] == ["shall we talk numbers"]
         assert checks.SAME_QUESTION_MIN_WORDS == 4
 
+    def test_a_repeat_the_player_asked_for_is_not_judged(self) -> None:
+        """spanish_coffee turn 3 asks Rosa to say it again, more slowly: a repair
+        strategy the rubric rewards, which the engine does not retry either."""
+        rosa = "¡Claro! Un café con leche. ¿Quieres algo para comer?"
+        again = "¡Claro! Te lo repito más despacio: un café con leche. ¿Quieres algo para comer?"
+        lines = _lines(rosa, again, again)
+        assert {f.turn for f in checks.find_repetition(lines)} == {2, 3}
+        assert {f.turn for f in checks.find_repetition(lines, repeat_requested=[2])} == {3}
+        players = {1: "Quisiera un café con leche.", 2: "Perdón, ¿puede repetir más despacio?", 3: "Vale."}
+        assert checks.repeat_request_turns(players) == [2]
+
 
 class TestEngineAgreement:
     """Check (a) and the engine's repetition guard count a repeat the same way.
@@ -240,6 +251,7 @@ class TestEngineAgreement:
     def test_the_word_functions_are_the_engines(self) -> None:
         from convsim_prompt import repetition
 
+        assert checks.asks_for_repeat is repetition.asks_for_repeat
         assert checks.words is repetition.words
         assert checks.shared_runs is repetition.shared_runs
         assert checks.ending_question is repetition.ending_question
@@ -266,6 +278,26 @@ class TestEngineAgreement:
         # On the run and the closing question alone, the two give one verdict;
         # the engine also counts a near-copy by trigram similarity.
         assert check_repetition(line, [previous], similarity=False).flagged == failed
+
+    def test_neither_judges_the_answer_to_a_request_for_the_line_again(self) -> None:
+        """The engine leaves the repeat alone (turn_pipeline's exemption); so does (a)."""
+        rosa = "¡Claro! Un café con leche. ¿Quieres algo para comer?"
+        again = "¡Claro! Te lo repito más despacio: un café con leche. ¿Quieres algo para comer?"
+        ask = "Perdón, no entendí bien. ¿Puede repetirlo más despacio, por favor?"
+        from convsim_prompt.repetition import asks_for_repeat, check_repetition
+
+        assert check_repetition(again, [rosa]).flagged and asks_for_repeat(ask)
+        results = checks.evaluate_run(
+            npc_lines=_lines(rosa, again), turn_deltas=[], debrief_status=200,
+            debrief={"used_fallback": False, "scores": {"x": 50.0}}, hidden_agenda=[],
+            authored_variables=[], rubric_ids=["x"], player_lines={1: "Hola.", 2: ask},
+        )
+        rep = next(r for r in results if r.letter == "a")
+        assert rep.passed
+        assert rep.detail == (
+            "2 generated NPC line(s) checked; not judged: the line of turn(s) 2, "
+            "where the player asked for the line again"
+        )
 
     def test_the_checks_still_need_only_the_standard_library(self) -> None:
         """``-I -S``: no site-packages and no PYTHONPATH, so nothing installed."""
@@ -628,6 +660,20 @@ class TestEvaluateRun:
 
 
 class TestTranscriptShape:
+    def test_player_lines_from_transcript(self) -> None:
+        entries = [
+            {"turn_number": 0, "role": "npc_opening", "content": "Opening."},
+            {"turn_number": 1, "role": "player", "content": "Player one."},
+            {"turn_number": 2, "role": "npc", "content": "Reply one."},
+            {"turn_number": 3, "role": "player", "content": "Player two."},
+        ]
+        assert checks.player_lines_from_transcript(entries) == {1: "Player one.", 2: "Player two."}
+        assert replay.player_lines_of({"transcript": {"transcript_saved": True, "turns": entries}}) == {
+            1: "Player one.", 2: "Player two.",
+        }
+        # Without a stored transcript, the lines the replay sent.
+        assert replay.player_lines_of({"turns": [{"turn": 1, "player": "Hi."}]}) == {1: "Hi."}
+
     def test_npc_lines_from_transcript(self) -> None:
         entries = [
             {"turn_number": 2, "role": "npc", "content": "Reply one."},
@@ -1211,10 +1257,18 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
             # The engine's repetition guard saw the same repeats and retried
             # each once (issue #580); the fake runtime answered the same line
             # again, so the first reply stood. Turn 1 follows the authored
-            # opening, which the fake line does not repeat.
+            # opening, which the fake line does not repeat. In spanish_coffee
+            # the player asks Rosa to say it again on turn 3: neither the
+            # guard nor check (a) judges that answer.
+            asked_again = {"spanish_coffee": 3}.get(scenario_id)
             kinds = [[c["kind"] for c in t["timing"]["extra_calls"]] for t in record["turns"]]
-            assert kinds == [[]] + [["repetition_retry"]] * 5
-            assert replay.repetition_retries(record) == 5
+            assert kinds == [
+                [] if t in (1, asked_again) else ["repetition_retry"] for t in range(1, 7)
+            ]
+            assert replay.repetition_retries(record) == (4 if asked_again else 5)
+            assert asked_again not in {f["turn"] for f in by_letter["a"]["findings"]}
+            if asked_again:
+                assert "not judged: the line of turn(s) 3" in by_letter["a"]["detail"]
             assert by_letter["f"]["status"] == "pass"
             assert record["verdict"] == "fail"
             # The debrief's recap was found under the engine's own key and
@@ -1230,8 +1284,9 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
     assert "| Conversation | Run | Mean turn s | Max turn s | Repetition retries | Debrief s |" in latency
     rows = [line.split(" | ") for line in latency.splitlines() if line.startswith("| ") and "Conversation" not in line]
     assert [(row[0].lstrip("| "), row[1], row[4]) for row in rows] == [
-        (scenario_id, run, "5")
-        for scenario_id in ("behavioral_interview", "spanish_coffee") for run in ("1", "2")
+        (scenario_id, run, retries)
+        for scenario_id, retries in (("behavioral_interview", "5"), ("spanish_coffee", "4"))
+        for run in ("1", "2")
     ]
     assert "edition (--allow-full-edition)" not in summary
     assert "(4 recap(s) written during the replay deleted; none existed before it)" in summary
