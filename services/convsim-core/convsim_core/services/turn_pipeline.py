@@ -612,6 +612,44 @@ async def _collect_runtime_output(
     return raw_text, structured
 
 
+def _parse_input(raw_text: str, structured: Optional[Dict[str, Any]]) -> str:
+    """The text the parser reads for one model reply.
+
+    When the runtime returned a pre-parsed structured dict (native JSON-schema
+    or grammar constraints), it is serialised back to a clean JSON string so
+    the JSON-extraction step always succeeds on the first try. The raw text is
+    what the debug drawer keeps either way.
+    """
+    return json.dumps(structured) if structured is not None else raw_text
+
+
+def _parse_reply(
+    parse_input: str,
+    *,
+    request: ChatRequest,
+    runtime: Optional[Any],
+    hidden_agenda: Optional[List[str]],
+    events: List[TurnEvent],
+) -> TurnOutput:
+    """One model reply as a TurnOutput: the turn's own, and the repetition retry's.
+
+    Every step from the reply's text to a validated turn runs here, so a retry
+    the repetition guard keeps has been through exactly what the turn's own
+    reply went through; a step added to one cannot skip the other. ``request``
+    is the request the reply answers: the retry's is a copy of the turn's with
+    only its messages and temperature changed, so a step that reads the
+    request (its output schema, say) treats both alike. ``runtime`` is what
+    parse_turn_output makes its structural repair and content-safety retry
+    calls on; the repetition retry passes None and gets neither.
+    """
+    return parse_turn_output(
+        parse_input,
+        runtime=runtime,
+        hidden_agenda=hidden_agenda,
+        turn_events=events,
+    )
+
+
 def _repair_is_coming(parse_input: str, hidden_agenda: Optional[List[str]]) -> bool:
     """Whether parse_turn_output will have to call the model again.
 
@@ -743,11 +781,12 @@ async def _retry_repetitive_reply(
             "repetition_retry", (time.perf_counter() - started) * 1000.0, _output_tokens(final)
         )
     retry_events: List[TurnEvent] = []
-    output = parse_turn_output(
-        json.dumps(structured) if structured is not None else raw_text,
+    output = _parse_reply(
+        _parse_input(raw_text, structured),
+        request=retry_request,
         runtime=None,
         hidden_agenda=hidden_agenda,
-        turn_events=retry_events,
+        events=retry_events,
     )
     if not _is_model_line(output) or any(
         e.event_type == "output_violation_detected" for e in retry_events
@@ -1092,11 +1131,8 @@ async def process_turn(
         used_fallback = False
     else:
         # 8b. Validate / repair / fallback, exactly as before streaming existed.
-        # When the runtime returned a pre-parsed structured dict (via native JSON-schema
-        # or grammar constraints), serialise it back to a clean JSON string for the
-        # parser so the JSON-extraction step always succeeds on the first try.
         # The original raw_text is preserved in the DB for the debug drawer.
-        parse_input = json.dumps(native_structured) if native_structured is not None else raw_text
+        parse_input = _parse_input(raw_text, native_structured)
 
         if streamer is not None and _repair_is_coming(parse_input, hidden_agenda):
             # The parser's repair runs synchronously, so the stage has to be
@@ -1106,11 +1142,12 @@ async def process_turn(
         # Wrap the runtime so parse_turn_output can make synchronous repair calls.
         # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
         runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events, sampling)
-        turn_output = parse_turn_output(
+        turn_output = _parse_reply(
             parse_input,
+            request=request,
             runtime=runtime_bridge,
             hidden_agenda=hidden_agenda,
-            turn_events=turn_parse_events,
+            events=turn_parse_events,
         )
         used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
         if used_fallback:

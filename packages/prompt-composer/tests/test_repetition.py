@@ -307,6 +307,26 @@ class TestRetryPrompt:
         assert up.index("LAYER:REPETITION_RETRY") < up.index("LAYER:PLAYER_UTTERANCE") < up.index(player)
         assert up.index("Do not repeat this") < up.index("=== UNTRUSTED PLAYER INPUT")
 
+    def test_the_retry_order_is_the_turns_with_the_retry_layer_before_the_player(self):
+        """Derived, not copied: a user layer the turn gains reaches the retry."""
+        assert [n for n in RETRY_USER_LAYER_ORDER if n != "REPETITION_RETRY"] == USER_LAYER_ORDER
+        at = RETRY_USER_LAYER_ORDER.index("REPETITION_RETRY")
+        assert RETRY_USER_LAYER_ORDER[at + 1:] == ["PLAYER_UTTERANCE"]
+        from convsim_prompt.composer import _insert_before
+
+        grown = ["PREVIOUS_NPC_LINE", "EVENT_NOTE", "PLAYER_UTTERANCE"]
+        assert _insert_before(grown, "REPETITION_RETRY", "PLAYER_UTTERANCE") == [
+            "PREVIOUS_NPC_LINE", "EVENT_NOTE", "REPETITION_RETRY", "PLAYER_UTTERANCE",
+        ]
+        assert grown == ["PREVIOUS_NPC_LINE", "EVENT_NOTE", "PLAYER_UTTERANCE"]
+
+    def test_every_user_layer_of_the_turn_is_in_the_retry(self):
+        bundle = _bundle()
+        retry = compose_repetition_retry_prompt(bundle, [_OPENING])
+        for name in USER_LAYER_ORDER:
+            assert bundle.layer_map[name], name
+            assert bundle.layer_map[name] in retry.user_prompt, name
+
     def test_the_previous_line_is_not_quoted_twice(self):
         retry = compose_repetition_retry_prompt(_bundle(), [_NPC])
         assert retry.user_prompt.count(f'"{_NPC}"') == 1

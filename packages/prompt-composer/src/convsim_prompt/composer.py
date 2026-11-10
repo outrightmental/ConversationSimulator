@@ -65,11 +65,16 @@ LAYER_ORDER: List[str] = SYSTEM_LAYER_ORDER + USER_LAYER_ORDER
 # The user turn of the repetition guard's one retry (issue #580): the normal
 # user turn with what the first reply repeated quoted just before the player's
 # line, which stays last. The system prompt is the turn's own, unchanged.
-RETRY_USER_LAYER_ORDER: List[str] = [
-    "PREVIOUS_NPC_LINE",
-    "REPETITION_RETRY",
-    "PLAYER_UTTERANCE",        # always last
-]
+# Derived from USER_LAYER_ORDER, so a user layer added there reaches the retry
+# too.
+def _insert_before(order: List[str], layer: str, before: str) -> List[str]:
+    at = order.index(before)
+    return order[:at] + [layer] + order[at:]
+
+
+RETRY_USER_LAYER_ORDER: List[str] = _insert_before(
+    USER_LAYER_ORDER, "REPETITION_RETRY", "PLAYER_UTTERANCE"
+)
 
 
 def _estimate_tokens(text: str) -> int:

@@ -338,6 +338,30 @@ class TestRetryRequest:
         assert "previous NPC line" in detected["reason"]
 
 
+    @pytest.mark.asyncio
+    async def test_the_retry_is_parsed_by_the_turns_own_parse_step(self, monkeypatch):
+        """One helper parses both replies, so a step added to the turn's parse
+        (a filter, a schema to check against) cannot skip a kept retry."""
+        calls: list = []
+        real = turn_pipeline._parse_reply
+
+        def spy(parse_input, **kw):
+            calls.append(kw)
+            return real(parse_input, **kw)
+
+        monkeypatch.setattr(turn_pipeline, "_parse_reply", spy)
+        runtime = _Replies(_REPEAT_AT_END, _FRESH)
+        result, _ = await _play(runtime, *_ONE_EXCHANGE)
+        assert result.npc_utterance == _FRESH
+        turn, retry = calls
+        assert turn["request"].messages == runtime.requests[0].messages
+        assert retry["request"].messages == runtime.requests[1].messages
+        assert retry["request"].json_schema == turn["request"].json_schema
+        # The turn's parse may repair; the retry's gets no model call of its own.
+        assert turn["runtime"] is not None and retry["runtime"] is None
+        assert turn["hidden_agenda"] == retry["hidden_agenda"]
+
+
 # ---------------------------------------------------------------------------
 # Which reply is kept
 # ---------------------------------------------------------------------------
