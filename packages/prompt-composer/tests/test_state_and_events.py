@@ -22,6 +22,7 @@ import copy
 import json
 
 from convsim_prompt import (
+    EVENTS_BUDGET_ALLOWANCE,
     NPC_TURN_OUTPUT_SCHEMA,
     StateVariable,
     StateVariableCue,
@@ -38,7 +39,7 @@ from convsim_prompt.layers import (
     build_scenario_events_layer,
     build_state_variables_layer,
 )
-from convsim_prompt.types import SessionState
+from convsim_prompt.types import SessionState, TranscriptEntry
 from _helpers import (
     make_full_interview_input,
     make_interview_input,
@@ -342,3 +343,63 @@ class TestScenarioEventsLayer:
         layer = build_scenario_events_layer(["word " * 200])
         assert len(layer.splitlines()[2].split()) <= 2 + 120
         assert layer.endswith(" …")
+
+
+# ---------------------------------------------------------------------------
+# The events layer and the token budget
+# ---------------------------------------------------------------------------
+
+
+def _full_window_input(instructions):
+    line = " ".join(["word"] * 90)
+    inp = make_stateful_interview_input(transcript=[
+        TranscriptEntry(speaker="player" if i % 2 == 0 else "npc", text=f"{i} {line}", turn_number=i // 2 + 1)
+        for i in range(6)
+    ])
+    inp.scenario_event_instructions = list(instructions)
+    return inp
+
+
+def _budget_that_just_fits(instructions=()):
+    """The budget that keeps the whole window with no event fired."""
+    return compose_turn_prompt(_full_window_input(instructions)).estimated_token_count
+
+
+class TestEventsAndTheTokenBudget:
+    """An event's turn is the one that needs the conversation so far (issue #580)."""
+
+    _EVENT = ("A deal is within reach. Help close it by floating a specific number or package, "
+              "and ask directly whether that works for them.")
+
+    def test_an_event_does_not_halve_the_window(self):
+        budget = _budget_that_just_fits()
+        quiet = _full_window_input([])
+        quiet.token_budget = budget
+        fired = _full_window_input([self._EVENT, self._EVENT + " Then pause."])
+        fired.token_budget = budget
+        a, b = compose_turn_prompt(quiet), compose_turn_prompt(fired)
+        assert not a.was_truncated and not b.was_truncated
+        assert b.layer_map["RECENT_TRANSCRIPT"] == a.layer_map["RECENT_TRANSCRIPT"]
+        assert "0 word" in b.layer_map["RECENT_TRANSCRIPT"]
+        # The reported estimate still counts the events layer.
+        assert b.estimated_token_count > budget
+
+    def test_the_rest_of_the_prompt_is_still_held_to_the_budget(self):
+        inp = _full_window_input([self._EVENT])
+        inp.token_budget = _budget_that_just_fits() - 1
+        bundle = compose_turn_prompt(inp)
+        assert bundle.was_truncated
+        assert "0 word" not in bundle.layer_map["RECENT_TRANSCRIPT"]
+
+    def test_past_the_allowance_the_events_count(self):
+        many = [" ".join(["word"] * 110)] * 8
+        layer_tokens = len(compose_turn_prompt(_full_window_input(many)).layer_map["SCENARIO_EVENTS"]) // 4
+        assert layer_tokens > EVENTS_BUDGET_ALLOWANCE + 100
+        inp = _full_window_input(many)
+        inp.token_budget = _budget_that_just_fits()
+        assert compose_turn_prompt(inp).was_truncated
+        # What exceeds the allowance counts; the allowance itself does not.
+        inp.token_budget = _budget_that_just_fits() + layer_tokens - EVENTS_BUDGET_ALLOWANCE
+        assert not compose_turn_prompt(inp).was_truncated
+        inp.token_budget -= 1
+        assert compose_turn_prompt(inp).was_truncated

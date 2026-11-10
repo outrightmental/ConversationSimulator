@@ -78,9 +78,38 @@ USER_LAYER_ORDER: List[str] = [
 # Full ordering including the user turn.
 LAYER_ORDER: List[str] = SYSTEM_LAYER_ORDER + USER_LAYER_ORDER
 
+# Estimated tokens of the SCENARIO_EVENTS layer that do not count toward the
+# token budget (issue #580). The layer is there only on a turn an event
+# speaks, which is the turn its instruction needs the conversation so far
+# ("float a specific number" needs the offers already made). Counted in full,
+# it halved the transcript window on exactly those turns: the demo scenarios'
+# prompts sit within a few dozen estimated tokens of the budget with a full
+# window, and the layer is 150 to 280 with one or two events. So an event
+# turn may run over the budget by up to this much; the engine's context
+# (8192 tokens by default) has room for it beside the reply cap. Past it, the
+# rest of the layer counts, so a pack whose many events fire at once still
+# cannot grow the prompt without limit. The reported estimate counts every
+# layer.
+EVENTS_BUDGET_ALLOWANCE = 512
+
 
 def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // _CHARS_PER_TOKEN)
+
+
+def _budgeted_tokens(layers: Dict[str, str]) -> int:
+    """The estimate the token budget is held to.
+
+    The prompt's without the SCENARIO_EVENTS layer, plus whatever of that
+    layer exceeds EVENTS_BUDGET_ALLOWANCE. With no event fired, the
+    prompt's own estimate.
+    """
+    rest = {name: ("" if name == "SCENARIO_EVENTS" else text) for name, text in layers.items()}
+    tokens = _estimate_tokens(_join(rest, SYSTEM_LAYER_ORDER) + _join(rest, USER_LAYER_ORDER))
+    events = layers.get("SCENARIO_EVENTS", "")
+    if events:
+        tokens += max(0, _estimate_tokens(events) - EVENTS_BUDGET_ALLOWANCE)
+    return tokens
 
 
 def _build_layers(inp: PromptComposerInput, max_transcript_turns: int) -> Dict[str, str]:
@@ -140,6 +169,9 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
     - Estimates token count using a conservative chars-per-token heuristic.
     - If over budget, halves the transcript window once (placeholder strategy).
       Full summarization would call a separate summarization pass.
+    - The events that fired for this turn (the SCENARIO_EVENTS layer) count
+      toward that decision only past EVENTS_BUDGET_ALLOWANCE;
+      ``estimated_token_count`` counts all of it.
     """
     max_turns = inp.max_transcript_turns
     layers = _build_layers(inp, max_turns)
@@ -149,7 +181,7 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
     estimated_tokens = _estimate_tokens(system_prompt + user_prompt)
     was_truncated = False
 
-    if estimated_tokens > inp.token_budget and max_turns > 2:
+    if _budgeted_tokens(layers) > inp.token_budget and max_turns > 2:
         reduced_max = max(2, max_turns // 2)
         layers = _build_layers(inp, reduced_max)
         system_prompt = _join(layers, SYSTEM_LAYER_ORDER)

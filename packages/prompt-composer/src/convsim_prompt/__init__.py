@@ -2,6 +2,7 @@
 
 from .composer import (
     LAYER_ORDER,
+    EVENTS_BUDGET_ALLOWANCE,
     OPTIONAL_SYSTEM_LAYERS,
     SYSTEM_LAYER_ORDER,
     USER_LAYER_ORDER,
@@ -66,6 +67,7 @@ from .types import (
 __all__ = [
     "compose_turn_prompt",
     "LAYER_ORDER",
+    "EVENTS_BUDGET_ALLOWANCE",
     "OPTIONAL_SYSTEM_LAYERS",
     "SYSTEM_LAYER_ORDER",
     "USER_LAYER_ORDER",

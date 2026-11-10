@@ -18,12 +18,14 @@ output check that play uses, and pin what the rewrite relies on:
 - the facts each NPC answers from are in a persona field the turn prompt
   renders, so they survive the three-exchange transcript window;
 - secrets stay in the private persona;
-- the longer personas still fit the prompt budget with a full transcript;
+- the longer personas still fit the prompt budget with a full transcript,
+  on a turn an event speaks too;
 - the lines the rules ask for do not trip the hidden-agenda leak check, which
   would turn a good reply into a retry or a fallback line.
 """
 from __future__ import annotations
 
+import itertools
 import re
 import unicodedata
 from pathlib import Path
@@ -398,9 +400,7 @@ def test_jordan_keeps_the_pack_safety_boundaries():
 # ── Prompt budget ─────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
-def test_full_transcript_window_still_fits_the_prompt_budget(scenario_id):
-    """Over budget, the composer halves the transcript window (6 → 3 entries)."""
+def _full_window_prompt(scenario_id: str, instructions=()):
     info = _load(scenario_id)
     state = initialize_state(build_variable_defs(info.state_variable_overrides))
     line = " ".join(["word"] * 90)  # the NPC's default per-reply word cap
@@ -408,16 +408,51 @@ def test_full_transcript_window_still_fits_the_prompt_budget(scenario_id):
         TranscriptEntry(speaker="player" if i % 2 == 0 else "npc", text=line, turn_number=i // 2 + 1)
         for i in range(6)
     ]
-    bundle = compose_turn_prompt(PromptComposerInput(
+    return compose_turn_prompt(PromptComposerInput(
         scenario=info.get_scenario_data("standard"),
         session_state=SessionState(variables=state, turn_number=4),
         safety_policy=_prompt_safety_policy(scenario_id),
         player_utterance=line,
         recent_transcript=transcript,
+        scenario_event_instructions=list(instructions),
     ))
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_full_transcript_window_still_fits_the_prompt_budget(scenario_id):
+    """Over budget, the composer halves the transcript window (6 → 3 entries)."""
+    bundle = _full_window_prompt(scenario_id)
     assert not bundle.was_truncated, (
         f"{scenario_id}: {bundle.estimated_token_count} estimated tokens halves the transcript"
     )
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_a_turn_an_event_speaks_on_keeps_the_full_window(scenario_id):
+    """The event's turn is the one that needs the conversation so far (#580).
+
+    Every event alone and every two at once (a repeating event beside
+    another): close_the_gap's "float a specific number" needs the offers
+    already made. Counted against the budget, the events layer pushed every
+    used_car and spanish_coffee event over it and halved the window.
+    """
+    from convsim_prompt import EVENTS_BUDGET_ALLOWANCE
+
+    events = _load(scenario_id).events or []
+    assert events
+    sets = [[e] for e in events] + [list(pair) for pair in itertools.combinations(events, 2)]
+    base = _full_window_prompt(scenario_id).estimated_token_count
+    for fired in sets:
+        bundle = _full_window_prompt(scenario_id, [e.npc_instruction for e in fired])
+        ids = [e.id for e in fired]
+        assert bundle.layer_map["SCENARIO_EVENTS"], ids
+        assert not bundle.was_truncated, (
+            f"{scenario_id} {ids}: {bundle.estimated_token_count} estimated tokens halves the transcript"
+        )
+        # The overrun is the events layer, and well inside the allowance.
+        events_tokens = len(bundle.layer_map["SCENARIO_EVENTS"]) // 4
+        assert bundle.estimated_token_count <= base + events_tokens + 2, ids
+        assert events_tokens <= EVENTS_BUDGET_ALLOWANCE * 2 // 3, ids
 
 
 # ── The lines the rules ask for pass the leak check ───────────────────────────
