@@ -188,6 +188,18 @@ sampling (its `temperature_default` and `top_p_default`), and the turn timing
 records name the demo model, whatever the full app has selected. A player who
 does not have it is offered the demo's one download, as a new player is.
 
+The demo also runs only on the managed engine (llama.cpp). Whatever runtime
+the full app's saved selection names, Ollama included, the demo boots
+llama.cpp (`resolve_startup_runtime_id` in `runtime/active.py`), and its
+autostart loads the demo model's install. With nothing saved it boots
+llama.cpp too when `CONVSIM_RUNTIME_ID` names another model runtime, and the
+configured default only when that is model-free (the `fake` runtime packaged
+builds start with), so a new player gets the no-model message instead of a
+conversation. A session that would follow a live runtime other than
+llama.cpp is refused with `EDITION_RESTRICTED`; sessions pinned to a
+model-free runtime (tests, the replay's self-test) do not use the live
+runtime and are not affected.
+
 The full app's selection is left as it is. When the demo's one-click install
 finishes (`routers/setup_install.py`), it saves the demo model as the
 selection only when nothing is selected yet, only a model-free runtime

@@ -643,7 +643,15 @@ def test_ask_for_raise_plays_its_own_state_and_events(app) -> None:
 
 
 class _EveryVariableRuntime(FakeChatRuntime):
-    """Moves every variable the turn schema names by +4, and writes a baseline."""
+    """Moves every variable the turn schema names by +4, and writes a baseline.
+
+    It answers under the llama.cpp id: the demo plays only on its managed
+    engine and refuses a session on any other live runtime.
+    """
+
+    @property
+    def id(self) -> str:
+        return "llama_cpp"
 
     async def _respond(self, request: ChatRequest) -> AsyncGenerator:
         schema = request.json_schema or {}

@@ -555,6 +555,36 @@ def _recorded_model_for(
     return recorded_model_id(conn, active.get("model_id"))
 
 
+def _require_demo_engine(request: Request) -> None:
+    """Refuse an unpinned demo session whose live runtime is not llama.cpp.
+
+    The demo edition plays only its own model, on the managed llama.cpp
+    engine: startup boots it whatever the shared data root's saved selection
+    names (``resolve_startup_runtime_id``) and ``/api/models/use`` refuses any
+    other runtime. This is the backstop for a live runtime that got past both,
+    such as Ollama, which would play the full app's model instead. A no-op in
+    the full edition and for sessions pinned to a model-free runtime, which
+    never use the live runtime.
+    """
+    if not is_demo(request.app.state.service_config):
+        return
+    runtime = getattr(request.app.state, "runtime", None)
+    if getattr(runtime, "id", None) == "llama_cpp":
+        return
+    name = getattr(runtime, "display_name", None) or getattr(runtime, "id", None) or "another engine"
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "message": (
+                f"The demo plays only its own AI model, but the app is set to use {name}. "
+                "Restart the demo to play its model. The full version of "
+                "Conversation Simulator adds Ollama and your own GGUF files."
+            ),
+            "code": EDITION_RESTRICTED,
+        },
+    )
+
+
 def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
     """Return the runtime this session was pinned to, else the shared runtime.
 
@@ -637,6 +667,7 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
     # mid-conversation.
     pinned_runtime_id = _pinned_runtime_id(body.runtime_id, conn)
     if pinned_runtime_id is None:
+        _require_demo_engine(request)
         # Leave no key at all rather than a null one, so _resolve_runtime's
         # membership test reads the same for old and new sessions.
         setup_dict.pop("runtime_id", None)

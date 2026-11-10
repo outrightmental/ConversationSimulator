@@ -1079,3 +1079,71 @@ def test_demo_preflight_counts_only_the_demo_models_install(shared_root, select)
     full = create_app(_config(root.tmp_path))
     with TestClient(full) as client:
         assert _llm_present(client)["status"] == "pass"
+
+
+def test_demo_boots_the_managed_engine_when_the_full_app_selected_ollama(shared_root):
+    """A full-app profile on Ollama: the demo boots llama.cpp and starts it on
+    the demo model, while the full app keeps booting Ollama."""
+    from convsim_core.runtime.active import resolve_startup_runtime_id
+
+    root = shared_root(_select_ollama, _install_demo_model_file)
+    demo_path = str(root.models_dir / f"{_STARTER_MODEL_ID}.gguf")
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        _settle_autostart(client, demo)
+        assert demo.state.runtime.id == "llama_cpp"
+        root.start.assert_awaited_once()
+        assert root.start.await_args.kwargs["model_path"] == demo_path
+        conn = demo.state.db.connection()
+        assert resolve_startup_runtime_id(conn, "fake", demo.state.service_config) == "llama_cpp"
+        assert client.get("/api/setup/status").json()["kind"] == "ready"
+        created = client.post("/api/sessions", json=_unpinned_session_body())
+        assert created.status_code == 201, created.text
+
+    root.start.reset_mock()
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        _settle_autostart(client, full)
+        assert full.state.runtime.id == "ollama"
+        assert root.start.await_count == 0
+        assert resolve_startup_runtime_id(full.state.db.connection(), "fake") == "ollama"
+
+
+def test_demo_with_nothing_selected_keeps_the_config_default_runtime(shared_root):
+    """A fresh demo profile boots the config default, so the no-model
+    backstop (issue #473) still refuses an unpinned session."""
+    from convsim_core.runtime.active import resolve_startup_runtime_id
+
+    root = shared_root()
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        assert demo.state.runtime.id == "fake"
+        conn = demo.state.db.connection()
+        config = demo.state.service_config
+        assert resolve_startup_runtime_id(conn, "fake", config) == "fake"
+        # A model runtime other than the managed engine is not the demo's.
+        assert resolve_startup_runtime_id(conn, "ollama", config) == "llama_cpp"
+        assert client.post("/api/sessions", json=_unpinned_session_body()).status_code == 409
+
+
+def test_demo_refuses_a_session_on_a_live_runtime_other_than_llama_cpp(shared_root):
+    from convsim_core.runtime.active import activate_runtime
+
+    root = shared_root(_select_ollama)
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        client.portal.call(activate_runtime, demo, "ollama")
+        resp = client.post("/api/sessions", json=_unpinned_session_body())
+        assert resp.status_code == 403, resp.text
+        detail = resp.json()["detail"]
+        assert detail["code"] == edition.EDITION_RESTRICTED
+        assert "set to use Ollama (local)" in detail["message"]
+        # A session pinned to a model-free runtime does not use the live one.
+        pinned = client.post("/api/sessions", json=_session_body("behavioral_interview"))
+        assert pinned.status_code == 201, pinned.text
+
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        assert full.state.runtime.id == "ollama"
+        created = client.post("/api/sessions", json=_unpinned_session_body())
+        assert created.status_code == 201, created.text
