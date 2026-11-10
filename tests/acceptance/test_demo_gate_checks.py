@@ -10,11 +10,11 @@ these tests pin the harness instead:
     caught (Ray repeating his closing question, Diane saying her agenda
     aloud, Ray naming his $13,800 floor in any form, the baseline-only and
     zero-change state deltas, the invented rubric ids, a fallback debrief, a
-    canned fallback turn), and the boundaries are where the issue puts them
-    (a 6-word repeat, a 4-word closing question, a 5-word agenda run, a
-    3-digit agenda number);
-  * severities: all six hard by default, ``--strict`` and per-check
-    overrides, and the exit status that follows;
+    canned fallback turn, a state_delta that copies CURRENT_STATE's values),
+    and the boundaries are where the issue puts them (a 6-word repeat, a
+    4-word closing question, a 5-word agenda run, a 3-digit agenda number);
+  * severities: (a) to (f) hard and (g) a warning by default, ``--strict``
+    and per-check overrides, and the exit status that follows;
   * the facts the checks read come from the files that own them: the five
     conversations from ``edition.py``, the baseline variables from
     ``scenario_state.py``, the fallback line from the prompt composer, the
@@ -43,7 +43,7 @@ import pytest
 import yaml
 
 from convsim_core.edition import DEMO_SCENARIOS
-from convsim_core.scenario_state import BASELINE_VARIABLES
+from convsim_core.scenario_state import BASELINE_VARIABLES, ScenarioVariableDef, build_variable_defs
 from convsim_prompt.turn_output import SAFE_FALLBACK_UTTERANCE
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -488,7 +488,14 @@ class TestSeverity:
     def test_defaults(self) -> None:
         assert checks.resolve_severity() == {
             "a": "hard", "b": "hard", "c": "hard", "d": "hard", "e": "hard", "f": "hard",
+            "g": "warn",
         }
+
+    def test_delta_shape_is_a_warning_until_asked(self) -> None:
+        # (g) measures a risk of the unbounded state_delta integers (#580).
+        assert checks.DEFAULT_SEVERITY["g"] == checks.WARN
+        assert checks.resolve_severity(hard=["delta_shape"])["g"] == checks.HARD
+        assert checks.resolve_severity(strict=True)["g"] == checks.HARD
 
     def test_authored_state_check_is_hard_now_the_schema_requires_it(self) -> None:
         # The turn schema requires each of the scenario's own variables in
@@ -566,7 +573,8 @@ class TestEvaluateRun:
             rubric_ids=["clarity", "preparation", "empathy", "holding_firm", "outcome_framing"],
         )
         status = {r.letter: r.status for r in results}
-        assert status == {"a": "FAIL", "b": "pass", "c": "FAIL", "d": "FAIL", "e": "pass", "f": "pass"}
+        assert status == {"a": "FAIL", "b": "pass", "c": "FAIL", "d": "FAIL", "e": "pass", "f": "pass",
+                          "g": "pass"}
         assert checks.run_verdict(results) == "fail"
 
     def test_a_clean_run_passes(self) -> None:
@@ -584,7 +592,152 @@ class TestEvaluateRun:
             rubric_ids=["preparation", "clarity"],
         )
         assert checks.run_verdict(results) == "pass"
-        assert [r.letter for r in results] == ["a", "b", "c", "d", "e", "f"]
+        assert [r.letter for r in results] == ["a", "b", "c", "d", "e", "f", "g"]
+
+    def test_copied_state_values_warn_and_strict_fails(self) -> None:
+        specs = checks.variable_specs(_scenario_doc("everyday-negotiation/scenarios/used_car_negotiation.yaml"))
+        copied = {"deal_progress": 0, "perceived_fairness": 50, "firmness": 75,
+                  "concession_level": 0, "leverage": 30}
+        kwargs = dict(
+            npc_lines=_lines("Fourteen-nine is where I can start.", opening="Hey there!"),
+            turn_deltas=[(1, {"deal_progress": 0, "perceived_fairness": 15, "firmness": 12,
+                              "concession_level": 0, "leverage": 20})],
+            debrief_status=200,
+            debrief={"used_fallback": False, "scores": {"preparation": 58.0}},
+            hidden_agenda=[],
+            authored_variables=list(specs),
+            rubric_ids=["preparation"],
+            proposed_deltas=[(1, copied)],
+            variable_specs=specs,
+        )
+        results = {r.letter: r for r in checks.evaluate_run(**kwargs)}
+        assert results["g"].status == "warn"
+        assert results["g"].findings[0].turn == 1
+        assert "3 of 5 proposed values equal the current value" in results["g"].findings[0].message
+        assert checks.run_verdict(list(results.values())) == "warn"
+        strict = checks.evaluate_run(**kwargs, severity=checks.resolve_severity(strict=True))
+        assert checks.run_verdict(strict) == "fail"
+
+
+def _scenario_doc(rel: str) -> Dict[str, Any]:
+    return yaml.safe_load((_PACKS / rel).read_text(encoding="utf-8"))
+
+
+class TestDeltaShape:
+    """(g): the model writes changes, not the values CURRENT_STATE showed (#580).
+
+    The turn schema's state_delta integers carry no bound, so a model that
+    copies "impression: 50" or writes targets moves every variable by its
+    full limit each turn and the engine's clamp is all that stops it.
+    """
+
+    specs = {
+        "impression": checks.VariableSpec(default=45, max_delta_per_turn=12),
+        "rapport": checks.VariableSpec(default=40, max_delta_per_turn=10),
+        "evidence_strength": checks.VariableSpec(default=10, max_delta_per_turn=20),
+        "case_clarity": checks.VariableSpec(default=10, max_delta_per_turn=18),
+    }
+
+    def test_ordinary_changes_pass(self) -> None:
+        turns = [
+            (1, {"impression": 3, "rapport": 2, "evidence_strength": 10, "case_clarity": 0},
+             {"impression": 3, "rapport": 2, "evidence_strength": 10, "case_clarity": 0}),
+            (2, {"impression": -4, "rapport": 0, "evidence_strength": -5, "case_clarity": 6},
+             {"impression": -4, "rapport": 0, "evidence_strength": -5, "case_clarity": 6}),
+        ]
+        assert checks.find_absolute_deltas(turns, self.specs) == []
+
+    def test_copying_current_state_is_flagged(self) -> None:
+        copied = {"impression": 45, "rapport": 40, "evidence_strength": 10, "case_clarity": 10}
+        applied = {"impression": 12, "rapport": 10, "evidence_strength": 10, "case_clarity": 10}
+        [finding] = checks.find_absolute_deltas([(1, copied, applied)], self.specs)
+        assert finding.turn == 1
+        assert finding.message.startswith("4 of 4 proposed values equal the current value")
+        assert "impression +45 (was 45, limit ±12)" in finding.evidence
+
+    def test_the_current_value_follows_the_applied_changes(self) -> None:
+        # Turn 2's CURRENT_STATE showed the state turn 1 left: 57, 50, 30, 28.
+        turns = [
+            (1, {"impression": 12, "rapport": 10, "evidence_strength": 20, "case_clarity": 18},
+             {"impression": 12, "rapport": 10, "evidence_strength": 20, "case_clarity": 18}),
+            (2, {"impression": 57, "rapport": 50, "evidence_strength": 30, "case_clarity": 0},
+             {"impression": 12, "rapport": 10, "evidence_strength": 20, "case_clarity": 0}),
+        ]
+        found = checks.find_absolute_deltas(turns, self.specs)
+        assert [f.turn for f in found] == [1, 2]
+        assert found[0].message == "every one of 4 proposed values is at or past its per-turn limit"
+        assert found[1].message.startswith("3 of 4 proposed values equal the current value")
+        assert "impression +57 (was 57" in found[1].evidence
+
+    def test_target_values_are_flagged(self) -> None:
+        # The value each variable should reach, not the change: past its limit.
+        specs = checks.variable_specs(_scenario_doc("dating-confidence-boundaries/scenarios/the_ask.yaml"))
+        targets = {"rapport": 30, "confidence": 44, "jordan_interest": 38, "jordan_comfort": 63}
+        [finding] = checks.find_absolute_deltas([(1, targets, {})], specs)
+        assert finding.message == (
+            "4 of 4 proposed values are past their per-turn limit "
+            "(rapport, confidence, jordan_interest, jordan_comfort): values, not changes?"
+        )
+        # Half of them past the limit is a strong line, not a shape.
+        mixed = {"rapport": 20, "confidence": 13, "jordan_interest": 3, "jordan_comfort": -5}
+        assert checks.find_absolute_deltas([(1, mixed, {})], specs) == []
+
+    def test_a_zero_current_value_is_not_a_copy(self) -> None:
+        specs = {"deal_progress": checks.VariableSpec(default=0), "leverage": checks.VariableSpec(default=30)}
+        assert checks.find_absolute_deltas([(1, {"deal_progress": 0, "leverage": 5}, {})], specs) == []
+
+    def test_one_variable_alone_is_not_judged(self) -> None:
+        specs = {"impression": self.specs["impression"]}
+        assert checks.find_absolute_deltas([(1, {"impression": 45}, {"impression": 12})], specs) == []
+
+    def test_names_outside_the_scenario_are_ignored(self) -> None:
+        proposed = {"trust": 50, "patience": 75, "impression": 2, "rapport": 1}
+        assert checks.find_absolute_deltas([(1, proposed, {"impression": 2, "rapport": 1})], self.specs) == []
+
+    def test_without_the_proposed_delta_every_change_at_its_limit_is_flagged(self) -> None:
+        at_limit = {"impression": -12, "rapport": 10, "evidence_strength": 20, "case_clarity": 18}
+        [finding] = checks.find_absolute_deltas([(3, None, at_limit)], self.specs)
+        assert finding.turn == 3
+        assert finding.message == "every one of 4 applied changes is exactly its per-turn limit"
+        one_short = dict(at_limit, case_clarity=17)
+        assert checks.find_absolute_deltas([(3, None, one_short)], self.specs) == []
+
+    @pytest.mark.parametrize("raw, expected", [
+        ('{"npc_utterance": "Hi.", "state_delta": {"impression": 3}}', {"impression": 3}),
+        ('Sure.\n{"state_delta": {"rapport": -2}, "npc_emotion": "warm"}\nDone.', {"rapport": -2}),
+        ('{"npc_utterance": "Hi."}', None),
+        ('{"state_delta": [1, 2]}', None),
+        ("not json at all", None),
+        ('{"state_delta": {"impression": 3}', None),
+        (None, None),
+    ])
+    def test_proposed_state_delta(self, raw: Any, expected: Optional[Dict[str, Any]]) -> None:
+        assert checks.proposed_state_delta(raw) == expected
+
+    def test_variable_specs_read_the_scenario_and_fill_from_the_baseline(self) -> None:
+        baseline = replay.baseline_variable_specs()
+        doc = {"state": {"variables": {
+            "patience": {"max_delta_per_turn": 5},
+            "clarity": 12,
+            "mood": {"default": 60, "min": 10, "max": 90, "max_delta_per_turn": 7, "visibility": "hidden"},
+            "flag": True,
+        }}}
+        specs = checks.variable_specs(doc, baseline)
+        assert specs == {
+            "patience": checks.VariableSpec(default=75, max_delta_per_turn=5),
+            "clarity": checks.VariableSpec(default=12),
+            "mood": checks.VariableSpec(default=60, max_delta_per_turn=7, min=10, max=90),
+        }
+
+    @pytest.mark.parametrize("pack_id, scenario_id", [(s.pack_id, s.scenario_id) for s in DEMO_SCENARIOS])
+    def test_specs_match_the_engines_variables(self, pack_id: str, scenario_id: str) -> None:
+        facts = replay.load_scenario_facts(_PACKS, pack_id, scenario_id, list(BASELINE_VARIABLES))
+        scenario = yaml.safe_load(facts.scenario_path.read_text(encoding="utf-8"))
+        defs = build_variable_defs(scenario["state"]["variables"])
+        assert facts.variable_specs and set(facts.variable_specs) <= set(defs)
+        for name, spec in facts.variable_specs.items():
+            d = defs[name]
+            assert spec == checks.VariableSpec(d.default, d.max_delta_per_turn, d.min, d.max), name
 
 
 class TestTranscriptShape:
@@ -614,6 +767,17 @@ class TestSourcesOfTruth:
 
     def test_baseline_variables_match_scenario_state(self) -> None:
         assert replay.baseline_variables() == list(BASELINE_VARIABLES)
+
+    def test_baseline_specs_match_scenario_state(self) -> None:
+        assert replay.baseline_variable_specs() == {
+            name: checks.VariableSpec(d.default, d.max_delta_per_turn, d.min, d.max)
+            for name, d in BASELINE_VARIABLES.items()
+        }
+        # The fallbacks are the engine's own for a variable that does not say.
+        plain = ScenarioVariableDef(name="x")
+        assert checks.VariableSpec() == checks.VariableSpec(
+            plain.default, plain.max_delta_per_turn, plain.min, plain.max,
+        )
 
     def test_safe_fallback_utterance_matches_the_prompt_composer(self) -> None:
         assert replay.safe_fallback_utterance() == SAFE_FALLBACK_UTTERANCE
@@ -721,9 +885,15 @@ class ScriptedApi:
         memory_api: bool = True,
         fallback_turns: Tuple[int, ...] = (),
         raise_at_debrief: Optional[BaseException] = None,
+        proposed: Optional[List[Dict[str, int]]] = None,
+        debug_api: bool = True,
     ):
         self.npc_lines = npc_lines
         self.deltas = deltas or [{} for _ in npc_lines]
+        # What the model wrote in state_delta, as /debug's raw output carries
+        # it: by default the change the engine applied.
+        self.proposed = proposed or self.deltas
+        self.debug_api = debug_api
         self.scores = scores if scores is not None else {}
         # Score each session's own rubric, as the engine does since issue
         # #578, for a replay that plays more than one conversation.
@@ -816,6 +986,15 @@ class ScriptedApi:
             return 200, {"used_fallback": False, "scores": scores}
         if path.endswith("/transcript"):
             return 200, {"transcript_saved": True, "turns": list(self.transcript)}
+        if path.endswith("/debug"):
+            if not self.debug_api:
+                raise replay.ApiError(method, path, 404, {"detail": "Not Found"})
+            return 200, {"session_id": path.split("/")[3], "turns": [
+                {"turn_number": n, "raw_npc_output": json.dumps({
+                    "npc_utterance": self.npc_lines[n - 1], "state_delta": self.proposed[n - 1],
+                })}
+                for n in range(1, self.turn + 1)
+            ]}
         raise AssertionError(f"unexpected call {method} {path}")
 
 
@@ -843,7 +1022,7 @@ class TestPlayConversation:
             "seed": 43,
         }
         assert [p.rsplit("/", 1)[-1] for _, p, _ in api.calls[2:]] == [
-            "start", "turn", "turn", "end", "debrief", "transcript",
+            "start", "turn", "turn", "end", "debrief", "transcript", "debug",
         ]
         assert record["error"] is None
         assert [t["npc"] for t in record["turns"]] == self.lines[:2]
@@ -851,6 +1030,34 @@ class TestPlayConversation:
         assert record["opening"] == "Opening line."
         assert record["debrief"]["status"] == 200
         assert record["transcript"]["transcript_saved"] is True
+        assert [t["proposed_state_delta"] for t in record["turns"]] == [{}, {}]
+        assert record["debug_error"] is None
+
+    def test_copied_state_values_are_read_from_debug_and_warn(self) -> None:
+        copied = {"comprehension": 50, "confidence": 40, "repair_count": 0, "vocabulary_richness": 50}
+        applied = {"comprehension": 10, "confidence": 10, "repair_count": 0, "vocabulary_richness": 10}
+        api = ScriptedApi(self.lines, deltas=[applied, {}], proposed=[copied, {}])
+        record = replay.play_conversation(api, _facts(), ["uno", "dos"], run=1, seed=1, log=_quiet)
+        assert record["turns"][0]["proposed_state_delta"] == copied
+        replay.evaluate_record(record, _facts(), checks.resolve_severity())
+        g = {c["letter"]: c for c in record["checks"]}["g"]
+        assert g["status"] == "warn"
+        assert [x["turn"] for x in g["findings"]] == [1]
+        assert "3 of 4 proposed values equal the current value" in g["findings"][0]["message"]
+        replay.evaluate_record(record, _facts(), checks.resolve_severity(hard=["g"]))
+        assert {c["letter"]: c for c in record["checks"]}["g"]["status"] == "FAIL"
+
+    def test_without_debug_the_applied_changes_are_judged(self) -> None:
+        at_limit = {"comprehension": 10, "confidence": -10, "repair_count": 1, "vocabulary_richness": 10}
+        api = ScriptedApi(self.lines, deltas=[at_limit], debug_api=False)
+        record = replay.play_conversation(api, _facts(), ["uno"], run=1, seed=1, log=_quiet)
+        assert record["error"] is None
+        assert "HTTP 404" in record["debug_error"]
+        assert "proposed_state_delta" not in record["turns"][0]
+        replay.evaluate_record(record, _facts(), checks.resolve_severity())
+        g = {c["letter"]: c for c in record["checks"]}["g"]
+        assert g["status"] == "warn"
+        assert g["findings"][0]["message"] == "every one of 4 applied changes is exactly its per-turn limit"
 
     def test_runtime_pin_is_passed_through(self) -> None:
         api = ScriptedApi(self.lines)
@@ -928,13 +1135,24 @@ class TestMain:
         record = json.loads((tmp_path / "spanish_coffee-run2.json").read_text(encoding="utf-8"))
         assert record["schema"] == "convsim.demo-gate-replay/1"
         assert record["seed"] == 43 and record["verdict"] == "pass"
-        assert [c["letter"] for c in record["checks"]] == ["a", "b", "c", "d", "e", "f"]
+        assert [c["letter"] for c in record["checks"]] == ["a", "b", "c", "d", "e", "f", "g"]
         assert len(record["turns"]) == 6
         summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
         assert "**Verdict: PASS.**" in summary
         assert "Not a D-05 result" not in summary
         assert "does not replace the manual D-05 judgement" in summary
-        assert "| spanish_coffee | 2 | 43 | 6 | pass | pass | pass | pass | pass | pass | PASS |" in summary
+        assert "| spanish_coffee | 2 | 43 | 6 | pass | pass | pass | pass | pass | pass | pass | PASS |" in summary
+
+    def test_a_copied_state_warns_and_hard_g_fails(self, tmp_path: Path) -> None:
+        copied = {"comprehension": 50, "confidence": 40, "repair_count": 0, "vocabulary_richness": 50}
+        applied = {"comprehension": 10, "confidence": 10, "repair_count": 0, "vocabulary_richness": 10}
+        def api() -> ScriptedApi:
+            return self._clean_api(deltas=[applied] + [{}] * 5, proposed=[copied] + [{}] * 5)
+        assert self._run(tmp_path / "default", api()) == 0
+        summary = (tmp_path / "default" / "summary.md").read_text(encoding="utf-8")
+        assert "(g) delta_shape: **warn**" in summary
+        assert "turn 1: 3 of 4 proposed values equal the current value" in summary
+        assert self._run(tmp_path / "hard", api(), "--hard", "g") == 1
 
     def test_a_fallback_turn_fails_the_replay(self, tmp_path: Path) -> None:
         api = self._clean_api(deltas=[{"comprehension": 5}] + [{}] * 5, fallback_turns=(4,))
@@ -1181,6 +1399,11 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
             assert by_letter["a"]["status"] == "FAIL"
             assert by_letter["a"]["findings"][0]["turn"] == 2
             assert by_letter["f"]["status"] == "pass"
+            # The engine's /debug gives each turn's raw output; the fake
+            # runtime proposes no change, so (g) has nothing to flag.
+            assert record["debug_error"] is None
+            assert [t["proposed_state_delta"] for t in record["turns"]] == [{}] * 6
+            assert by_letter["g"]["status"] == "pass"
             # The fake runtime moves no variable, so the authored-state check,
             # hard by default since the schema requires them (#580), fails.
             assert by_letter["c"]["status"] == "FAIL"
