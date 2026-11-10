@@ -22,7 +22,7 @@
  *   02-home.png           the five conversations and the upsell card
  *   03-cafe-sol-brief.png Coffee at Café Sol's Conversation Brief
  *   04-conversation.png   one conversation three exchanges in (CONVSIM_STORE_PLAY,
- *                         default The Used Car Deal)
+ *                         default The Behavioral Interview)
  *   05-debrief.png        that session's debrief, scorecard in frame
  *
  * Prerequisites
@@ -79,7 +79,7 @@ const PLAYS = {
     "I understand budgets are tight. If the full amount isn't possible this cycle, could we agree on part of it now and the rest at the next review, in writing?",
   ],
 }
-const PLAY_SCENARIO = process.env.CONVSIM_STORE_PLAY ?? 'used_car_negotiation'
+const PLAY_SCENARIO = process.env.CONVSIM_STORE_PLAY ?? 'behavioral_interview'
 if (!PLAYS[PLAY_SCENARIO]) {
   console.error(`CONVSIM_STORE_PLAY must be one of: ${Object.keys(PLAYS).join(', ')}`)
   process.exit(1)
