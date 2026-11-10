@@ -968,11 +968,12 @@ async def process_turn(
     #     variables the session's schema names may move (issue #580): a runtime
     #     that ignores the schema, or a repair call sent without it, can still
     #     write a baseline the scenario never reads.
+    played = state_variables_in_schema(output_schema)
     delta_result = apply_state_delta(
         state_vars,
         turn_output.state_delta,
         var_defs,
-        allowed=state_variables_in_schema(output_schema),
+        allowed=played,
     )
     if delta_result.rejected_keys:
         logger.warning("State delta had unknown keys (rejected): %s", delta_result.rejected_keys)
@@ -1166,7 +1167,9 @@ async def process_turn(
 
     timing.persist_ms = (time.perf_counter() - persist_started) * 1000.0
 
-    visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs)
+    # The meters: the visible variables, and with state of the scenario's own
+    # only those it plays, the ones that can move (issue #580).
+    visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs, played)
 
     logger.debug(
         "Turn %d complete for session %s: state=%s ending=%s",

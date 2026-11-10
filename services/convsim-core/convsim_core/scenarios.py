@@ -117,6 +117,15 @@ class ScenarioInfo:
             state_variables=self._prompt_state_variables(),
         )
 
+    def played_variables(self) -> List[str]:
+        """The variables this scenario plays (``played_variable_names``), in order.
+
+        The ones its turn schema takes and its meters may show (issue #580);
+        [] for a scenario with no state of its own, and for a state block it
+        cannot read, whose turns are then sent the open schema.
+        """
+        return [variable.name for variable in self._prompt_state_variables()]
+
     def _prompt_state_variables(self) -> List[StateVariable]:
         """``prompt_state_variables`` of this scenario; [] for a state block it cannot read.
 

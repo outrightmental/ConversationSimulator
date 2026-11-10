@@ -338,9 +338,13 @@ limit and authored `description` (or, without one, what the scenario's
 events on it say), and the turn output schema the runtime is sent makes
 `state_delta` an object with each of them a required integer and no other
 key; the engine clamps each to its `max_delta_per_turn`. A baseline nothing
-in the scenario reads is left out of the prompt and cannot be moved. A scenario that
+in the scenario reads is left out of the prompt and cannot be moved, so it
+has no meter either: every path that reports meters (the turn result, the
+opening event, the session detail and export, the session socket's resync
+and the debrief's state arc) shows only the visible variables the scenario
+plays. A scenario that
 configures no state (most of the hardcoded catalog) plays every baseline
-with a free-form `state_delta`, as before.
+with a free-form `state_delta`, and shows each visible one, as before.
 
 Scenario events are evaluated at the start of a turn, on the state the
 previous turn left; each one that fires puts its `npc_instruction` into that

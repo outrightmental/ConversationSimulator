@@ -17,7 +17,10 @@ the engine half of the fix:
   - the state engine rejecting any other variable a runtime still writes;
   - events evaluated on the state the previous turn left, their instructions
     in that turn's prompt, recorded on that turn, once or on every turn their
-    condition holds as the event says.
+    condition holds as the event says;
+  - the meters: with state of its own a scenario shows only the visible
+    variables it plays, because no other can move, on every path that
+    reports them (turn, opening, session detail, socket, export, debrief).
 """
 from __future__ import annotations
 
@@ -32,15 +35,19 @@ from fastapi.testclient import TestClient
 
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
+from convsim_core.edition import DEMO_SCENARIOS
 from convsim_core.runtime.fake import FakeChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatRequest, ChatToken
 from convsim_core.scenario_state import (
     BASELINE_DESCRIPTIONS,
     BASELINE_VARIABLES,
     ScenarioEvent,
+    VariableVisibility,
     apply_state_delta,
     build_variable_defs,
+    hidden_variable_names,
     initialize_state,
+    partition_state_by_visibility,
     played_variable_names,
 )
 from convsim_core.scenarios import (
@@ -206,6 +213,66 @@ class TestApplyStateDelta:
 
 
 # ---------------------------------------------------------------------------
+# The meters show what the scenario plays
+# ---------------------------------------------------------------------------
+
+
+def _visible_played(info: ScenarioInfo) -> List[str]:
+    defs = build_variable_defs(info.state_variable_overrides)
+    return [n for n in info.played_variables() if defs[n].visibility == VariableVisibility.VISIBLE]
+
+
+class TestMeters:
+    def test_a_variable_outside_the_played_ones_is_hidden(self):
+        defs = build_variable_defs({"mood": {"default": 40}, "secret": {"default": 5, "visibility": "hidden"}})
+        visible, hidden = partition_state_by_visibility(
+            initialize_state(defs), defs, ["mood", "secret", "rapport"],
+        )
+        assert visible == {"rapport": 50, "mood": 40}
+        assert set(hidden) == {"secret", "trust", "patience", "pressure", "openness", "objective_progress"}
+        assert hidden_variable_names(defs, ["mood", "secret", "rapport"]) == set(hidden)
+
+    @pytest.mark.parametrize("played", [None, []])
+    def test_without_played_ones_each_keeps_its_own_visibility(self, played):
+        defs = build_variable_defs({"trust": {"visibility": "hidden"}})
+        visible, hidden = partition_state_by_visibility(initialize_state(defs), defs, played)
+        assert set(hidden) == {"trust", "pressure"}
+        assert set(visible) == {"patience", "rapport", "openness", "objective_progress"}
+        assert hidden_variable_names(defs, played) == {"trust", "pressure"}
+
+    @pytest.mark.parametrize("scenario_file", _scenario_files(), ids=lambda p: p.stem)
+    def test_every_pack_scenario_shows_only_its_visible_played_variables(self, scenario_file):
+        info = load_scenario_info_from_pack(scenario_file.parent.parent, f"scenarios/{scenario_file.name}")
+        assert info.played_variables() == [v.name for v in info.get_scenario_data("standard").state_variables]
+        defs = build_variable_defs(info.state_variable_overrides)
+        visible, _ = partition_state_by_visibility(initialize_state(defs), defs, info.played_variables())
+        assert sorted(visible) == sorted(_visible_played(info)), scenario_file.stem
+        assert visible, f"{scenario_file.stem} shows no meter at all"
+
+    def test_the_catalog_keeps_its_baselines_unless_it_plays_its_own(self):
+        defs = build_variable_defs()
+        for scenario_id in ("behavioral_interview", "hostile_executive_interview",
+                            "used_car_negotiation", "spanish_coffee"):
+            info = SCENARIOS[scenario_id]
+            visible, _ = partition_state_by_visibility(initialize_state(defs), defs, info.played_variables())
+            assert set(visible) == {"trust", "patience", "rapport", "openness", "objective_progress"}
+        # coworker_feedback plays three baselines: trust and openness never move.
+        info = SCENARIOS["coworker_feedback"]
+        defs = build_variable_defs(info.state_variable_overrides)
+        visible, _ = partition_state_by_visibility(initialize_state(defs), defs, info.played_variables())
+        assert set(visible) == {"rapport", "patience", "objective_progress"}
+
+    def test_a_broken_state_block_hides_nothing_more(self):
+        info = _pack_scenario("difficult-conversations", "ask_for_raise")
+        broken = ScenarioInfo(
+            scenario_data=info.scenario_data, max_turns=5, supported_languages=["en"],
+            difficulty_options=info.difficulty_options, opening_npc_says="Hi.",
+            state_variable_overrides={"x": {"visibility": "sideways"}},
+        )
+        assert broken.played_variables() == []
+
+
+# ---------------------------------------------------------------------------
 # process_turn: the request, the delta, and the events
 # ---------------------------------------------------------------------------
 
@@ -306,6 +373,8 @@ class TestTheTurnRequest:
         # A baseline the schema does not take is rejected, not applied.
         assert result.state_delta == {"leverage": 10}
         assert result.new_state_vars["trust"] == 50
+        # The meters are the visible variables it plays: no frozen baseline.
+        assert result.visible_state == {"deal_progress": 0, "concession_level": 0}
         [payload] = [json.loads(r["payload_json"]) for r in conn.execute(
             "SELECT payload_json FROM turn_session_events WHERE event_type = 'state_delta'")]
         assert payload["rejected_keys"] == ["trust"]
@@ -493,5 +562,116 @@ def test_ask_for_raise_plays_its_own_state_and_events(app) -> None:
     probe_line = "  - " + " ".join(probe["npc_instruction"].split())
     assert [probe_line in r.messages[0].content for r in turns] == [False, True, True]
     assert [p["triggered_scenario_events"] for p in payloads] == [[], ["vague_claim_probe"], ["vague_claim_probe"]]
-    # The baseline the scenario never reads stays where it started.
+    # The baseline the scenario never reads stays where it started, and
+    # has no meter.
     assert payloads[-1]["state_delta"].get("trust") is None
+    assert [sorted(p["visible_state"]) for p in payloads] == [["impression", "rapport"]] * 3
+
+
+class _EveryVariableRuntime(FakeChatRuntime):
+    """Moves every variable the turn schema names by +4, and writes a baseline."""
+
+    async def _respond(self, request: ChatRequest) -> AsyncGenerator:
+        schema = request.json_schema or {}
+        if "replay_suggestions" in (schema.get("properties") or {}):
+            response: Dict[str, Any] = {
+                "summary": "You kept going.", "dimension_bands": {},
+                "strengths": ["s"], "improvements": ["i"], "turning_points": [],
+                "replay_suggestions": ["r"],
+            }
+        else:
+            names = schema["properties"]["state_delta"].get("properties") or {}
+            response = {
+                "npc_utterance": "Go on.",
+                "npc_emotion": "neutral",
+                "state_delta": {**{n: 4 for n in names}, "trust": 9},
+                "event_flags": [],
+                "rubric_observations": [],
+                "safety": {"status": "ok"},
+                "session_control": {"continue_session": True},
+            }
+        text = json.dumps(response)
+        yield ChatFinal(text=text, model_id="fake-small", input_tokens=10,
+                        output_tokens=len(text.split()), structured=response)
+
+    def chat_stream(self, request: ChatRequest) -> Any:
+        return self._respond(request)
+
+
+@pytest.fixture()
+def demo_app(tmp_path):
+    config = ServiceConfig(
+        host="127.0.0.1",
+        port=7355,
+        data_dir=str(tmp_path / "data"),
+        log_dir=str(tmp_path / "logs"),
+        db_dir=str(tmp_path / "db"),
+        packs_dir=str(tmp_path / "packs"),
+        official_packs_dir=str(_PACKS / "official"),
+        edition="demo",
+    )
+    return create_app(config)
+
+
+# The two meters each demo card shows: its visible played variables.
+_DEMO_METERS = {
+    "behavioral_interview": {"impression", "rapport"},
+    "used_car_negotiation": {"deal_progress", "concession_level"},
+    "ask_for_raise": {"impression", "rapport"},
+    "the_ask": {"rapport", "confidence"},
+    "spanish_coffee": {"comprehension", "confidence"},
+}
+
+
+@pytest.mark.parametrize("demo", DEMO_SCENARIOS, ids=lambda d: d.scenario_id)
+def test_a_demo_scenario_reports_only_the_meters_it_plays(demo_app, demo) -> None:
+    """Every path that reports meters reports the same visible played variables.
+
+    The opening event, the session detail before and after a turn, the turn
+    result, the socket's resync, the export and the debrief's state arc.
+    Before, the baselines the scenario never reads were reported beside its
+    own two, where no delta could ever move them (issue #580).
+    """
+    from convsim_core.services.model_manager_service import set_active_config
+
+    info = load_scenario_info_from_pack(
+        _PACKS / "official" / next(p.parent.parent.name for p in _scenario_files()
+                                   if p.stem == demo.scenario_id),
+        f"scenarios/{demo.scenario_id}.yaml",
+    )
+    expected = set(_visible_played(info))
+    assert expected == _DEMO_METERS[demo.scenario_id]
+
+    with TestClient(demo_app) as client:
+        set_active_config(demo_app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf")
+        demo_app.state.runtime = _EveryVariableRuntime()
+        res = client.post("/api/sessions", json={
+            "scenario_id": demo.scenario_id, "difficulty": "standard", "player_role_name": "Alex",
+            "language": info.supported_languages[0], "input_mode": "text-only", "tts_enabled": False,
+            "show_state_meters": True, "save_transcript": True, "seed": None,
+        })
+        assert res.status_code == 201, res.text
+        session_id = res.json()["session_id"]
+        start = client.post(f"/api/sessions/{session_id}/start")
+        assert start.status_code == 200, start.text
+        opening = next(e for e in start.json()["events"] if e["event_type"] == "npc_opening")
+        assert set(opening["payload"]["visible_state"]) == expected
+        assert set(client.get(f"/api/sessions/{session_id}").json()["visible_state"]) == expected
+
+        res = client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello, thanks for meeting me."})
+        assert res.status_code == 200, res.text
+        turn = next(e for e in res.json()["events"] if e["event_type"] == "npc_turn")["payload"]
+        assert set(turn["visible_state"]) == expected
+        assert set(turn["state_delta"]) == set(info.played_variables())
+        assert set(client.get(f"/api/sessions/{session_id}").json()["visible_state"]) == expected
+        with client.websocket_connect(f"/ws/session/{session_id}") as ws:
+            resync = ws.receive_json()
+        assert resync["type"] == "session.state"
+        assert set(resync["payload"]["state_vars"]) == expected
+
+        client.post(f"/api/sessions/{session_id}/end")
+        assert set(client.get(f"/api/sessions/{session_id}/export").json()["visible_state"]) == expected
+        debrief = client.post(f"/api/sessions/{session_id}/debrief")
+    assert debrief.status_code == 200, debrief.text
+    arc = debrief.json()["metrics"]["state_arc"]
+    assert arc and all(set(point["state"]) == expected for point in arc)

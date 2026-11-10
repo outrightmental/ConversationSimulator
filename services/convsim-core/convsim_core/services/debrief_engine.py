@@ -37,7 +37,7 @@ import re
 import sqlite3
 from dataclasses import dataclass, field, fields as dataclass_fields
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Collection, Dict, List, Optional, Set
 
 from convsim_prompt import (
     DebriefNarrative,
@@ -53,7 +53,7 @@ from convsim_prompt.types import ScenarioData, ScenarioRubric
 
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
-from convsim_core.scenario_state import VariableVisibility, build_variable_defs
+from convsim_core.scenario_state import build_variable_defs, hidden_variable_names
 from convsim_core.services.model_registry_service import active_model_sampling
 
 logger = logging.getLogger(__name__)
@@ -463,13 +463,21 @@ def _rubric_bands(
     return {d.id: bands[d.id] for d in rubric.dimensions if d.id in bands}
 
 
-def _hidden_variables(state_variable_overrides: Optional[Dict[str, Any]]) -> Set[str]:
-    """The state variables the scenario hides from the player."""
+def _hidden_variables(
+    state_variable_overrides: Optional[Dict[str, Any]],
+    played_variables: Optional[Collection[str]] = None,
+) -> Set[str]:
+    """The state variables the scenario hides from the player.
+
+    Those it marks hidden and, when ``played_variables`` names any, every
+    variable outside them (issue #580): the meters during play leave those
+    out, because the turns cannot move them.
+    """
     try:
         defs = build_variable_defs(state_variable_overrides)
     except (TypeError, ValueError, AttributeError):
         return set()
-    return {name for name, d in defs.items() if d.visibility == VariableVisibility.HIDDEN}
+    return hidden_variable_names(defs, played_variables)
 
 
 def whole_turn_of(row_turn_number: int) -> int:
@@ -605,6 +613,7 @@ async def generate_debrief(
     scenario_data: ScenarioData,
     *,
     state_variable_overrides: Optional[Dict[str, Any]] = None,
+    played_variables: Optional[Collection[str]] = None,
 ) -> DebriefResult:
     """Generate, persist, and return a debrief for a completed session.
 
@@ -613,8 +622,10 @@ async def generate_debrief(
 
     ``scenario_data.rubric``, when the scenario has one, decides what is
     scored (see the module docstring). ``state_variable_overrides`` is the
-    scenario's ``state.variables``: the variables it hides are left out of
-    the telemetry's state arc.
+    scenario's ``state.variables`` and ``played_variables`` the variables it
+    plays (``ScenarioInfo.played_variables``): the telemetry's state arc
+    leaves out the ones it hides and, when it plays any, every other one,
+    the same set the meters left out during play.
     """
     session_id: str = session_row["session_id"]
     scenario_id: str = session_row["scenario_id"]
@@ -699,7 +710,7 @@ async def generate_debrief(
             source_mode=source_mode,
             final_state=final_state,
             interruption_count=barge_in_count,
-            hidden_variables=_hidden_variables(state_variable_overrides),
+            hidden_variables=_hidden_variables(state_variable_overrides, played_variables),
         )
 
         # Identify key turning points for fallback and for the LLM.

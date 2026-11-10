@@ -8,7 +8,8 @@ Responsibilities:
   - Apply LLM-proposed deltas with clamping and unknown-key rejection.
   - Evaluate event trigger conditions (variable_above, variable_below, max_turns, flag).
   - Evaluate ending conditions (success, failure, timeout, safety_stop, player_exit).
-  - Partition state into visible vs hidden sets for UI output.
+  - Partition state into visible vs hidden sets for UI output; a scenario
+    with state of its own shows only variables it plays.
   - Serialize state changes into turn_event payloads for storage.
 """
 from __future__ import annotations
@@ -384,20 +385,42 @@ def evaluate_ending_condition(
 def partition_state_by_visibility(
     state: Dict[str, int],
     variable_defs: Dict[str, ScenarioVariableDef],
+    played: Optional[Collection[str]] = None,
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
     """Split state into (visible, hidden) dicts for UI output.
 
     Variables absent from ``variable_defs`` default to visible.
+
+    ``played`` is the variables the scenario plays (``played_variable_names``,
+    the names the session's turn schema takes). When it names any, every
+    other variable is hidden as well (issue #580): no delta for it is
+    accepted, so it holds its default all session, and its meter would sit
+    beside the scenario's own ones without ever moving (the_ask showed trust,
+    patience, openness and objective_progress frozen next to rapport and
+    confidence). With ``played`` empty or None, as for a scenario that
+    configures no state of its own, each variable keeps its own visibility.
     """
+    shown = set(played or ())
     visible: Dict[str, int] = {}
     hidden: Dict[str, int] = {}
     for name, value in state.items():
         defn = variable_defs.get(name)
-        if defn and defn.visibility == VariableVisibility.HIDDEN:
+        if (defn and defn.visibility == VariableVisibility.HIDDEN) or (shown and name not in shown):
             hidden[name] = value
         else:
             visible[name] = value
     return visible, hidden
+
+
+def hidden_variable_names(
+    variable_defs: Dict[str, ScenarioVariableDef],
+    played: Optional[Collection[str]] = None,
+) -> Set[str]:
+    """The variables ``partition_state_by_visibility`` keeps from the player."""
+    _, hidden = partition_state_by_visibility(
+        {name: defn.default for name, defn in variable_defs.items()}, variable_defs, played,
+    )
+    return set(hidden)
 
 
 # ---------------------------------------------------------------------------

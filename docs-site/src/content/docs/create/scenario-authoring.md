@@ -389,6 +389,11 @@ difficulty:
 | `visible` | Player (shown as a state meter during the session) | Variables that correspond to something the player can infer from the NPC's responses |
 | `hidden` | System prompt only | NPC internal state the player has to discover through experimentation |
 
+A scenario that declares variables shows a meter only for the visible ones
+it plays: those it declares, and the baselines its events or endings read.
+The other baselines (`trust`, `patience` and the rest) cannot move in it, so
+they get no meter. To show one, declare it under `state.variables`.
+
 **Event trigger types:**
 
 | Type | Fields | When it fires |
