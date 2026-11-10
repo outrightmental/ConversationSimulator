@@ -86,7 +86,7 @@ data depot for the MVP. See [Depot layout](#depot-layout) for rationale and
 content rules.
 
 - [ ] Create depot **Windows x86-64** — record its ID as `STEAM_DEPOT_WINDOWS_ID`.
-- [ ] Create depot **macOS (Universal)** — record its ID as `STEAM_DEPOT_MACOS_ID`.
+- [ ] Create depot **macOS (Apple Silicon)** — record its ID as `STEAM_DEPOT_MACOS_ID`.
 - [ ] Create depot **Linux x86-64 / SteamOS** — record its ID as `STEAM_DEPOT_LINUX_ID`.
 - [ ] Set repository variables `STEAM_DEPOT_WINDOWS_ID`, `STEAM_DEPOT_MACOS_ID`, and `STEAM_DEPOT_LINUX_ID` to the assigned depot IDs.
 
@@ -121,7 +121,7 @@ source files.
 |-----------|-------|---------------------------|-------------|
 | App ID | **4963030** | `vars.STEAM_APP_ID` | Assigned by Valve at registration. |
 | Windows depot ID | *(assigned in partner portal — set as repo variable)* | `vars.STEAM_DEPOT_WINDOWS_ID` | First depot created; Windows x86-64 content. Valve assigns depot IDs sequentially after the App ID. |
-| macOS depot ID | *(assigned in partner portal — set as repo variable)* | `vars.STEAM_DEPOT_MACOS_ID` | Second depot created; macOS (Apple Silicon + Intel) content. |
+| macOS depot ID | *(assigned in partner portal — set as repo variable)* | `vars.STEAM_DEPOT_MACOS_ID` | Second depot created; macOS (Apple Silicon only) content. |
 | Linux/SteamOS depot ID | *(assigned in partner portal — set as repo variable)* | `vars.STEAM_DEPOT_LINUX_ID` | Third depot created; Linux x86-64 and Steam Deck content. |
 | Base package ID | *(record here after registration)* | *(not referenced in CI)* | The paid base package that grants the base app and its three platform depots. |
 | DLC App IDs | *(record here per pack)* | `vars.STEAM_DLC_APP_IDS` | One Steam App ID per premium scenario-pack DLC (comma-separated). Non-secret. DLC content is built and uploaded from the private `ConversationSimulator-DLC` repo — see [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md). |
@@ -211,7 +211,7 @@ the binaries and resources for that platform.
 | Depot variable | Platform | Content |
 |----------------|----------|---------|
 | `STEAM_DEPOT_WINDOWS_ID` | Windows 10 / 11 (x86-64) | Portable application tree — `ConversationSimulator.exe` at depot root; no NSIS installer |
-| `STEAM_DEPOT_MACOS_ID` | macOS 14+ (Apple Silicon + Intel) | Tauri `.app` bundle |
+| `STEAM_DEPOT_MACOS_ID` | macOS 14+ (Apple Silicon only) | Tauri `.app` bundle |
 | `STEAM_DEPOT_LINUX_ID` | Linux x86-64 + SteamOS 3.x | Tauri binary and resources |
 
 ### Launch options

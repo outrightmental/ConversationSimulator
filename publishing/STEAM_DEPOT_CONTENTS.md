@@ -151,9 +151,10 @@ All updates for Steam players arrive exclusively through SteamPipe.
 
 **Content root:** `steam-content/macos/`
 
-The macOS depot ships a notarised `.app` bundle. A universal binary (Apple
-Silicon + Intel) is preferred; separate arm64 and x86-64 slices are acceptable
-if a universal build is not yet available.
+The macOS depot ships a notarised `.app` bundle built for Apple Silicon
+(arm64) only: `release.yml` has a single macOS leg, so there is no x86-64
+slice and no universal build, and the store page's system requirements say Apple Silicon
+only (issue #563).
 
 ```
 ConversationSimulator.app/

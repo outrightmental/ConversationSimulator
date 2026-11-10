@@ -336,10 +336,10 @@ comfortable experience with larger AI models.
 | | Minimum | Recommended |
 |-|---------|-------------|
 | **OS** | macOS 14 Sonoma | macOS 15 Sequoia or later |
-| **Processor** | Apple M1 or Intel Core i5 (8th gen) | Apple M2 or later |
+| **Processor** | Apple M1 or later (Apple Silicon) | Apple M2 or later |
 | **Memory** | 8 GB RAM | 16 GB unified memory |
 | **Storage** | 500 MB for the app; 2–8 GB per AI model | 500 MB for the app; 8–20 GB for larger models |
-| **Additional Notes** | Apple Silicon Macs run local models significantly faster than Intel Macs due to unified memory architecture. Gatekeeper notarisation required — install via the official .dmg only. | |
+| **Additional Notes** | Apple Silicon only: Intel Macs are not supported. The build is notarised by Apple and installs and updates through Steam. | |
 
 ### Linux
 

@@ -186,7 +186,7 @@ Navigate to **Steamworks App Admin → Pricing & Availability**.
 
 Navigate to **Steamworks App Admin → SteamPipe → Depots**.
 
-- [ ] Three depots exist: Windows x86-64, macOS (Universal), Linux x86-64 / SteamOS.
+- [ ] Three depots exist: Windows x86-64, macOS (Apple Silicon), Linux x86-64 / SteamOS.
 - [ ] Depot IDs match the values in
       [`publishing/STEAM_APP_REGISTRATION.md` — Identifiers](STEAM_APP_REGISTRATION.md#identifiers)
       and the GitHub repository variables `STEAM_DEPOT_WINDOWS_ID`,
