@@ -93,10 +93,10 @@ folders from the ones the desktop app uses; the macOS fallback is the same
 folder as above.
 
 The **Saves to** row of the confirmation screen (**Storage path** in the
-model manager) shows the filename under a `~/.convsim/models/llm/` prefix.
-That prefix is wrong on every build, including developer runs from source:
-`~/.convsim` is the legacy data location, and model files are written under
-the folders above. Only the filename on that row is accurate.
+model manager) shows the full path the file will be written to: the same
+**Models** folder, read from `GET /api/privacy/folders`, followed by
+`<model-id>.gguf`. While that folder is loading, or if the request fails, the
+row is labelled **File name** and shows `<model-id>.gguf` alone.
 
 Files are named after the model ID:
 
@@ -185,9 +185,9 @@ After a download completes, the model manager:
    downloaded file has been deleted." Nothing partial is kept, so a retry
    starts from zero. The setup pipeline downloads the file a second time on
    its own before giving up. If that copy also fails the check, the
-   **Verifying (SHA-256)** stage fails with the same message and the player
-   is offered **Try again** (Section 6 says where the error appears). The
-   message does not say that two attempts were made.
+   **Verifying (SHA-256)** stage fails with the same message and the code
+   `CHECKSUM`, and the player is offered **Try again** (Section 6 says where
+   the error appears). The message does not say that two attempts were made.
 
 The checksum check cannot be skipped or suppressed, even via developer flags.
 
@@ -224,7 +224,7 @@ download begins until you click Confirm & install."
 | **License** | `license` + `license_url` in registry | `Apache-2.0`, linked to `https://www.apache.org/licenses/LICENSE-2.0` |
 | **Min VRAM** / **Recommended VRAM** | `hardware` in registry | `4 GB` / `6 GB` |
 | **Integrity checksum** (**SHA-256 checksum** in the model manager) | `download.sha256` in registry | 64 hex chars |
-| **Saves to** (**Storage path** in the model manager) | filename `<model-id>.gguf` | `qwen3-4b-instruct-q4_k_m.gguf` (see Section 1 for the folder) |
+| **Saves to** (**Storage path** in the model manager) | Models folder from `GET /api/privacy/folders`, plus `<model-id>.gguf` | `/home/you/.local/share/com.outrightmental.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf` on Linux. Until the folder loads the row reads **File name** and shows `qwen3-4b-instruct-q4_k_m.gguf` alone (see Section 1) |
 | **Source** (model manager only) | `source_type` | `Official registry` |
 
 The licence row is a link that opens the full licence text at `license_url`
@@ -288,9 +288,14 @@ schema requirements fails CI.
 Errors from the setup pipeline appear in two places. In the first-run wizard
 the **Setting up your AI** step shows the error with a **Try again** button;
 the full app also offers **Choose a different option**, which the demo hides.
-In the model manager the error is shown on the **Confirm model install**
-screen under the heading **Request failed**, and the player can press
-**Confirm & install** again.
+Three kinds of failure get their own panel there instead: a lost connection
+shows **Network connection lost** with **Retry** (see
+[Network failure](#network-failure)), too little disk space shows **Not
+enough disk space** with **Try again**, and a model that downloaded but would
+not start shows **Model loaded but could not start** with **Choose a smaller
+model** (**Try again** in the demo). In the model manager the error is shown
+on the **Confirm model install** screen under the heading **Request failed**,
+and the player can press **Confirm & install** again.
 
 ### In-progress download location
 
@@ -318,24 +323,37 @@ a download.
 
 ### Network failure
 
-If a download fails because of a network error (connection reset, timeout,
-DNS failure):
+If a download fails because of a network error (connection refused or reset,
+timeout, DNS failure):
 
 1. The `.part` file is deleted and the install record is marked `failed`
-   with the error text reported by the HTTP library, stored as is; for a
-   timeout that text is empty. The setup job's model stage carries the same
-   text, or "Download failed." when the record's text is empty, and the
-   stage text is what the player sees. There is no automatic retry.
-2. The wizard shows the stage text with **Try again**. It also has a friendlier
-   **Network connection lost** panel with a **Retry** button, but that panel
-   appears only when the error text contains a phrase such as
-   "offline", "timed out" or "connection refused". The texts the download
-   library produces today (for example "All connection attempts failed", or
-   "Download failed." for a timeout) do not match, so a player who loses the
-   connection usually sees the raw text.
-3. **Try again** and **Retry** return to the **Confirm model install** screen
-   (or restart the install directly when the wizard reopened on a resumed
-   job). The next download starts from the beginning.
+   with the code `NETWORK` and a message that names the failure: "Could not
+   connect to the download server." for a refused connection or a DNS
+   failure, "The download timed out waiting for the server." for a timeout,
+   or "The download stopped because of a network error." for any other
+   transport failure, such as a connection that drops mid-transfer. The HTTP
+   library's own text follows in brackets when it has any. The setup job
+   fails its model stage with the same message and records the same code.
+   There is no automatic retry.
+2. The wizard shows the **Network connection lost** panel ("The download
+   could not complete. Check your internet connection and try again, or
+   choose a different option that does not require a download."; the demo
+   leaves out the second half) with **Retry**, **Choose a different option**
+   (hidden in the demo) and **Copy diagnostics**. The panel does not show the
+   message; **Copy diagnostics** copies it together with the code. The wizard
+   picks the panel from the code, not from the message. Only a failure
+   recorded before the code existed is matched on its text instead, for
+   phrases such as "offline", "timed out" or "connection refused".
+3. **Retry** returns to the **Confirm model install** screen. If the wizard
+   reopened on a resumed job and the model list has not loaded yet, it
+   restarts the install directly instead. The next download starts from the
+   beginning.
+
+A server that answers with an error status (HTTP 4xx or 5xx) is not treated
+as a network failure. The record gets the code `HTTP` and a message that
+names the status, such as "The download server answered with HTTP 404.",
+followed by the library's text in brackets. The wizard shows that message
+with **Try again**.
 
 ### App exit during download
 
@@ -455,8 +473,9 @@ downloader cannot provision, so CUDA is not offered.
 ### Offline behaviour
 
 Without a connection the **Getting the AI engine** stage fails with a message
-that names the connection problem, and **Try again** behaves as described in
-Section 6.
+that names the connection problem. The failure is recorded with the code
+`NETWORK`, so the wizard shows the **Network connection lost** panel, and
+**Retry** behaves as described in Section 6.
 
 ### Steam builds
 

@@ -52,8 +52,9 @@ loads a registry download whose checksum does not match. See
 Downloaded models are stored in `models/llm/` under the app's data folder, which
 depends on the platform; **Settings → Local folders** shows the path as
 **Models**. The confirmation step's **Saves to** row (**Storage path** in the
-model manager) still shows a `~/.convsim/models/llm/` prefix, which is out of
-date; only the filename on it is right.
+model manager) shows the full path the file will be written to in that
+folder. While the folder is loading, or if the app cannot read it, the row
+reads **File name** and shows the file name alone.
 
 ---
 

@@ -21,7 +21,7 @@ In addition to the [system requirements](/start/install/#system-requirements):
 | Python | 3.10 or newer | `convsim-core` |
 | Node.js | 20 LTS or newer | the web UI, packages and scripts |
 | pnpm | 9 or newer | installing the workspace |
-| Rust | 1.80 or newer | the desktop app only |
+| Rust | 1.90 or newer | the desktop app only |
 
 ---
 
@@ -92,7 +92,7 @@ npm install -g pnpm
 **Rust (desktop app only)**
 
 The browser UI does not need Rust. To run the Tauri desktop shell, install the
-toolchain with rustup (Rust 1.80 or newer) and the Tauri v2 system dependencies
+toolchain with rustup (Rust 1.90 or newer) and the Tauri v2 system dependencies
 for your platform. See [Desktop app](#desktop-app-optional) below.
 
 ## 2. Clone the repository
@@ -190,11 +190,12 @@ recommended model with its name, size, license and VRAM requirement, **Use
 existing Ollama model**, and **Use a local GGUF file**. Installing the
 recommended model from there goes through a **Confirm model install** step
 that also shows the SHA-256 checksum, and nothing downloads until you click
-**Confirm & install**. That step's **Storage path** row still reads
-`~/.convsim/models/llm/<id>.gguf`, but the file is written under the platform
-data root described in [Where data lives](#where-data-lives). Every registry
-download is checked against its SHA-256 checksum when it finishes; a file that
-does not match is deleted.
+**Confirm & install**. That step's **Storage path** row shows the full path
+the file will be written to, in the Models folder under the data root
+described in [Where data lives](#where-data-lives). Until `convsim-core`
+reports that folder, the row reads **File name** and shows `<id>.gguf` alone.
+Every registry download is checked against its SHA-256 checksum when it
+finishes; a file that does not match is deleted.
 
 See [Choosing how to run the AI](/play/ai-engine/) for model recommendations
 by hardware and all runtime options.
@@ -313,7 +314,7 @@ Logbook and Creator Workbench are hidden.
 ## Desktop app (optional)
 
 The browser UI covers most contributor work. To run the Tauri desktop shell,
-install Rust 1.80 or newer and the Tauri v2 system dependencies, finish setup,
+install Rust 1.90 or newer and the Tauri v2 system dependencies, finish setup,
 then run:
 
 **macOS / Linux:**
