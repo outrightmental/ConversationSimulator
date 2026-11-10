@@ -29,7 +29,10 @@ from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.runtime.launch import resolve_launch_config
 from convsim_core.runtime.llama_cpp_download import DownloadProgress, download_binary
 from convsim_core.runtime.sidecar import LlamaCppSidecar, SidecarState, find_executable
-from convsim_core.services.model_download_service import execute_download
+from convsim_core.services.model_download_service import (
+    classify_download_error,
+    execute_download,
+)
 from convsim_core.services.model_manager_service import (
     create_install_record,
     get_install_record,
@@ -76,6 +79,11 @@ class SetupInstallJobResponse(BaseModel):
     registry_id: Optional[str] = None
     stages: list[StageResponse]
     error_message: Optional[str] = None
+    # Machine-readable kind of a failure (NETWORK, HTTP, CHECKSUM, UNKNOWN), so the
+    # client can offer Retry for a network failure without matching on the
+    # message. Every failed job carries one, except a job that failed before the
+    # column existed; None there and on jobs that have not failed.
+    error_code: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -87,6 +95,7 @@ def _job_to_response(job: dict[str, Any]) -> SetupInstallJobResponse:
         registry_id=job.get("registry_id"),
         stages=[StageResponse(**s) for s in job["stages"]],
         error_message=job.get("error_message"),
+        error_code=job.get("error_code"),
         created_at=job["created_at"],
         updated_at=job["updated_at"],
     )
@@ -129,13 +138,13 @@ async def _run_pipeline(
     def _save() -> None:
         update_job_stages(conn, job_id, stages)
 
-    def _fail(stage_id: str, error: str) -> None:
+    def _fail(stage_id: str, error: str, error_code: str | None = None) -> None:
         for s in stages:
             if s.id == stage_id:
                 s.state = "failed"
                 s.error = error
         _save()
-        update_job_status(conn, job_id, "failed", error)
+        update_job_status(conn, job_id, "failed", error, error_code)
 
     def _cancel(stage_id: str) -> None:
         # A user-requested cancel is a distinct terminal state from a failure:
@@ -186,7 +195,11 @@ async def _run_pipeline(
             _cancel("engine")
             return
         except Exception as exc:
-            _fail("engine", str(exc))
+            # download_binary reports a lost connection as a RuntimeError raised
+            # from the httpx error; classifying it here lets the client offer
+            # Retry for the engine stage too, and the message is never empty.
+            error_code, message = classify_download_error(exc)
+            _fail("engine", message, error_code)
             return
 
     if _is_cancelled():
@@ -259,7 +272,8 @@ async def _run_pipeline(
             install_id = in_progress["id"]
             conn.execute(
                 "UPDATE installed_models "
-                "SET install_status = 'pending', error_message = NULL WHERE id = ?",
+                "SET install_status = 'pending', error_message = NULL, error_code = NULL "
+                "WHERE id = ?",
                 (install_id,),
             )
             conn.commit()
@@ -333,8 +347,8 @@ async def _run_pipeline(
             _save()
             conn.execute(
                 "UPDATE installed_models "
-                "SET install_status = 'pending', error_message = NULL, progress_bytes = 0 "
-                "WHERE id = ?",
+                "SET install_status = 'pending', error_message = NULL, error_code = NULL, "
+                "progress_bytes = 0 WHERE id = ?",
                 (install_id,),
             )
             conn.commit()
@@ -374,12 +388,14 @@ async def _run_pipeline(
                     "SHA-256 checksum mismatch after two attempts. "
                     "The file may be corrupted at the source. Try again later."
                 )
-                _fail("verify", err)
+                _fail("verify", err, rec.get("error_code") if rec else None)
                 return
 
         elif final_status not in ("ready", "complete"):
+            # The download service classified the failure; carry its code so the
+            # client can tell a lost connection (Retry) from everything else.
             err = (rec.get("error_message") if rec else None) or "Download failed."
-            _fail("model", err)
+            _fail("model", err, rec.get("error_code") if rec else None)
             return
 
         model_file_path = (rec.get("file_path") if rec else "") or ""
@@ -532,7 +548,9 @@ def _launch_pipeline_task(
             )
         except Exception as exc:
             logger.exception("setup-install(%d): unhandled error", job_id)
-            update_job_status(conn, job_id, "failed", str(exc))
+            update_job_status(
+                conn, job_id, "failed", str(exc) or f"Install failed ({type(exc).__name__})."
+            )
         finally:
             setup_cancel_events.pop(job_id, None)
 

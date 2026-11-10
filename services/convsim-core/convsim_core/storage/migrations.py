@@ -395,6 +395,17 @@ CREATE TABLE setup_install_jobs (
 );
 """
 
+# Machine-readable failure kind recorded next to the human error message on a
+# model install and on a setup-install job (NETWORK, HTTP, CHECKSUM, UNKNOWN).
+# The client decides what to offer from the code; the message is for people.
+# Before this column the client matched on prose, and the texts httpx renders
+# for a refused connection, a DNS failure or a read timeout never matched, so a
+# player who lost their connection mid-download was never offered Retry.
+_INSTALL_ERROR_CODE_SQL = """
+ALTER TABLE installed_models ADD COLUMN error_code TEXT;
+ALTER TABLE setup_install_jobs ADD COLUMN error_code TEXT;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -414,6 +425,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0016_relationship_memory", _RELATIONSHIP_MEMORY_SQL),
     ("0017_onboarding_outcome", _ONBOARDING_OUTCOME_SQL),
     ("0018_setup_install_jobs", _SETUP_INSTALL_JOBS_SQL),
+    ("0019_install_error_code", _INSTALL_ERROR_CODE_SQL),
 ]
 
 

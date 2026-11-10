@@ -275,9 +275,12 @@ export function useSetupFlow(
         navigate(isDemo ? '/' : '/library')
       })
     } else if (status === 'failed' || status === 'cancelled') {
+      // Carry the engine's error_code with the message: InstallingStep decides
+      // which recovery panel to show from the code, not from the prose.
       setActionError({
         kind: 'http-error',
         message: setupInstallJob.error_message ?? 'Install failed. Please try again.',
+        code: setupInstallJob.error_code ?? undefined,
       })
     }
   }, [step, setupInstallJob, navigate, isDemo])

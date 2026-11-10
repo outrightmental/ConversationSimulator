@@ -175,6 +175,63 @@ def test_get_install_status_returns_job(client_with_registry):
     assert len(body["stages"]) == 5
 
 
+def test_get_install_status_carries_the_error_code(client_with_registry):
+    """The status payload exposes the machine-readable failure kind next to the
+    message, so the client can offer Retry for a network failure."""
+    client, app = client_with_registry
+    conn = app.state.db.connection()
+    job_id = create_job(conn, registry_id="any", model_label="Any model")
+    update_job_status(
+        conn, job_id, "failed", "Could not reach the download server.", error_code="NETWORK"
+    )
+
+    body = client.get(f"/api/setup/install/{job_id}").json()
+    assert body["status"] == "failed"
+    assert body["error_message"] == "Could not reach the download server."
+    assert body["error_code"] == "NETWORK"
+
+
+def test_every_failure_this_engine_records_carries_a_code(client_with_registry):
+    """A job that has not failed has no code; a failure recorded without one is
+    stored as UNKNOWN, so the client's text fallback is left for rows written
+    before the column existed."""
+    client, app = client_with_registry
+    conn = app.state.db.connection()
+    job_id = create_job(conn, registry_id="any", model_label="Any model")
+
+    body = client.get(f"/api/setup/install/{job_id}").json()
+    assert body["error_code"] is None
+
+    update_job_status(conn, job_id, "failed", "Download failed.")
+    body = client.get(f"/api/setup/install/{job_id}").json()
+    assert body["status"] == "failed"
+    assert body["error_code"] == "UNKNOWN"
+
+    update_job_status(conn, job_id, "cancelled", "Cancelled by user.")
+    assert client.get(f"/api/setup/install/{job_id}").json()["error_code"] is None
+
+
+def test_get_install_status_error_code_is_null_on_a_failure_from_before_codes(
+    client_with_registry,
+):
+    """A row migrated from before 0019 has a message and no code; the API passes
+    the null through so the client can fall back to reading the message."""
+    client, app = client_with_registry
+    conn = app.state.db.connection()
+    job_id = create_job(conn, registry_id="any", model_label="Any model")
+    conn.execute(
+        "UPDATE setup_install_jobs SET status = 'failed', "
+        "error_message = 'network error: connection refused', error_code = NULL WHERE id = ?",
+        (job_id,),
+    )
+    conn.commit()
+
+    body = client.get(f"/api/setup/install/{job_id}").json()
+    assert body["status"] == "failed"
+    assert body["error_message"] == "network error: connection refused"
+    assert body["error_code"] is None
+
+
 # ── DELETE /api/setup/install/{id} ───────────────────────────────────────────
 
 
@@ -252,6 +309,9 @@ def test_disk_space_failure_marks_model_stage_failed(client_with_registry):
 
     assert final_body is not None, "Pipeline did not reach a terminal state in time"
     assert final_body["status"] == "failed"
+    # Not a network failure, and recorded with a code so the client does not
+    # have to guess that from the message.
+    assert final_body["error_code"] == "UNKNOWN"
     model_stage = next(s for s in final_body["stages"] if s["id"] == "model")
     assert model_stage["state"] == "failed"
     assert "disk space" in (model_stage["error"] or "").lower()
@@ -424,6 +484,175 @@ async def test_checksum_mismatch_retries_once_then_succeeds(tmp_path):
         stages = {s["id"]: s for s in job["stages"]}
         assert stages["model"]["state"] == "complete"
         assert stages["verify"]["state"] == "complete"
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_refused_connection_reaches_the_job_as_a_network_failure(tmp_path):
+    """The real download service, refused by a real socket, fails the model
+    stage; the job carries the service's NETWORK code and its message, which
+    is what the client offers Retry on."""
+    import socket
+
+    import httpx
+
+    from convsim_core.services import model_download_service
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        closed_port = s.getsockname()[1]
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            async with httpx.AsyncClient(trust_env=False, timeout=2.0) as client:
+                await model_download_service.execute_download(
+                    conn, install_id, f"http://127.0.0.1:{closed_port}/model.gguf",
+                    sha, models_dir, filename, cancel_event=cancel_event, _client=client,
+                )
+
+        job_id = await _drive_pipeline(db, tmp_path, _dl)
+
+        job = get_job(db.connection(), job_id)
+        assert job["status"] == "failed"
+        assert job["error_code"] == "NETWORK"
+        assert job["error_message"].startswith("Could not connect to the download server.")
+        stages = {s["id"]: s for s in job["stages"]}
+        assert stages["model"]["state"] == "failed"
+        assert stages["model"]["error"] == job["error_message"]
+    finally:
+        db.close()
+
+
+async def _drive_engine_stage(db, tmp_path, engine_error: BaseException):
+    """Run _run_pipeline with no engine present and download_binary raising
+    *engine_error*, so only the engine stage's failure handling executes."""
+    import types
+
+    from convsim_core.routers import setup_install
+
+    conn = db.connection()
+    _insert_downloadable_model(conn)
+    job_id = create_job(conn, registry_id="cm", model_label="Downloading Checksum Model")
+
+    with patch.object(setup_install, "find_executable", return_value=None), \
+         patch.object(setup_install, "download_binary", new=AsyncMock(side_effect=engine_error)), \
+         patch.object(setup_install, "execute_download", new=AsyncMock()) as model_download:
+        await setup_install._run_pipeline(
+            job_id=job_id,
+            registry_id="cm",
+            model_label="Downloading Checksum Model",
+            conn=conn,
+            config=types.SimpleNamespace(models_dir=str(tmp_path / "models")),
+            sidecar=MagicMock(),
+            model_cancel_events={},
+            cancel_event=asyncio.Event(),
+        )
+    model_download.assert_not_called()
+    return get_job(conn, job_id)
+
+
+@pytest.mark.asyncio
+async def test_engine_download_network_failure_is_a_network_failure(tmp_path):
+    """download_binary reports a lost connection as a RuntimeError raised from
+    the httpx error. The engine stage classifies it by that cause and keeps the
+    engine download's own sentence."""
+    import httpx
+
+    wrapper = (
+        "Cannot reach GitHub to fetch the latest release, check your internet connection."
+    )
+    try:
+        try:
+            raise httpx.ConnectError("All connection attempts failed")
+        except httpx.ConnectError as inner:
+            raise RuntimeError(wrapper) from inner
+    except RuntimeError as exc:
+        engine_error = exc
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        job = await _drive_engine_stage(db, tmp_path, engine_error)
+        assert job["status"] == "failed"
+        assert job["error_code"] == "NETWORK"
+        assert job["error_message"] == wrapper
+        stages = {s["id"]: s for s in job["stages"]}
+        assert stages["engine"]["state"] == "failed"
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_engine_download_other_failure_is_unknown(tmp_path):
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        job = await _drive_engine_stage(
+            db, tmp_path, RuntimeError("llama-server binary not found in the downloaded archive.")
+        )
+        assert job["status"] == "failed"
+        assert job["error_code"] == "UNKNOWN"
+        assert job["error_message"] == "llama-server binary not found in the downloaded archive."
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_unhandled_pipeline_error_with_no_text_still_records_a_message(tmp_path):
+    """A crash inside the pipeline whose exception renders as "" must not leave
+    the player looking at an empty error."""
+    import types
+
+    from convsim_core.routers import setup_install
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        job_id = create_job(conn, registry_id="cm", model_label="Downloading Checksum Model")
+        app = types.SimpleNamespace(state=types.SimpleNamespace(
+            db=db,
+            service_config=types.SimpleNamespace(models_dir=str(tmp_path / "models")),
+            sidecar=MagicMock(),
+            cancel_events={},
+            setup_install_cancel_events={},
+        ))
+        with patch.object(setup_install, "_run_pipeline", new=AsyncMock(side_effect=KeyError())):
+            # Await only the task this call starts: the module-level set can
+            # hold tasks other tests started on their own event loops.
+            before = set(setup_install._pipeline_tasks)
+            setup_install._launch_pipeline_task(
+                app=app, job_id=job_id, registry_id="cm", model_label="Downloading Checksum Model"
+            )
+            await asyncio.gather(*(setup_install._pipeline_tasks - before))
+
+        job = get_job(conn, job_id)
+        assert job["status"] == "failed"
+        assert job["error_message"] == "Install failed (KeyError)."
+        assert job["error_code"] == "UNKNOWN"
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_checksum_failure_carries_the_checksum_code_onto_the_job(tmp_path):
+    """Two mismatches surface on the verify stage with the CHECKSUM code: not a
+    network failure, so the client must not offer a network Retry."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            conn.execute(
+                "UPDATE installed_models SET install_status = 'checksum_mismatch', "
+                "error_message = 'SHA-256 checksum mismatch.', error_code = 'CHECKSUM' "
+                "WHERE id = ?", (install_id,))
+            conn.commit()
+
+        job_id = await _drive_pipeline(db, tmp_path, _dl)
+
+        job = get_job(db.connection(), job_id)
+        assert job["status"] == "failed"
+        assert job["error_code"] == "CHECKSUM"
+        stages = {s["id"]: s for s in job["stages"]}
+        assert stages["verify"]["state"] == "failed"
     finally:
         db.close()
 

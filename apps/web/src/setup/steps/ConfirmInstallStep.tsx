@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { ActionButton, PrimaryButton, DetailRow } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import { ApiErrorView } from '../../components/ApiErrorView'
 import { CopyDiagnosticsButton } from '../../components/CopyDiagnosticsButton'
+import { api } from '../../api/client'
+import { useTranslation } from '../../i18n'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import { SETUP_DOCS_URL } from '../docsUrls'
 
@@ -12,7 +14,40 @@ interface ConfirmInstallStepProps {
   mode: 'wizard' | 'manager'
 }
 
+/**
+ * Join the engine's Models folder and a file name with the separator the
+ * folder itself uses, so a Windows path is not shown with a mixed separator.
+ */
+export function modelFilePath(folder: string, filename: string): string {
+  const sep = folder.includes('\\') && !folder.includes('/') ? '\\' : '/'
+  const base = folder.endsWith(sep) ? folder.slice(0, -1) : folder
+  return `${base}${sep}${filename}`
+}
+
+/**
+ * The Models folder the engine writes downloads to, read from
+ * GET /api/privacy/folders (the same source the Settings screen shows). The
+ * folder depends on the platform and on the desktop shell's data root, so the
+ * client must not guess it. Null while loading or when the call fails; the
+ * row then shows the file name alone rather than a path that may be wrong.
+ */
+function useModelsFolder(): string | null {
+  const [folder, setFolder] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    api.getFolders()
+      .then((r) => {
+        if (!cancelled && r.ok && r.data.models) setFolder(r.data.models)
+      })
+      .catch(() => { /* keep the file-name-only fallback */ })
+    return () => { cancelled = true }
+  }, [])
+  return folder
+}
+
 export function ConfirmInstallStep({ flow, mode }: ConfirmInstallStepProps) {
+  const { t } = useTranslation()
+  const modelsFolder = useModelsFolder()
   // Arriving here without a selection (Retry before the registry loaded on
   // the resume path) must not strand the player on an empty page: go back
   // through 'loading', which ends on the chooser.
@@ -67,8 +102,14 @@ export function ConfirmInstallStep({ flow, mode }: ConfirmInstallStepProps) {
               </span>
             ) : null}
           </DetailRow>
-          <DetailRow label={mode === 'wizard' ? 'Saves to' : 'Storage path'}>
-            <code style={{ fontSize: '0.8rem' }}>~/.convsim/models/llm/{m.id}.gguf</code>
+          <DetailRow
+            label={modelsFolder == null
+              ? t('setup.confirmInstall.fileName')
+              : mode === 'wizard' ? t('setup.confirmInstall.savesTo') : t('setup.confirmInstall.storagePath')}
+          >
+            <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
+              {modelsFolder == null ? `${m.id}.gguf` : modelFilePath(modelsFolder, `${m.id}.gguf`)}
+            </code>
           </DetailRow>
           {mode === 'manager' && (
             <DetailRow label="Source">

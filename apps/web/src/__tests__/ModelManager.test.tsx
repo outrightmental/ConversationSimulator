@@ -21,6 +21,7 @@ vi.mock('../api/client', () => ({
     startSetupInstall: vi.fn(),
     getSetupInstallStatus: vi.fn(),
     cancelSetupInstall: vi.fn(),
+    getFolders: vi.fn().mockResolvedValue({ ok: true, data: { data: '/srv/convsim', logs: '/srv/convsim/logs', models: '/srv/convsim/models/llm', packs: '/srv/convsim/packs', exports: '/srv/convsim/exports', cache: '/srv/convsim/cache', crash_bundles: '/srv/convsim/crashes' } }),
     listScenarios: vi.fn().mockResolvedValue({ ok: true, data: [] }),
   },
 }))
@@ -140,6 +141,7 @@ beforeEach(() => {
   mockApi.startSetupInstall.mockResolvedValue({ ok: true, data: RUNNING_JOB })
   mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: RUNNING_JOB })
   mockApi.cancelSetupInstall.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.getFolders.mockResolvedValue({ ok: true, data: { data: '/srv/convsim', logs: '/srv/convsim/logs', models: '/srv/convsim/models/llm', packs: '/srv/convsim/packs', exports: '/srv/convsim/exports', cache: '/srv/convsim/cache', crash_bundles: '/srv/convsim/crashes' } })
   mockApi.registerGguf.mockResolvedValue({ ok: true, data: REGISTER_GGUF_RESPONSE })
   mockApi.startSidecar.mockResolvedValue({ ok: true, data: { state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 } })
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
@@ -245,11 +247,13 @@ describe('ModelManager — confirm install', () => {
     expect(screen.getByText('6 GB')).toBeInTheDocument()
   })
 
-  it('shows the expected storage path', async () => {
+  it('shows the storage path the engine reports, never a hard-coded one', async () => {
     await goToConfirm()
     expect(
-      screen.getByText(/~\/.convsim\/models\/llm\/qwen3-4b-instruct-q4_k_m\.gguf/),
+      await screen.findByText(`/srv/convsim/models/llm/${REGISTRY_ENTRY.id}.gguf`),
     ).toBeInTheDocument()
+    expect(screen.getByText('Storage path')).toBeInTheDocument()
+    expect(screen.queryByText(/~\/\.convsim/)).not.toBeInTheDocument()
   })
 
   it('does not call installModel until Confirm is clicked', async () => {
