@@ -91,9 +91,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -o pipefail
+          # The step shell is `bash -e`: without the `||`, a non-zero exit would
+          # end the step here, before the summary below is written.
+          status=0
           # shellcheck disable=SC2086 # MODE is a fixed choice, split on purpose
-          python scripts/project-structure.py $MODE 2>&1 | tee sync.log
-          status=${PIPESTATUS[0]}
+          python scripts/project-structure.py $MODE 2>&1 | tee sync.log || status=$?
           {
             echo "### project-structure.py $MODE (exit $status)"
             echo
