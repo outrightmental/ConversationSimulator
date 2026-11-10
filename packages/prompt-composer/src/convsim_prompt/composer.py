@@ -112,7 +112,8 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
       separate from the system prompt so chat-format adapters can enforce the
       boundary natively. The only other user-turn text is PREVIOUS_NPC_LINE,
       which changes every turn and so must not sit in front of stable system
-      text (issue #524).
+      text (issue #524). Both quote untrusted text, each inside its own
+      sentinel frame that marks it as unable to override the rules.
 
     Token budget:
     - Estimates token count using a conservative chars-per-token heuristic.

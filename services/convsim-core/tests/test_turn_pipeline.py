@@ -45,6 +45,7 @@ from convsim_core.services.turn_pipeline import (
 )
 from convsim_core.storage.migrations import run_migrations
 from convsim_prompt import LAYER_ORDER, SafetyPolicy, TurnEvent
+from convsim_prompt.layers import PREVIOUS_NPC_LINE_BEGIN, PREVIOUS_NPC_LINE_END
 from convsim_prompt.turn_output import SafetyStatus, SessionControl, TurnOutput
 
 
@@ -2303,8 +2304,9 @@ class TestNpcCoherencePromptLayers:
         system, user = runtime.requests[0].messages
         assert (system.role, user.role) == ("system", "user")
         assert f"{npc} (you): {opening}" in system.content
-        assert f'Your previous line was: "{opening}"' in user.content
-        assert "Your previous line was" not in system.content
+        assert f'{PREVIOUS_NPC_LINE_BEGIN}\n"{opening}"\n{PREVIOUS_NPC_LINE_END}' in user.content
+        assert PREVIOUS_NPC_LINE_BEGIN not in system.content
+        assert "That was your previous line" not in system.content
         assert user.content.index("LAYER:PREVIOUS_NPC_LINE") < user.content.index(
             "I led our checkout rewrite."
         )
@@ -2324,5 +2326,5 @@ class TestNpcCoherencePromptLayers:
         system, user = runtime.requests[1].messages
         assert f"{player} (the player): I led our checkout rewrite." in system.content
         assert f"{npc} (you): Hello there. I am a simulated NPC." in system.content
-        assert 'Your previous line was: "Hello there. I am a simulated NPC."' in user.content
+        assert '\n"Hello there. I am a simulated NPC."\n' in user.content
         assert opening not in user.content

@@ -84,7 +84,8 @@ def test_transcript_names_the_npc_and_the_player(pack_id, scenario_id):
     transcript = bundle.layer_map["RECENT_TRANSCRIPT"]
     assert f"{data.npc.display_name} (you): " in transcript
     assert f"{data.player_role_label} (the player): Hello." in transcript
-    assert "Your previous line was" in bundle.user_prompt
+    assert f'\n"{info.opening_npc_says.strip()}"\n' in bundle.user_prompt
+    assert "That was your previous line." in bundle.user_prompt
 
 
 @pytest.mark.parametrize("pack_id,scenario_id", _DEMO)

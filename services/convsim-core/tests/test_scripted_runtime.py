@@ -762,8 +762,9 @@ def test_the_prompt_scaffolding_is_not_matched_as_player_words(runtime):
 def test_the_npcs_previous_line_is_not_matched_as_player_words(runtime, turn, player_text):
     """The user message also quotes the NPC's previous line (issue #580).
 
-    The composer puts the NPC's last line and "Do not reuse its sentences or
-    end with the same question" ahead of the player's input. Matched as the
+    The composer puts the NPC's last line, in its own quote frame, and "Do not
+    reuse its sentences or end with the same question" ahead of the player's
+    input. Matched as the
     player's words, the tutorial's own lines picked the interjection ("mood",
     "finishes") and the ending branch ("love") instead of the player. Only the
     framed player input counts, so every turn answers exactly as it would to
@@ -786,7 +787,7 @@ def test_the_npcs_previous_line_is_not_matched_as_player_words(runtime, turn, pl
         + "\n\n"
         + build_player_utterance_layer(player_text)
     )
-    assert "Your previous line was" in message
+    assert "That was your previous line." in message
     assert _utterance_for(runtime, message, turn) == _utterance_for(runtime, player_text, turn)
 
 
