@@ -264,6 +264,13 @@ pre-check before the manual D-05 run. It does not replace the manual
 judgement: whether each reply makes sense, keeps its role and answers the
 player is still read by a person on reference hardware.
 
+The engine counts a repeat with the same word rules as the pre-check
+(`convsim_prompt.repetition`, which the checks import), and generates once
+more any reply that repeats one of the NPC's last two lines (issue #580). So a
+repetition finding means that retry did not help. Each retry is an extra model
+call on that turn; the summary counts them per run next to the turn times, to
+watch against the latency budget on reference hardware.
+
 ---
 
 ## Explicitly out of scope for the demo

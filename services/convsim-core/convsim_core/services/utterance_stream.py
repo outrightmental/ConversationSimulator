@@ -15,15 +15,24 @@ once the whole line so far, with that sentence included, passes the output
 check, so nothing is ever shown and then withdrawn (design question 2 on
 #518). Released text is committed text: a later sentence that fails the check
 is withheld, generation stops, and the line is committed as what was released.
+
+The gate also holds back a sentence that repeats one of the NPC's last two
+lines (issue #580), because the repetition guard's retry may only replace a
+line nobody has seen. See :meth:`SentenceGate._repeats` for what it can judge
+before the line is complete.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Sequence
 
 from convsim_prompt.output_validator import OutputValidationResult, validate_npc_output
+from convsim_prompt.repetition import RepetitionReport, check_repetition
 
 from convsim_core.tts.sentence_splitter import sentence_boundaries
+
+logger = logging.getLogger(__name__)
 
 _KEY = '"npc_utterance"'
 _SIMPLE_ESCAPES = {
@@ -207,6 +216,11 @@ class SentenceGate:
     byte for byte. A slice is released only when the cumulative text up to and
     including it passes ``checker``; the first failure sets ``blocked`` with the
     offending validation result and nothing further is ever released.
+
+    With ``previous_lines`` (the NPC's last lines, newest first), a slice must
+    also not repeat them; the first one that does sets ``repeated`` and nothing
+    further is released. Unlike ``blocked``, ``repeated`` does not ask for
+    generation to stop: the model's bookkeeping is still wanted.
     """
 
     hidden_agenda: Optional[List[str]] = None
@@ -214,18 +228,48 @@ class SentenceGate:
     released_upto: int = 0
     blocked: Optional[OutputValidationResult] = None
     released: List[str] = field(default_factory=list)
+    previous_lines: Sequence[str] = ()
+    repeated: Optional[RepetitionReport] = None
 
     def _check(self, text: str) -> OutputValidationResult:
         if self.checker is not None:
             return self.checker(text)
         return validate_npc_output(utterance=text, hidden_agenda=self.hidden_agenda)
 
+    def _repeats(self, text: str, complete: bool) -> RepetitionReport:
+        """Whether the line so far, ``text``, would be a repeat if it ended here.
+
+        Any released prefix can become the committed line: a later sentence
+        may fail a check and be held back. So a sentence is released only if
+        the line up to it, taken as the whole line, shares no 6-word run with
+        an earlier line and does not end with the previous line's closing
+        question. The whole-line similarity is the exception: it is judged
+        only on the ``complete`` line, and only while nothing has been
+        released, because once part of the line is on screen holding back its
+        last sentence would only shorten the line, not make it less like the
+        earlier one.
+
+        The guard must never cost the player a turn: should the check itself
+        fail, the sentence is not held back for it.
+        """
+        if not self.previous_lines:
+            return RepetitionReport()
+        try:
+            return check_repetition(
+                text,
+                self.previous_lines,
+                similarity=complete and not self.released,
+            )
+        except Exception:  # noqa: BLE001 — a broken guard must not break the stream
+            logger.exception("Repetition check failed on a streamed sentence; releasing it")
+            return RepetitionReport()
+
     @property
     def released_text(self) -> str:
         return "".join(self.released)
 
     def feed(self, text: str, done: bool) -> List[str]:
-        if self.blocked is not None:
+        if self.blocked is not None or self.repeated is not None:
             return []
         ends = sentence_boundaries(text)
         if done:
@@ -246,6 +290,10 @@ class SentenceGate:
             result = self._check(candidate)
             if not result.is_safe:
                 self.blocked = result
+                break
+            repeat = self._repeats(candidate, complete=done and end == len(text))
+            if repeat.flagged:
+                self.repeated = repeat
                 break
             slice_ = text[self.released_upto:end]
             self.released_upto = end

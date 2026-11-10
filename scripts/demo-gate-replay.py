@@ -653,6 +653,22 @@ def _md(text: Any) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 
 
+def repetition_retries(record: Mapping[str, Any]) -> int:
+    """How many of a run's turns the engine's repetition guard generated twice.
+
+    Read from each turn's timing record, where the retry is an extra model
+    call of kind ``repetition_retry`` (issue #580).
+    """
+    count = 0
+    for turn in record.get("turns") or []:
+        timing = turn.get("timing") if isinstance(turn, Mapping) else None
+        calls = timing.get("extra_calls") if isinstance(timing, Mapping) else None
+        count += sum(
+            1 for c in calls or [] if isinstance(c, Mapping) and c.get("kind") == "repetition_retry"
+        )
+    return count
+
+
 def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]) -> str:
     sev = meta["severity"]
     failed = [r for r in records if r.get("verdict") == "fail"]
@@ -746,8 +762,13 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
         out.append("")
     out.append("## Latency (noted, not judged)")
     out.append("")
-    out.append("| Conversation | Run | Mean turn s | Max turn s | Debrief s |")
-    out.append("|---|---|---|---|---|")
+    out.append(
+        "Repetition retries: turns the engine generated twice because the first "
+        "reply repeated one of the NPC's last two lines (issue #580)."
+    )
+    out.append("")
+    out.append("| Conversation | Run | Mean turn s | Max turn s | Repetition retries | Debrief s |")
+    out.append("|---|---|---|---|---|---|")
     for r in records:
         secs = [t["seconds"] for t in r.get("turns") or [] if t.get("seconds") is not None]
         mean = f"{sum(secs) / len(secs):.1f}" if secs else "-"
@@ -755,7 +776,7 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
         deb = (r.get("debrief") or {}).get("seconds")
         out.append(
             f"| {r['scenario_id']} | {r['run']} | {mean} | {top} | "
-            f"{deb if deb is not None else '-'} |"
+            f"{repetition_retries(r)} | {deb if deb is not None else '-'} |"
         )
     out.append("")
     return "\n".join(out)

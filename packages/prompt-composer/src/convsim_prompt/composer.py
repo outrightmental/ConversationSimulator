@@ -1,9 +1,10 @@
 """Layered prompt composer for simulator NPC turns."""
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Sequence
 
 from .layers import (
+    _one_line,
     build_current_state_layer,
     build_global_rules_layer,
     build_memory_summary_layer,
@@ -14,6 +15,7 @@ from .layers import (
     build_previous_npc_line_layer,
     build_recent_transcript_layer,
     build_relationship_memory_layer,
+    build_repetition_retry_layer,
     build_response_style_layer,
     build_safety_policy_layer,
     build_scenario_brief_layer,
@@ -59,6 +61,15 @@ USER_LAYER_ORDER: List[str] = [
 
 # Full ordering including the user turn.
 LAYER_ORDER: List[str] = SYSTEM_LAYER_ORDER + USER_LAYER_ORDER
+
+# The user turn of the repetition guard's one retry (issue #580): the normal
+# user turn with what the first reply repeated quoted just before the player's
+# line, which stays last. The system prompt is the turn's own, unchanged.
+RETRY_USER_LAYER_ORDER: List[str] = [
+    "PREVIOUS_NPC_LINE",
+    "REPETITION_RETRY",
+    "PLAYER_UTTERANCE",        # always last
+]
 
 
 def _estimate_tokens(text: str) -> int:
@@ -142,4 +153,39 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
         layer_map=layers,
         estimated_token_count=estimated_tokens,
         was_truncated=was_truncated,
+    )
+
+
+def compose_repetition_retry_prompt(
+    bundle: PromptBundle,
+    repeated_lines: Sequence[str],
+) -> PromptBundle:
+    """The turn's prompt for the repetition guard's one retry (issue #580).
+
+    ``bundle`` is the prompt the first reply was generated from, and
+    ``repeated_lines`` the NPC's earlier line(s) that reply repeated. The
+    system prompt is reused as it is, so a prompt cache keeps all of it
+    (issue #524); only the user turn changes, with the REPETITION_RETRY layer
+    quoting the repeated line(s) just before the player's line, which stays
+    last. When a line repeated is the one PREVIOUS_NPC_LINE already quotes,
+    that layer is left out rather than quote the same line twice.
+
+    Returns ``bundle`` itself when there is nothing to quote.
+    """
+    retry_layer = build_repetition_retry_layer(list(repeated_lines))
+    if not retry_layer:
+        return bundle
+    layers = dict(bundle.layer_map)
+    previous = layers.get("PREVIOUS_NPC_LINE", "")
+    quoted = {f'"{_one_line(line)}"' for line in repeated_lines}
+    if previous and any(row in quoted for row in previous.split("\n")):
+        layers["PREVIOUS_NPC_LINE"] = ""
+    layers["REPETITION_RETRY"] = retry_layer
+    user_prompt = _join(layers, RETRY_USER_LAYER_ORDER)
+    return PromptBundle(
+        system_prompt=bundle.system_prompt,
+        user_prompt=user_prompt,
+        layer_map=layers,
+        estimated_token_count=_estimate_tokens(bundle.system_prompt + user_prompt),
+        was_truncated=bundle.was_truncated,
     )

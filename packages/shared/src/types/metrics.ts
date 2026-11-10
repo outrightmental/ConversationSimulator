@@ -52,7 +52,8 @@ export type TurnStage = (typeof TURN_STAGES)[number]
 export type TurnFinishReason = 'stop' | 'length' | 'cancelled'
 
 export interface TurnExtraCall {
-  kind: 'repair' | 'safety_retry'
+  /** Why the turn called the model again: the parser's structural repair, its content-safety retry, or the repetition guard's retry of a reply that repeated one of the NPC's last two lines (issue #580). */
+  kind: 'repair' | 'safety_retry' | 'repetition_retry'
   ms: number
   tokens: number | null
 }

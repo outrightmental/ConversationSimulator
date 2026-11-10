@@ -1208,6 +1208,13 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
             by_letter = {c["letter"]: c for c in record["checks"]}
             assert by_letter["a"]["status"] == "FAIL"
             assert by_letter["a"]["findings"][0]["turn"] == 2
+            # The engine's repetition guard saw the same repeats and retried
+            # each once (issue #580); the fake runtime answered the same line
+            # again, so the first reply stood. Turn 1 follows the authored
+            # opening, which the fake line does not repeat.
+            kinds = [[c["kind"] for c in t["timing"]["extra_calls"]] for t in record["turns"]]
+            assert kinds == [[]] + [["repetition_retry"]] * 5
+            assert replay.repetition_retries(record) == 5
             assert by_letter["f"]["status"] == "pass"
             assert record["verdict"] == "fail"
             # The debrief's recap was found under the engine's own key and
@@ -1219,6 +1226,13 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
             ]
     summary = (out / "summary.md").read_text(encoding="utf-8")
     assert "model-free `fake` runtime" in summary
+    latency = summary.split("## Latency (noted, not judged)", 1)[1]
+    assert "| Conversation | Run | Mean turn s | Max turn s | Repetition retries | Debrief s |" in latency
+    rows = [line.split(" | ") for line in latency.splitlines() if line.startswith("| ") and "Conversation" not in line]
+    assert [(row[0].lstrip("| "), row[1], row[4]) for row in rows] == [
+        (scenario_id, run, "5")
+        for scenario_id in ("behavioral_interview", "spanish_coffee") for run in ("1", "2")
+    ]
     assert "edition (--allow-full-edition)" not in summary
     assert "(4 recap(s) written during the replay deleted; none existed before it)" in summary
 

@@ -298,6 +298,22 @@ that completed before the cut are kept. The REST response always equals what
 was streamed. A runtime that does not put the spoken line first releases
 nothing, and the turn behaves as it did before streaming.
 
+**Repeats are held back before release, not replaced after it** (issue #580).
+The engine retries once, with the repeated line quoted and the temperature
+0.1 higher, a reply that repeats one of the NPC's last two lines (a shared run
+of 6+ words, the same closing question of 4+ words as the previous line, or
+word-trigram similarity above 0.5; the opening counts), and keeps whichever
+reply repeats less. The retry is a `repetition_retry` extra call in the turn's
+`timing`. Streaming keeps the contract above: a sentence is released only if
+the line up to it, taken as the whole line, shares no 6-word run with those
+lines and does not end with the previous line's closing question. If the
+first sentence fails that, nothing has been shown, no `npc.final` is sent, the
+line is retried as above (`checking` stage), and the REST response carries
+the result. If a later sentence fails it, the sentence is held back like an
+unsafe one, but generation runs on and the model's bookkeeping is kept; the
+line is committed as the sentences released, with no retry. Similarity alone
+is judged only before anything is released.
+
 Reserved for future speech support (clients should accept and ignore):
 
 | Type               | Planned purpose                              |
