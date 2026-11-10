@@ -24,21 +24,19 @@ _ABBREVS: frozenset[str] = frozenset({
 _BOUNDARY_RE = re.compile(r"([.!?]+[\"')]*)\s+(?=[A-Z\"'(])")
 
 
-def split_into_sentences(text: str) -> list[str]:
-    """Split NPC utterance text into sentence chunks for TTS synthesis.
+def sentence_boundaries(text: str) -> list[int]:
+    """End offsets of the complete sentences in ``text``, in order.
 
-    Handles common abbreviations (Mr., Dr., etc.) and decimal numbers to avoid
-    false splits. Ellipsis followed by an uppercase word is treated as a
-    sentence boundary. A trailing fragment with no ending punctuation is
-    included as the final chunk. Returns [] for empty or whitespace-only input.
+    Each offset is the index just past a sentence's closing punctuation (and
+    any closing quotes or brackets), with the whitespace that follows left to
+    the next sentence, so ``text[prev:end]`` slices concatenate back to the
+    original. Only boundaries *followed by* the start of another sentence are
+    returned; a trailing fragment ends no sentence here. The streaming gate
+    (#538) uses this so the slices it releases reproduce the committed line
+    exactly; :func:`split_into_sentences` applies the same rules and strips.
     """
-    text = text.strip()
-    if not text:
-        return []
-
-    sentences: list[str] = []
+    ends: list[int] = []
     pos = 0
-
     for m in _BOUNDARY_RE.finditer(text):
         punct = m.group(1)
 
@@ -56,11 +54,30 @@ def split_into_sentences(text: str) -> list[str]:
                     if word in _ABBREVS or len(word) == 1:
                         continue
 
+        ends.append(m.start() + len(punct))
+        pos = m.end()
+    return ends
 
-        sentence = text[pos : m.start() + len(punct)].strip()
+
+def split_into_sentences(text: str) -> list[str]:
+    """Split NPC utterance text into sentence chunks for TTS synthesis.
+
+    Handles common abbreviations (Mr., Dr., etc.) and decimal numbers to avoid
+    false splits. Ellipsis followed by an uppercase word is treated as a
+    sentence boundary. A trailing fragment with no ending punctuation is
+    included as the final chunk. Returns [] for empty or whitespace-only input.
+    """
+    text = text.strip()
+    if not text:
+        return []
+
+    sentences: list[str] = []
+    pos = 0
+    for end in sentence_boundaries(text):
+        sentence = text[pos:end].strip()
         if sentence:
             sentences.append(sentence)
-        pos = m.end()
+        pos = end
 
     remaining = text[pos:].strip()
     if remaining:

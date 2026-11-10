@@ -292,17 +292,27 @@ conversation draw its meters before the player sends another message.
 ## WebSocket events
 
 The WebSocket endpoint is at `ws://127.0.0.1:7355/ws/session/{id}`, served by
-the API layer (`apps/api`). On connect the server always sends the current
-`session.state` so a reconnecting client can resync.
+`convsim-core` (`routers/session_ws.py`, issue #538). On connect the server
+sends the current `session.state` so a reconnecting client can resync.
 
-Pass `?after_seq=0` to also replay the durable events for the session in
-chronological order (NPC opening, NPC turns, and the ending, capped at the
-first 50 by `event_id`). Per-`seq` resume —
-passing the last received `seq` to receive only events after it — is **not yet
-implemented**; any non-zero `after_seq` value is silently ignored because the
-persisted events are keyed by `event_id`, a different number space from the WS
-`seq`. Until seq-mapped replay lands, a client that detects a gap should
-re-fetch full state via `GET /api/sessions/{id}`.
+The socket is how the player sees a turn *while* it happens; the REST turn
+response stays the commit and the source of truth, and with no socket connected
+a turn behaves exactly as it does over REST alone. Events are not persisted and
+there is no replay: `?after_seq` is accepted and ignored. A client that detects
+a gap in `seq` re-fetches state via `GET /api/sessions/{id}` and the transcript.
+
+**Origin.** CORS middleware does not cover socket upgrades, so the route checks
+`Origin` itself against the same local list the REST API trusts (the packaged
+webview's `tauri://localhost`, `http://tauri.localhost`,
+`https://tauri.localhost`, plus the dev server at `127.0.0.1:7354` /
+`localhost:7354`). Any other origin is answered with HTTP 403 before the
+handshake. A request with no `Origin` header is not a browser page and is
+accepted.
+
+**One turn at a time.** `POST /api/sessions/{id}/turn` holds an in-memory lock
+per session; a second submit while one is running answers 409
+`TURN_IN_PROGRESS` and starts no generation. Nothing is persisted as "in
+flight", so a crash can never leave a session unable to accept a turn.
 
 Every message is a JSON object with these base fields:
 
@@ -324,13 +334,24 @@ re-fetch state via `GET /api/sessions/{id}`.
 
 | Type                    | When emitted                                        | Key payload fields                               |
 |-------------------------|-----------------------------------------------------|--------------------------------------------------|
-| `session.state`         | Any state transition                                | `state`, `state_vars?`, `ending_type?`           |
-| `npc.token`             | Each streamed LLM token                             | `text`                                           |
-| `npc.final`             | NPC response complete                               | `content`, `emotion`, `state_delta`, `event_flags` |
-| `scenario.state_delta`  | State variables updated after a turn                | `delta`, `state_vars`                            |
+| `session.state`         | On connect, and at each turn's commit               | `state`, `state_vars?`, `ending_type?`           |
+| `turn.progress`         | Each stage change of a running turn, and each prompt-reading progress report from the engine | `stage` (`waiting` · `reading` · `writing` · `finishing` · `checking` · `voice`), `prompt` (`{processed, total, cached}` or null), `output_tokens`, `elapsed_ms` |
+| `npc.token`             | Each sentence of the NPC's line, once the line so far has passed the output check | `text` — an exact slice of the line; concatenating every `npc.token` of a turn reproduces the committed line |
+| `npc.final`             | The spoken line is complete (the bookkeeping is still being written) | `content` only. `emotion`, `state_delta` and `event_flags` are not known yet; they arrive on `scenario.state_delta`. |
+| `scenario.state_delta`  | The turn committed                                  | `delta`, `state_vars`, `turn_number`, `emotion`, `event_flags`, `triggered_scenario_events`, `ending_type`, `salvaged`, `timing` |
 | `scenario.event`        | A scenario narrative event fired                    | `flags`                                          |
-| `safety.redirect`       | Input safety redirected the conversation            | `reason`                                         |
+| `safety.redirect`       | The model's output was redirected for safety        | `reason`                                         |
 | `error`                 | Processing error (may or may not be fatal)          | `code`, `message`, `details?`                    |
+
+**Released text is committed text.** A sentence is sent as `npc.token` only
+after the whole line so far, that sentence included, has passed the output
+check, so nothing is shown and then withdrawn. If a later sentence fails the
+check, generation stops and the turn is committed as the sentences already
+released, with its bookkeeping defaulted and the turn marked `salvaged`. If
+the JSON after the line is cut off, the released line stands and the fields
+that completed before the cut are kept. The REST response always equals what
+was streamed. A runtime that does not put the spoken line first releases
+nothing, and the turn behaves as it did before streaming.
 
 Reserved for future speech support (clients should accept and ignore):
 

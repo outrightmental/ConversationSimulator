@@ -16,13 +16,15 @@ from convsim_core.errors import (
     request_validation_error_handler,
 )
 from convsim_core.logging_setup import configure_logging
+from convsim_core.origins import TAURI_WEBVIEW_ORIGINS
 from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.paths import legacy_convsim_dir, platform_data_root
-from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, performance as performance_router, preflight as preflight_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router, workshop as workshop_router
+from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, performance as performance_router, preflight as preflight_router, session_ws as session_ws_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router, workshop as workshop_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.runtime.kokoro_sidecar import KokoroSidecar
 from convsim_core.runtime.supervisor import ProcessSupervisor
+from convsim_core.services.session_events import SessionEventBus
 from convsim_core.storage.database import Database
 from convsim_core.storage.repositories.settings_repo import load_settings
 from convsim_core.stt import build_stt_worker
@@ -30,19 +32,14 @@ from convsim_core.tts import build_tts_worker
 from convsim_core.vad import build_vad_worker
 
 
-# Origins the packaged Tauri desktop shell serves its web UI from. In a bundled
-# build the UI loads from tauri://localhost (macOS/Linux) or https://tauri.localhost
-# (Windows) and calls the API cross-origin at http://127.0.0.1:<port>, so the
-# native webview enforces CORS and blocks the responses unless the server opts in.
-# In dev mode the Vite proxy keeps API traffic same-origin, so these are only
-# needed for packaged builds. Listing explicit local webview origins keeps the
-# local-first promise intact — the server still binds to 127.0.0.1 and no LAN
-# origin is granted access.
-_TAURI_WEBVIEW_ORIGINS = [
-    "tauri://localhost",
-    "http://tauri.localhost",
-    "https://tauri.localhost",
-]
+# Origins the packaged Tauri desktop shell serves its web UI from. Defined once
+# in convsim_core.origins, where the WebSocket route reads the same list (CORS
+# middleware does not cover socket upgrades, issue #538). In dev mode the Vite
+# proxy keeps REST traffic same-origin, so for CORS these are only needed for
+# packaged builds. Listing explicit local webview origins keeps the local-first
+# promise intact — the server still binds to 127.0.0.1 and no LAN origin is
+# granted access.
+_TAURI_WEBVIEW_ORIGINS = list(TAURI_WEBVIEW_ORIGINS)
 
 
 def create_app(config: ServiceConfig | None = None) -> FastAPI:
@@ -93,6 +90,11 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.models_dir = config.models_dir
         app.state.cancel_events = {}                 # install_id → asyncio.Event (model downloads)
         app.state.setup_install_cancel_events = {}   # job_id → asyncio.Event (pipeline jobs)
+        # Live session events and the one-turn-at-a-time locks (issue #538).
+        # Both are in-memory only: nothing is persisted as "in flight", so a
+        # crash can never leave a session unable to accept a turn.
+        app.state.session_bus = SessionEventBus()
+        app.state.turn_locks = {}                    # session_id → asyncio.Lock
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
         # Boot with the user's persisted runtime selection (written by
         # /api/models/use and the setup pipeline) rather than the static config
@@ -183,6 +185,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     app.include_router(packs_router.router)
     app.include_router(scenarios_router.router)
     app.include_router(sessions_router.router)
+    app.include_router(session_ws_router.router)
     app.include_router(performance_router.router)
     # The Creator Workbench is a full-app feature; the demo edition hides it in
     # the UI and refuses it here so a hand-crafted request cannot reach it

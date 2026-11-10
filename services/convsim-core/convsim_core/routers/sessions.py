@@ -11,10 +11,12 @@ Routes:
 
 NOTE: Turn processing is not idempotent. Clients should check session state
 (GET /api/sessions/{id}) before retrying after a network error to avoid
-duplicate turns.
+duplicate turns. One turn runs at a time per session: a second POST /turn while
+one is in flight answers 409 TURN_IN_PROGRESS and starts no generation (#538).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import secrets
@@ -50,6 +52,7 @@ from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
 from convsim_core.services.model_manager_service import get_active_config, recorded_model_id
 from convsim_core.services.relationship_memory import update_relationship_memory
+from convsim_core.services.session_events import SessionEventBus, SessionTurnStreamer
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
 from convsim_core.services.tts_queue import synthesize_utterance
@@ -811,6 +814,23 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
     )
 
 
+def _turn_lock(request: Request, session_id: str) -> asyncio.Lock:
+    """The per-session lock that keeps one turn in flight at a time (#538).
+
+    In memory only: nothing is persisted as "in flight", so a crash can never
+    leave a session unable to accept a turn.
+    """
+    locks = getattr(request.app.state, "turn_locks", None)
+    if locks is None:
+        locks = {}
+        request.app.state.turn_locks = locks
+    return locks.setdefault(session_id, asyncio.Lock())
+
+
+def _session_bus(request: Request) -> Optional[SessionEventBus]:
+    return getattr(request.app.state, "session_bus", None)
+
+
 @router.post("/{session_id}/turn", response_model=TurnResponse)
 async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request) -> TurnResponse:
     # The turn's clock starts the moment the request arrives: every figure in
@@ -818,6 +838,38 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     clock = TurnClock()
     db = request.app.state.db
     conn = db.connection()
+    row = conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    lock = _turn_lock(request, session_id)
+    if lock.locked():
+        # A second submit used to start a second generation and fail on the
+        # turn-number uniqueness constraint as a 500 (issue #538).
+        raise ConvsimError(
+            code="TURN_IN_PROGRESS",
+            message=(
+                "A reply is already being written for this conversation. "
+                "Wait for it to arrive before sending another message."
+            ),
+            status_code=409,
+        )
+    async with lock:
+        return await _run_turn(session_id, body, request, row, conn, clock)
+
+
+async def _run_turn(
+    session_id: str,
+    body: TurnSubmitRequest,
+    request: Request,
+    row: Any,
+    conn: Any,
+    clock: TurnClock,
+) -> TurnResponse:
+    # Re-read under the lock: the row fetched before acquiring it may predate a
+    # turn that was committing at the time.
     row = conn.execute(
         "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
     ).fetchone()
@@ -849,6 +901,14 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
         runtime_id=runtime.id,
         registry_model_id=_recorded_model_for(conn, runtime, setup),
     )
+    # Stream the turn to whoever is listening on the session socket (#538).
+    # With no socket connected the pipeline runs exactly as before.
+    bus = _session_bus(request)
+    streamer = (
+        SessionTurnStreamer(bus, session_id, clock)
+        if bus is not None and bus.has_listeners(session_id)
+        else None
+    )
 
     try:
         result = await process_turn(
@@ -865,6 +925,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             scenario_events=info.events,
             ending_conditions=info.ending_conditions,
             timing=timing,
+            streamer=streamer,
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -967,6 +1028,33 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
         record = result.timing.build()
         persist_turn_timing(conn, session_id, result.turn_number, record, now)
         npc_event.payload["timing"] = record.model_dump()
+        npc_event.payload["salvaged"] = result.salvaged
+
+    # The commit, announced (#538): the state change the reply produced, then
+    # the session state. A client that committed the line from npc.final
+    # applies these; one that never connected reads the same from the REST
+    # response above, which is the source of truth either way.
+    if bus is not None and bus.has_listeners(session_id):
+        if result.safety_status == "redirect":
+            await bus.broadcast(session_id, "safety.redirect", {
+                "reason": result.safety_reason or "The conversation was steered back on topic.",
+            })
+        await bus.broadcast(session_id, "scenario.state_delta", {
+            "delta": result.state_delta,
+            "state_vars": result.visible_state,
+            "turn_number": result.turn_number,
+            "emotion": result.npc_emotion,
+            "event_flags": result.event_flags,
+            "triggered_scenario_events": result.triggered_scenario_events,
+            "ending_type": result.ending_type,
+            "salvaged": result.salvaged,
+            "timing": npc_event.payload.get("timing"),
+        })
+        await bus.broadcast(session_id, "session.state", {
+            "state": result.new_flow_state,
+            "state_vars": result.visible_state,
+            "ending_type": result.ending_type,
+        })
 
     return TurnResponse(
         session_id=session_id,
