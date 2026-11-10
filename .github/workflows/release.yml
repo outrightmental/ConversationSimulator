@@ -45,6 +45,11 @@ jobs:
       - uses: actions/checkout@v5
       - name: Smoke check
         run: bash scripts/smoke-check.sh
+      # Fails in seconds what "Build Tauri desktop" would otherwise fail on all
+      # three runners: `tauri build` refuses a Tauri crate and npm package on
+      # different major.minor releases.
+      - name: Tauri crate and npm package versions match
+        run: bash scripts/check-tauri-versions.sh
       - name: Check docs freshness
         run: |
           # Tag pushes expose the tag as github.ref_name; workflow_dispatch

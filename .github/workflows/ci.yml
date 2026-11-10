@@ -21,6 +21,14 @@ jobs:
         run: |
           echo "Local: bash scripts/smoke-check.sh"
           bash scripts/smoke-check.sh
+      # `tauri build` refuses a Tauri crate and npm package on different
+      # major.minor releases, and only the release workflow runs it, so the
+      # desktop jobs' `cargo check` cannot catch a lockfile that moves one side.
+      # v0.4.0's first release run failed on every platform that way.
+      - name: Tauri crate and npm package versions match
+        run: |
+          echo "Local: bash scripts/check-tauri-versions.sh"
+          bash scripts/check-tauri-versions.sh
 
   shellcheck:
     name: Shellcheck
