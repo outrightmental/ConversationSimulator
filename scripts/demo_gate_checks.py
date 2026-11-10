@@ -11,19 +11,24 @@ findings, so the checks are unit-tested on synthetic transcripts in
 Standard library only. The replay parses the pack YAML with PyYAML and passes
 the parsed documents in.
 
-The five checks, with the letters the issue and the demo doc use:
+The six checks, with the letters the issue and the demo doc use:
 
   (a) repetition      per turn: no run of 6+ consecutive words shared with the
                       previous NPC line, and no NPC line ending with the same
-                      question as the previous one.
+                      question (of 4+ words) as the previous one.
   (b) agenda_leak     per turn: no run of 5+ consecutive words from the NPC's
-                      ``private_persona.hidden_agenda`` said aloud.
-  (c) authored_state  per run: some turn's ``state_delta`` moved a variable
-                      the scenario authors (not an engine baseline variable).
+                      ``private_persona.hidden_agenda`` said aloud, and no
+                      number of 3+ digits from it (Ray's $13,800 floor) in an
+                      NPC line, in digits or in English words.
+  (c) authored_state  per run: some turn's ``state_delta`` applied a non-zero
+                      change to a variable the scenario authors (not an
+                      engine baseline variable).
   (d) rubric_ids      per run: the debrief scored at least one dimension, and
                       only the scenario rubric's dimension ids.
   (e) debrief         per run: the debrief generated (HTTP 200) without the
                       template fallback.
+  (f) turn_fallback   per turn: no NPC reply was the engine's canned safe
+                      fallback line.
 
 Words are compared case- and punctuation-insensitively: text is NFKC
 normalised and case-folded, apostrophes are dropped (so "What's" and
@@ -43,6 +48,12 @@ SEVERITIES = (HARD, WARN)
 
 REPEAT_RUN_WORDS = 6
 AGENDA_RUN_WORDS = 5
+# A repeated closing question counts only from this length: "Okay?" or "Right?"
+# twice in a row is a tic, not a loop.
+SAME_QUESTION_MIN_WORDS = 4
+# Agenda numbers from this value (3+ digits) are secrets: a price floor, a
+# budget. Smaller ones ("two offers") are ordinary talk.
+SECRET_NUMBER_MIN = 100
 
 
 @dataclass(frozen=True)
@@ -59,12 +70,15 @@ CHECKS: Tuple[CheckSpec, ...] = (
     CheckSpec("c", "authored_state", "An authored state variable moved", "run"),
     CheckSpec("d", "rubric_ids", "Debrief scores the rubric's own ids", "run"),
     CheckSpec("e", "debrief", "Debrief generated, no template fallback", "run"),
+    CheckSpec("f", "turn_fallback", "No turn fell back to the canned line", "turn"),
 )
 CHECKS_BY_LETTER: Dict[str, CheckSpec] = {c.letter: c for c in CHECKS}
 
 # (c) and (d) fail until the engine wires authored state and the rubric
 # (fixes 3 and 4 of issue #580), so they report as warnings unless --strict.
-DEFAULT_SEVERITY: Dict[str, str] = {"a": HARD, "b": HARD, "c": WARN, "d": WARN, "e": HARD}
+DEFAULT_SEVERITY: Dict[str, str] = {
+    "a": HARD, "b": HARD, "c": WARN, "d": WARN, "e": HARD, "f": HARD,
+}
 
 
 def check_letter(token: str) -> str:
@@ -222,6 +236,140 @@ def ending_question(text: str) -> Optional[Tuple[str, ...]]:
 
 
 # ---------------------------------------------------------------------------
+# Numbers
+# ---------------------------------------------------------------------------
+
+# A number in digits: thousands grouped with commas ("13,800") or periods
+# ("13.800", the Spanish way), or plain digits; then optional decimals, which
+# are dropped ("13,800.00"), and an optional "k"/"thousand" multiplier
+# ("13.8k"). A "$" or "€" in front is not part of the match, so "$13,800",
+# "13,800" and "13800" all read 13800, while "8.50" reads 8.
+_DIGIT_NUMBER = re.compile(
+    r"(?<![\w.,])"
+    r"(\d{1,3}(?:,\d{3})+(?!\d)|\d{1,3}(?:\.\d{3})+(?![\d,])|\d+)"
+    r"(?:[.,](\d+))?"
+    r"(?:\s?(k|thousand)\b)?",
+    re.IGNORECASE,
+)
+
+_UNITS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9,
+}
+_TEENS = {
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+# Which kind of number word may follow which, in standard English numerals
+# ("thirteen thousand eight hundred and fifty", "fifteen hundred", "a
+# thousand"). Anything else ends the number, so "five, six hundred" is two.
+_WORD_FOLLOWS = {
+    None: {"unit", "teen", "tens", "a"},
+    "unit": {"hundred", "thousand"},
+    "teen": {"hundred", "thousand"},
+    "tens": {"unit", "thousand"},
+    "hundred": {"unit", "teen", "tens", "thousand", "and"},
+    "thousand": {"unit", "teen", "tens", "and"},
+    "and": {"unit", "teen", "tens"},
+    "a": {"hundred", "thousand"},
+}
+# Dealer shorthand: "thirteen-eight" is 13,800. Only a teen hyphenated to a
+# single digit, which is never a standard English numeral ("twenty-five" is).
+_DEALER_SHORTHAND = re.compile(
+    r"\b(" + "|".join(_TEENS) + r")[-‐‑–](" + "|".join(_UNITS) + r")\b"
+)
+
+
+def _word_kind(token: str) -> Tuple[Optional[str], int]:
+    if token in _UNITS:
+        return "unit", _UNITS[token]
+    if token in _TEENS:
+        return "teen", _TEENS[token]
+    if token in _TENS:
+        return "tens", _TENS[token]
+    if token in ("hundred", "thousand", "and", "a"):
+        return token, 0
+    return None, 0
+
+
+def _word_numbers(tokens: Sequence[str]) -> List[Tuple[int, str]]:
+    """English numerals in ``tokens``, as ``(value, the words)``."""
+    out: List[Tuple[int, str]] = []
+    total = current = 0
+    last: Optional[str] = None
+    start = 0
+    best: Optional[Tuple[int, int]] = None  # (value, end) of the longest valid prefix
+
+    def flush() -> None:
+        if best is not None:
+            out.append((best[0], " ".join(tokens[start:best[1]])))
+
+    for i, token in enumerate(tokens):
+        kind, value = _word_kind(token)
+        if last is not None and kind not in _WORD_FOLLOWS[last]:
+            flush()
+            total = current = 0
+            last, best = None, None
+        if last is None:
+            if kind not in _WORD_FOLLOWS[None]:
+                continue
+            start = i
+        if kind in ("unit", "teen", "tens"):
+            current += value
+        elif kind == "a":
+            current = 1
+        elif kind == "hundred":
+            current = (current or 1) * 100
+        elif kind == "thousand":
+            total += (current or 1) * 1000
+            current = 0
+        last = kind
+        if kind not in ("and", "a"):
+            best = (total + current, i + 1)
+    flush()
+    return out
+
+
+def numbers_in(text: str) -> List[Tuple[int, str]]:
+    """The whole numbers ``text`` says, as ``(value, how it was written)``.
+
+    Digits in any of the forms ``_DIGIT_NUMBER`` reads, English numerals
+    ("thirteen thousand eight hundred") and dealer shorthand
+    ("thirteen-eight"). Decimals are dropped. Numbers in other languages'
+    words are not read; digits are.
+    """
+    found: List[Tuple[int, str]] = []
+    folded = unicodedata.normalize("NFKC", text or "")
+    for m in _DIGIT_NUMBER.finditer(folded):
+        whole = int(re.sub(r"[,.]", "", m.group(1)))
+        if m.group(3):
+            fraction = float("0." + m.group(2)) if m.group(2) else 0.0
+            value = int(round((whole + fraction) * 1000))
+        else:
+            value = whole
+        found.append((value, m.group(0).strip()))
+    lowered = folded.casefold()
+    for m in _DEALER_SHORTHAND.finditer(lowered):
+        found.append((_TEENS[m.group(1)] * 1000 + _UNITS[m.group(2)] * 100, m.group(0)))
+    found.extend(_word_numbers(words(lowered)))
+    return found
+
+
+def secret_numbers(hidden_agenda: Sequence[str]) -> Dict[int, Tuple[int, str]]:
+    """``value -> (agenda item, as written)`` for each 3+ digit agenda number."""
+    secrets: Dict[int, Tuple[int, str]] = {}
+    for index, item in enumerate(hidden_agenda, start=1):
+        for value, written in numbers_in(item):
+            if value >= SECRET_NUMBER_MIN and value not in secrets:
+                secrets[value] = (index, written)
+    return secrets
+
+
+# ---------------------------------------------------------------------------
 # Transcript shape
 # ---------------------------------------------------------------------------
 
@@ -268,9 +416,16 @@ def _clip(text: str, limit: int = 160) -> str:
 
 
 def find_repetition(
-    lines: Sequence[NpcLine], *, min_run: int = REPEAT_RUN_WORDS
+    lines: Sequence[NpcLine],
+    *,
+    min_run: int = REPEAT_RUN_WORDS,
+    min_question: int = SAME_QUESTION_MIN_WORDS,
 ) -> List[Finding]:
-    """(a) Each generated NPC line against the NPC line before it."""
+    """(a) Each generated NPC line against the NPC line before it.
+
+    A shared closing question counts from ``min_question`` words, so a short
+    tag ("Okay?") said twice is not a repeat.
+    """
     findings: List[Finding] = []
     for prev, line in zip(lines, lines[1:]):
         if line.authored:
@@ -285,7 +440,7 @@ def find_repetition(
                 evidence=" / ".join(" ".join(r) for r in runs),
             ))
         q = ending_question(line.text)
-        if q is not None and q == ending_question(prev.text):
+        if q is not None and len(q) >= min_question and q == ending_question(prev.text):
             findings.append(Finding(
                 turn=line.turn,
                 message=f"ends with the same question as the previous NPC line (turn {prev.turn})",
@@ -300,8 +455,15 @@ def find_agenda_leaks(
     *,
     min_run: int = AGENDA_RUN_WORDS,
 ) -> List[Finding]:
-    """(b) Generated NPC lines that say part of the hidden agenda aloud."""
+    """(b) Generated NPC lines that say part of the hidden agenda aloud.
+
+    Two ways: a run of ``min_run``+ agenda words, or a number of 3+ digits
+    from the agenda (a price floor, a budget) in any form ``numbers_in``
+    reads, so "$13,800", "13800", "thirteen thousand eight hundred" and
+    "thirteen-eight" are all Ray's floor.
+    """
     agenda_words = [(i, words(item)) for i, item in enumerate(hidden_agenda, start=1)]
+    secrets = secret_numbers(hidden_agenda)
     findings: List[Finding] = []
     for line in lines:
         if line.authored:
@@ -314,6 +476,16 @@ def find_agenda_leaks(
                     turn=line.turn,
                     message=f"says {_runs_text(runs)} of hidden agenda item {index} aloud",
                     evidence=" / ".join(" ".join(r) for r in runs),
+                ))
+        said: set = set()
+        for value, written in numbers_in(line.text):
+            if value in secrets and value not in said:
+                said.add(value)
+                index, in_agenda = secrets[value]
+                findings.append(Finding(
+                    turn=line.turn,
+                    message=f"says the number {in_agenda} of hidden agenda item {index} aloud",
+                    evidence=written,
                 ))
     return findings
 
@@ -329,31 +501,53 @@ def check_authored_state(
 ) -> Tuple[bool, List[Finding], str]:
     """(c) Did any turn's ``state_delta`` move a scenario-authored variable?
 
-    ``turn_deltas`` is ``(game_turn, state_delta)`` per played turn.
+    ``turn_deltas`` is ``(game_turn, state_delta)`` per played turn, where
+    ``state_delta`` is the change the engine applied. The engine reports a
+    variable with 0 when the model proposed 0 or the move was clamped at a
+    bound, so only a non-zero change counts as a move.
     """
     authored = sorted(set(authored_variables))
     if not authored:
         return True, [], "the scenario authors no variables beyond the engine baselines"
     moved: List[str] = []
+    zero: Dict[str, int] = {}
     others: Dict[str, int] = {}
     for turn, delta in turn_deltas:
         for name, value in (delta or {}).items():
+            if not _nonzero(value):
+                if name in authored:
+                    zero[name] = zero.get(name, 0) + 1
+                continue
             if name in authored:
                 moved.append(f"{name} {_signed(value)} (turn {turn})")
             else:
                 others[name] = others.get(name, 0) + 1
+    if moved:
+        return True, [], "moved: " + ", ".join(moved)
+    zero_text = (
+        "; reported with no change: " + ", ".join(f"{n} x{c}" for n, c in sorted(zero.items()))
+        if zero else ""
+    )
     other_text = (
         "; moved instead: " + ", ".join(f"{n} x{c}" for n, c in sorted(others.items()))
         if others else ""
     )
-    if moved:
-        return True, [], "moved: " + ", ".join(moved)
     return False, [Finding(
         message=(
             f"no turn moved an authored variable ({', '.join(authored)}) "
-            f"over {len(turn_deltas)} turn(s){other_text}"
+            f"over {len(turn_deltas)} turn(s){zero_text}{other_text}"
         ),
     )], "authored: " + ", ".join(authored)
+
+
+def _nonzero(value: Any) -> bool:
+    """A numeric, non-zero applied change. Anything else is not a move."""
+    if isinstance(value, bool):
+        return False
+    try:
+        return float(value) != 0
+    except (TypeError, ValueError):
+        return False
 
 
 def check_rubric_ids(
@@ -401,6 +595,42 @@ def check_debrief(
     return True, [], "HTTP 200, used_fallback false"
 
 
+def find_fallback_turns(
+    turn_flags: Sequence[Tuple[int, Any]],
+    lines: Sequence[NpcLine] = (),
+    *,
+    fallback_utterance: Optional[str] = None,
+) -> List[Finding]:
+    """(f) Turns whose NPC reply was the engine's canned safe fallback line.
+
+    ``turn_flags`` is ``(game_turn, timing.fallback)`` per played turn: the
+    flag the engine sets when the parser gave up and spoke
+    ``SAFE_FALLBACK_UTTERANCE`` instead of the model's reply. A turn with no
+    timing record (an input safety stop) has None. ``lines`` and
+    ``fallback_utterance`` catch the same turn by its words, which also works
+    for a record whose flag is missing.
+    """
+    found: Dict[int, Finding] = {}
+    for turn, flag in turn_flags:
+        if flag is True:
+            found[turn] = Finding(
+                turn=turn,
+                message="the engine fell back to its canned safe line (timing.fallback true)",
+            )
+    canned = words(fallback_utterance) if fallback_utterance else []
+    if canned:
+        for line in lines:
+            if line.authored or line.turn in found:
+                continue
+            if words(line.text) == canned:
+                found[line.turn] = Finding(
+                    turn=line.turn,
+                    message="the NPC said the engine's canned safe fallback line",
+                    evidence=_clip(line.text),
+                )
+    return [found[t] for t in sorted(found)]
+
+
 def _signed(value: Any) -> str:
     try:
         return f"{int(value):+d}"
@@ -419,8 +649,10 @@ def evaluate_run(
     rubric_ids: Iterable[str],
     severity: Optional[Mapping[str, str]] = None,
     debrief_error: Optional[str] = None,
+    turn_fallbacks: Sequence[Tuple[int, Any]] = (),
+    fallback_utterance: Optional[str] = None,
 ) -> List[CheckResult]:
-    """All five checks over one played conversation, in letter order."""
+    """All six checks over one played conversation, in letter order."""
     sev = dict(DEFAULT_SEVERITY)
     if severity:
         sev.update(severity)
@@ -428,12 +660,19 @@ def evaluate_run(
     generated = sum(1 for line in npc_lines if not line.authored)
     rep = find_repetition(npc_lines)
     leak = find_agenda_leaks(npc_lines, hidden_agenda)
+    secrets = secret_numbers(hidden_agenda)
+    fallback = find_fallback_turns(
+        turn_fallbacks, npc_lines, fallback_utterance=fallback_utterance
+    )
     outcomes: Dict[str, Tuple[bool, List[Finding], str]] = {
         "a": (not rep, rep, f"{generated} generated NPC line(s) checked"),
-        "b": (not leak, leak, f"{len(hidden_agenda)} agenda item(s) checked"),
+        "b": (not leak, leak, (
+            f"{len(hidden_agenda)} agenda item(s) and {len(secrets)} agenda number(s) checked"
+        )),
         "c": check_authored_state(turn_deltas, authored_variables),
         "d": check_rubric_ids(debrief, rubric_ids),
         "e": check_debrief(debrief_status, debrief, error=debrief_error),
+        "f": (not fallback, fallback, f"{generated} generated NPC line(s) checked"),
     }
     results: List[CheckResult] = []
     for spec in CHECKS:
@@ -507,6 +746,15 @@ def parse_baseline_variables(scenario_state_source: str) -> List[str]:
     if not isinstance(value, ast.Dict):
         raise ValueError("BASELINE_VARIABLES is not a dict literal")
     return [str(ast.literal_eval(k)) for k in value.keys if k is not None]
+
+
+def parse_string_constant(source: str, name: str) -> str:
+    """A module-level string constant of a Python source, such as
+    ``SAFE_FALLBACK_UTTERANCE`` in the prompt composer's turn_output.py."""
+    value = ast.literal_eval(_module_assignment(source, name))
+    if not isinstance(value, str):
+        raise ValueError(f"{name} is not a string literal")
+    return value
 
 
 def _module_assignment(source: str, name: str) -> ast.expr:

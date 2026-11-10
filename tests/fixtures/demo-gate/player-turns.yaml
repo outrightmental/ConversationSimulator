@@ -16,8 +16,10 @@
 #   - Stay inside the player brief. The buyer in used_car_negotiation pays
 #     cash; a script that contradicts the brief provokes failures that are
 #     the script's, not the NPC's.
-#   - Never quote the NPC's hidden agenda: check (b) looks for agenda wording
-#     in NPC lines, and an NPC echoing the player would read as a leak.
+#   - Never quote the NPC's hidden agenda or name a number from it: check (b)
+#     looks for agenda wording and agenda numbers of 3+ digits (Ray's $13,800
+#     floor, in digits or words) in NPC lines, and an NPC echoing the player
+#     would read as a leak. Offers near the floor are fine; the floor is not.
 #     tests/acceptance/test_demo_gate_checks.py enforces both rules.
 schema_version: 1
 

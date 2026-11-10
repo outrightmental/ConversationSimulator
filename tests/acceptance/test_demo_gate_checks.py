@@ -8,21 +8,26 @@ these tests pin the harness instead:
 
   * each check, on synthetic transcripts: the issue's own failing lines are
     caught (Ray repeating his closing question, Diane saying her agenda
-    aloud, the baseline-only state deltas, the invented rubric ids, a
-    fallback debrief), and the boundaries are where the issue puts them (a
-    6-word repeat, a 5-word agenda run);
-  * severities: (a), (b), (e) hard and (c), (d) warnings by default,
+    aloud, Ray naming his $13,800 floor in any form, the baseline-only and
+    zero-change state deltas, the invented rubric ids, a fallback debrief, a
+    canned fallback turn), and the boundaries are where the issue puts them
+    (a 6-word repeat, a 4-word closing question, a 5-word agenda run, a
+    3-digit agenda number);
+  * severities: (a), (b), (e), (f) hard and (c), (d) warnings by default,
     ``--strict`` and per-check overrides, and the exit status that follows;
   * the facts the checks read come from the files that own them: the five
     conversations from ``edition.py``, the baseline variables from
-    ``scenario_state.py``, the agenda, authored variables and rubric ids from
-    each pack;
+    ``scenario_state.py``, the fallback line from the prompt composer, the
+    agenda, authored variables and rubric ids from each pack;
   * the scripted player turns: 5-6 per conversation, inside the player brief,
-    and never quoting the NPC's hidden agenda (or an NPC echo would read as a
-    leak);
+    and never quoting the NPC's hidden agenda or its numbers (or an NPC echo
+    would read as a leak);
   * the replay's flow, against a scripted stand-in for the API and against an
-    in-process convsim-core on the fake runtime, whose identical NPC lines
-    the repetition check must fail.
+    in-process demo-edition convsim-core on the fake runtime, whose identical
+    NPC lines the repetition check must fail: it refuses an engine that is
+    not the demo edition unless told otherwise, and it deletes the NPC
+    relationship memory around every run (also on an interrupt or a crash)
+    so that no run's prompt carries an earlier debrief.
 
 No model and no server: the in-process app is a FastAPI TestClient.
 """
@@ -32,13 +37,14 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import pytest
 import yaml
 
 from convsim_core.edition import DEMO_SCENARIOS
 from convsim_core.scenario_state import BASELINE_VARIABLES
+from convsim_prompt.turn_output import SAFE_FALLBACK_UTTERANCE
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS = _REPO_ROOT / "scripts"
@@ -201,6 +207,24 @@ class TestRepetition:
         lines = [NpcLine(turn=0, text="Same words here in a row again ok?", authored=True)]
         assert checks.find_repetition(lines) == []
 
+    @pytest.mark.parametrize("question", ["Okay?", "Is that right?", "¿Algo más?"])
+    def test_a_short_closing_question_twice_is_not_a_repeat(self, question: str) -> None:
+        lines = _lines(f"The tires are new. {question}", f"Service records are in the file. {question}")
+        assert checks.find_repetition(lines) == []
+
+    def test_a_four_word_closing_question_twice_is_a_repeat(self) -> None:
+        lines = _lines(
+            "The tires are new. Does that work for you?",
+            "Service records are in the file. Does that work for you?",
+        )
+        # "does that work for you" is 5 words; a 4-word one is the boundary.
+        assert len(checks.find_repetition(lines)) == 1
+        four = _lines("The tires are new. Shall we talk numbers?",
+                      "Records are in the file. Shall we talk numbers?")
+        found = checks.find_repetition(four)
+        assert [f.evidence for f in found] == ["shall we talk numbers"]
+        assert checks.SAME_QUESTION_MIN_WORDS == 4
+
 
 # ---------------------------------------------------------------------------
 # (b) agenda leak
@@ -221,7 +245,9 @@ class TestAgendaLeak:
         found = checks.find_agenda_leaks(
             _lines("Honestly, thirteen-eight is my real minimum on this unit."), agenda
         )
-        assert [f.evidence for f in found] == ["real minimum on this unit"]
+        # The agenda words, and the floor itself in dealer shorthand.
+        assert [f.evidence for f in found] == ["real minimum on this unit", "thirteen-eight"]
+        assert found[1].message == "says the number 13,800 of hidden agenda item 3 aloud"
 
     def test_five_words_fail_four_pass(self) -> None:
         agenda = ["alpha beta gamma delta epsilon zeta"]
@@ -236,6 +262,77 @@ class TestAgendaLeak:
         agenda = ["alpha beta gamma delta epsilon"]
         lines = _lines("Nothing to see.", opening="alpha beta gamma delta epsilon")
         assert checks.find_agenda_leaks(lines, agenda) == []
+
+
+class TestSecretNumbers:
+    """(b) also catches a number from the agenda: Ray's $13,800 floor."""
+
+    ray = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
+
+    def test_rays_floor_is_his_only_secret_number(self) -> None:
+        assert checks.secret_numbers(self.ray) == {13800: (3, "13,800")}
+
+    @pytest.mark.parametrize("line, evidence", [
+        ("Look, I can't go under $13,800 on this one.", "13,800"),
+        ("Best I can do is 13800 out the door.", "13800"),
+        ("Final answer: $13,800.00, tires included.", "13,800.00"),
+        ("Call it 13.8k and we shake on it.", "13.8k"),
+        ("Thirteen thousand eight hundred, and that's my number.", "thirteen thousand eight hundred"),
+        ("Thirteen thousand, eight hundred. Take it or leave it.", "thirteen thousand eight hundred"),
+        ("I could maybe do thirteen-eight if you sign today.", "thirteen-eight"),
+    ])
+    def test_the_floor_in_any_form_fails(self, line: str, evidence: str) -> None:
+        found = checks.find_agenda_leaks(_lines(line), self.ray)
+        assert [f.evidence for f in found] == [evidence]
+        assert found[0].message == "says the number 13,800 of hidden agenda item 3 aloud"
+        assert found[0].turn == 1
+
+    @pytest.mark.parametrize("line", [
+        "Thirteen-nine with new tires, and we have a deal.",
+        "I can do $13,900 out the door.",
+        "Fourteen-two is where comps like this sell.",
+        "Thirteen thousand six hundred? That's too low for me.",
+        "It's $1,380 for the extended warranty.",
+        "Two other buyers looked at it, and 138 people viewed the listing.",
+        "The total is 8.50 for the oil change.",
+    ])
+    def test_other_numbers_pass(self, line: str) -> None:
+        assert checks.find_agenda_leaks(_lines(line), self.ray) == []
+
+    def test_the_number_is_reported_once_per_line(self) -> None:
+        line = "13,800. Yes, $13,800, thirteen thousand eight hundred."
+        assert len(checks.find_agenda_leaks(_lines(line), self.ray)) == 1
+
+    def test_small_agenda_numbers_are_not_secrets(self) -> None:
+        agenda = ["She has 2 offers and wants 15 percent more within 90 days"]
+        assert checks.secret_numbers(agenda) == {}
+        assert checks.find_agenda_leaks(_lines("Two offers, 15 percent, 90 days."), agenda) == []
+
+    def test_a_three_digit_agenda_number_is_a_secret(self) -> None:
+        agenda = ["Her real budget ceiling is 450 euros a month"]
+        assert checks.secret_numbers(agenda) == {450: (1, "450")}
+        found = checks.find_agenda_leaks(_lines("I can stretch to four hundred and fifty."), agenda)
+        assert [f.evidence for f in found] == ["four hundred and fifty"]
+
+    @pytest.mark.parametrize("text, expected", [
+        ("$13,800", [13800]),
+        ("13.800 euros", [13800]),
+        ("8.50", [8]),
+        ("p95 went from four seconds to three hundred milliseconds", [4, 300]),
+        ("fifteen hundred", [1500]),
+        ("a hundred and ten percent", [110]),
+        ("twenty-five", [25]),
+        ("five, six hundred", [5, 600]),
+        ("one hundred thousand", [100000]),
+        ("thirteen thousand eight hundred and fifty", [13850]),
+        ("13 km away", [13]),
+    ])
+    def test_numbers_in(self, text: str, expected: List[int]) -> None:
+        assert sorted(v for v, _ in checks.numbers_in(text)) == sorted(expected)
+
+    def test_numbers_in_reads_dealer_shorthand_beside_the_words(self) -> None:
+        # The words alone read 13 and 8; only the shorthand reads 13,800.
+        assert sorted(v for v, _ in checks.numbers_in("thirteen-eight")) == [8, 13, 13800]
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +360,33 @@ class TestAuthoredState:
 
     def test_no_turns_fail(self) -> None:
         passed, _, _ = checks.check_authored_state([], ["impression"])
+        assert not passed
+
+    def test_a_zero_change_is_not_a_move(self) -> None:
+        # The engine reports an authored variable with 0 when the model
+        # proposed 0 or the move was clamped at a bound.
+        passed, findings, _ = checks.check_authored_state(
+            [(1, {"deal_progress": 0, "trust": 10}), (2, {"deal_progress": 0, "leverage": 0})],
+            ["deal_progress", "leverage"],
+        )
+        assert not passed
+        assert "reported with no change: deal_progress x2, leverage x1" in findings[0].message
+        assert "moved instead: trust x1" in findings[0].message
+
+    def test_a_zero_baseline_change_is_not_listed_as_moved(self) -> None:
+        passed, findings, _ = checks.check_authored_state([(1, {"trust": 0})], ["leverage"])
+        assert not passed and "moved instead" not in findings[0].message
+
+    def test_a_negative_change_is_a_move(self) -> None:
+        passed, _, detail = checks.check_authored_state(
+            [(1, {"deal_progress": 0}), (2, {"deal_progress": -5})], ["deal_progress"]
+        )
+        assert passed
+        assert detail == "moved: deal_progress -5 (turn 2)"
+
+    @pytest.mark.parametrize("value", [None, "", "n/a", False, 0.0])
+    def test_a_non_numeric_or_empty_change_is_not_a_move(self, value: Any) -> None:
+        passed, _, _ = checks.check_authored_state([(1, {"leverage": value})], ["leverage"])
         assert not passed
 
     def test_a_redeclared_baseline_is_not_authored(self) -> None:
@@ -314,6 +438,47 @@ class TestDebrief:
         assert not passed and needle in findings[0].message
 
 
+class TestTurnFallback:
+    canned = SAFE_FALLBACK_UTTERANCE
+
+    def test_a_turn_flagged_as_fallback_fails(self) -> None:
+        found = checks.find_fallback_turns([(1, False), (2, True), (3, None)])
+        assert [f.turn for f in found] == [2]
+        assert "timing.fallback true" in found[0].message
+
+    def test_the_canned_line_fails_even_without_the_flag(self) -> None:
+        lines = _lines("Sure, the tires are new.", self.canned.upper())
+        found = checks.find_fallback_turns([(1, None), (2, None)], lines, fallback_utterance=self.canned)
+        assert [f.turn for f in found] == [2]
+        assert "canned safe fallback line" in found[0].message
+
+    def test_a_turn_is_reported_once(self) -> None:
+        lines = _lines(self.canned)
+        found = checks.find_fallback_turns([(1, True)], lines, fallback_utterance=self.canned)
+        assert len(found) == 1
+
+    def test_ordinary_turns_and_the_opening_pass(self) -> None:
+        lines = _lines("Could you repeat that? The line was bad.", opening=self.canned)
+        assert checks.find_fallback_turns([(1, False)], lines, fallback_utterance=self.canned) == []
+
+    def test_a_fallback_turn_fails_the_run(self) -> None:
+        results = checks.evaluate_run(
+            npc_lines=_lines("Fourteen-nine, with the tires.", self.canned),
+            turn_deltas=[(1, {"leverage": 5}), (2, {})],
+            debrief_status=200,
+            debrief={"used_fallback": False, "scores": {"clarity": 50.0}},
+            hidden_agenda=[],
+            authored_variables=["leverage"],
+            rubric_ids=["clarity"],
+            turn_fallbacks=[(1, False), (2, True)],
+            fallback_utterance=self.canned,
+        )
+        by_letter = {r.letter: r for r in results}
+        assert by_letter["f"].status == "FAIL"
+        assert [f.turn for f in by_letter["f"].findings] == [2]
+        assert checks.run_verdict(results) == "fail"
+
+
 # ---------------------------------------------------------------------------
 # Severity and verdicts
 # ---------------------------------------------------------------------------
@@ -322,7 +487,7 @@ class TestDebrief:
 class TestSeverity:
     def test_defaults(self) -> None:
         assert checks.resolve_severity() == {
-            "a": "hard", "b": "hard", "c": "warn", "d": "warn", "e": "hard",
+            "a": "hard", "b": "hard", "c": "warn", "d": "warn", "e": "hard", "f": "hard",
         }
 
     def test_strict_makes_everything_hard(self) -> None:
@@ -385,7 +550,7 @@ class TestEvaluateRun:
             rubric_ids=["clarity", "preparation", "empathy", "holding_firm", "outcome_framing"],
         )
         status = {r.letter: r.status for r in results}
-        assert status == {"a": "FAIL", "b": "pass", "c": "warn", "d": "warn", "e": "pass"}
+        assert status == {"a": "FAIL", "b": "pass", "c": "warn", "d": "warn", "e": "pass", "f": "pass"}
         assert checks.run_verdict(results) == "fail"
 
     def test_a_clean_run_passes(self) -> None:
@@ -403,7 +568,7 @@ class TestEvaluateRun:
             rubric_ids=["preparation", "clarity"],
         )
         assert checks.run_verdict(results) == "pass"
-        assert [r.letter for r in results] == ["a", "b", "c", "d", "e"]
+        assert [r.letter for r in results] == ["a", "b", "c", "d", "e", "f"]
 
 
 class TestTranscriptShape:
@@ -434,6 +599,11 @@ class TestSourcesOfTruth:
     def test_baseline_variables_match_scenario_state(self) -> None:
         assert replay.baseline_variables() == list(BASELINE_VARIABLES)
 
+    def test_safe_fallback_utterance_matches_the_prompt_composer(self) -> None:
+        assert replay.safe_fallback_utterance() == SAFE_FALLBACK_UTTERANCE
+        with pytest.raises(ValueError):
+            checks.parse_string_constant("X = 1\n", "X")
+
     def test_demo_scenarios_keyword_form(self) -> None:
         src = (
             "DEMO_SCENARIOS: tuple = (\n"
@@ -460,6 +630,7 @@ class TestSourcesOfTruth:
             _PACKS, "official.everyday_negotiation", "used_car_negotiation", list(BASELINE_VARIABLES)
         )
         assert facts.npc_name == "Ray Kowalski"
+        assert facts.npc_id == "car_dealer"
         assert facts.authored_variables == [
             "deal_progress", "perceived_fairness", "firmness", "concession_level", "leverage",
         ]
@@ -498,6 +669,13 @@ class TestPlayerTurns:
         assert "cash" in text
         assert "financing is approved" not in text and "financing approved" not in text
 
+    def test_the_car_buyer_never_names_rays_floor(self) -> None:
+        # The offers around the floor are read as numbers, and none is the floor,
+        # so Ray repeating the player's figure cannot read as a leak.
+        said = {v for t in self.turns["used_car_negotiation"] for v, _ in checks.numbers_in(t)}
+        assert {13000, 13500, 13600, 13900, 14200, 15500} <= said
+        assert 13800 not in said
+
 
 # ---------------------------------------------------------------------------
 # The replay's flow
@@ -505,7 +683,12 @@ class TestPlayerTurns:
 
 
 class ScriptedApi:
-    """A stand-in for convsim-core's REST API, one scripted conversation per session."""
+    """A stand-in for convsim-core's REST API, one scripted conversation per session.
+
+    Like the engine, each debrief stores a relationship recap for the
+    session's NPC (keyed by npc_id and scenario id), and ``/start`` notes the
+    recaps that exist when a session starts, the ones its prompt would read.
+    """
 
     def __init__(
         self,
@@ -516,6 +699,11 @@ class ScriptedApi:
         end_after: Optional[int] = None,
         fail_turn: Optional[int] = None,
         runtime_id: str = "llama_cpp",
+        edition: Optional[str] = "demo",
+        recaps: Optional[List[Dict[str, Any]]] = None,
+        memory_api: bool = True,
+        fallback_turns: Tuple[int, ...] = (),
+        raise_at_debrief: Optional[BaseException] = None,
     ):
         self.npc_lines = npc_lines
         self.deltas = deltas or [{} for _ in npc_lines]
@@ -523,25 +711,50 @@ class ScriptedApi:
         self.end_after = end_after
         self.fail_turn = fail_turn
         self.runtime_id = runtime_id
+        self.edition = edition
+        self.recaps: Dict[tuple, Dict[str, Any]] = {
+            (r["npc_id"], r["pack_id"]): dict(r) for r in recaps or []
+        }
+        self.memory_api = memory_api
+        self.fallback_turns = fallback_turns
+        self.raise_at_debrief = raise_at_debrief
         self.calls: List[tuple] = []
         self.sessions = 0
+        self.scenario_id: Optional[str] = None
+        self.recaps_at_start: List[List[tuple]] = []
         self.transcript: List[Dict[str, Any]] = []
         self.turn = 0
 
     def request(self, method: str, path: str, body: Any = None, *, timeout: float = 30.0):
         self.calls.append((method, path, body))
         if path == "/api/health":
-            return 200, {"version": "test", "edition": "full",
-                         "llm_runtime": {"runtime_id": self.runtime_id},
-                         "active_model": {}, "runtime": {"llm_model_name": "Test model"}}
+            health: Dict[str, Any] = {
+                "version": "test", "llm_runtime": {"runtime_id": self.runtime_id},
+                "active_model": {}, "runtime": {"llm_model_name": "Test model"},
+            }
+            if self.edition is not None:
+                health["edition"] = self.edition
+            return 200, health
+        if path.startswith("/api/relationship-memory"):
+            if not self.memory_api:
+                raise replay.ApiError(method, path, 404, {"detail": "Not Found"})
+            if method == "GET":
+                recaps = list(self.recaps.values())
+                return 200, {"recaps": recaps, "total": len(recaps)}
+            npc_id, pack_id = path.rsplit("/", 2)[-2:]
+            if self.recaps.pop((npc_id, pack_id), None) is None:
+                raise replay.ApiError(method, path, 404, {"detail": "No relationship recap"})
+            return 204, None
         if path.startswith("/api/scenarios/"):
             return 200, {"supported_languages": ["es", "en"], "player_role": {"label": "Learner"}}
         if path == "/api/sessions":
             self.sessions += 1
+            self.scenario_id = body["scenario_id"]
             self.turn = 0
             self.transcript = []
             return 201, {"session_id": f"s{self.sessions}"}
         if path.endswith("/start"):
+            self.recaps_at_start.append(sorted(self.recaps))
             self.transcript.append({"turn_number": 0, "role": "npc_opening", "content": "Opening line."})
             return 200, {"state": "PlayerTurnListening", "events": [
                 {"event_type": "npc_opening", "payload": {"content": "Opening line."}}]}
@@ -549,7 +762,8 @@ class ScriptedApi:
             self.turn += 1
             if self.turn == self.fail_turn:
                 raise replay.ApiError(method, path, 504, {"detail": {"message": "stalled"}})
-            line = self.npc_lines[self.turn - 1]
+            fallback = self.turn in self.fallback_turns
+            line = SAFE_FALLBACK_UTTERANCE if fallback else self.npc_lines[self.turn - 1]
             self.transcript += [
                 {"turn_number": 2 * self.turn - 1, "role": "player", "content": body["content"]},
                 {"turn_number": 2 * self.turn, "role": "npc", "content": line},
@@ -560,11 +774,22 @@ class ScriptedApi:
                 "ending_type": "success" if ended else None,
                 "events": [{"event_type": "npc_turn", "payload": {
                     "content": line, "state_delta": self.deltas[self.turn - 1],
-                    "rubric_observations": [], "visible_state": {}}}],
+                    "rubric_observations": [], "visible_state": {},
+                    "timing": {"fallback": fallback, "total_ms": 10.0}}}],
             }
         if path.endswith("/end"):
             return 200, {"state": "Ended", "ending_type": "player_exit"}
         if path.endswith("/debrief"):
+            npc_id = _facts(self.scenario_id).npc_id
+            previous = self.recaps.get((npc_id, self.scenario_id), {})
+            self.recaps[(npc_id, self.scenario_id)] = {
+                "npc_id": npc_id, "pack_id": self.scenario_id,
+                "session_count": previous.get("session_count", 0) + 1,
+                "updated_at": "2026-11-10T00:00:00Z", "key_observations": [],
+                "player_style_tags": [], "last_outcome": "player_exit", "last_session_at": None,
+            }
+            if self.raise_at_debrief is not None:
+                raise self.raise_at_debrief
             return 200, {"used_fallback": False, "scores": self.scores}
         if path.endswith("/transcript"):
             return 200, {"transcript_saved": True, "turns": list(self.transcript)}
@@ -599,6 +824,7 @@ class TestPlayConversation:
         ]
         assert record["error"] is None
         assert [t["npc"] for t in record["turns"]] == self.lines[:2]
+        assert [t["fallback"] for t in record["turns"]] == [False, False]
         assert record["opening"] == "Opening line."
         assert record["debrief"]["status"] == 200
         assert record["transcript"]["transcript_saved"] is True
@@ -627,6 +853,30 @@ class TestPlayConversation:
         replay.evaluate_record(record, _facts(), checks.resolve_severity())
         assert record["verdict"] == "fail"
 
+    def test_a_fallback_turn_is_recorded_and_fails_check_f(self) -> None:
+        api = ScriptedApi(self.lines, fallback_turns=(2,))
+        record = replay.play_conversation(api, _facts(), ["1", "2", "3"], run=1, seed=1, log=_quiet)
+        assert [t["fallback"] for t in record["turns"]] == [False, True, False]
+        replay.evaluate_record(
+            record, _facts(), checks.resolve_severity(),
+            fallback_utterance=replay.safe_fallback_utterance(),
+        )
+        f = {c["letter"]: c for c in record["checks"]}["f"]
+        assert f["status"] == "FAIL"
+        assert [x["turn"] for x in f["findings"]] == [2]
+        assert record["verdict"] == "fail"
+
+    def test_the_canned_line_fails_check_f_without_the_flag(self) -> None:
+        api = ScriptedApi(self.lines, fallback_turns=(1,))
+        record = replay.play_conversation(api, _facts(), ["1"], run=1, seed=1, log=_quiet)
+        record["turns"][0]["fallback"] = None
+        record["turns"][0]["timing"] = None
+        replay.evaluate_record(
+            record, _facts(), checks.resolve_severity(),
+            fallback_utterance=replay.safe_fallback_utterance(),
+        )
+        assert {c["letter"]: c for c in record["checks"]}["f"]["status"] == "FAIL"
+
 
 class TestMain:
     def _run(self, tmp_path: Path, api: ScriptedApi, *extra: str) -> int:
@@ -653,12 +903,20 @@ class TestMain:
         record = json.loads((tmp_path / "spanish_coffee-run2.json").read_text(encoding="utf-8"))
         assert record["schema"] == "convsim.demo-gate-replay/1"
         assert record["seed"] == 43 and record["verdict"] == "pass"
-        assert [c["letter"] for c in record["checks"]] == ["a", "b", "c", "d", "e"]
+        assert [c["letter"] for c in record["checks"]] == ["a", "b", "c", "d", "e", "f"]
         assert len(record["turns"]) == 6
         summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
         assert "**Verdict: PASS.**" in summary
+        assert "Not a D-05 result" not in summary
         assert "does not replace the manual D-05 judgement" in summary
-        assert "| spanish_coffee | 2 | 43 | 6 | pass | pass | pass | pass | pass | PASS |" in summary
+        assert "| spanish_coffee | 2 | 43 | 6 | pass | pass | pass | pass | pass | pass | PASS |" in summary
+
+    def test_a_fallback_turn_fails_the_replay(self, tmp_path: Path) -> None:
+        api = self._clean_api(deltas=[{"comprehension": 5}] + [{}] * 5, fallback_turns=(4,))
+        assert self._run(tmp_path, api) == 1
+        summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "(f) turn_fallback: **FAIL**" in summary
+        assert "turn 4: the engine fell back to its canned safe line" in summary
 
     def test_repeated_npc_line_fails_the_run(self, tmp_path: Path) -> None:
         same = "Hola, bienvenido. ¿Qué te pongo hoy por la mañana?"
@@ -684,6 +942,147 @@ class TestMain:
         assert replay.main(["--out", str(tmp_path)], transport=Down(), log=_quiet) == 2
 
 
+class TestEdition:
+    """D-05 judges the demo edition: a full-edition engine plays some of the
+    five from built-in catalog entries, not the pack files the checks read."""
+
+    @pytest.mark.parametrize("edition", ["full", None])
+    def test_an_engine_that_is_not_the_demo_exits_two(
+        self, tmp_path: Path, edition: Optional[str], capsys
+    ) -> None:
+        api = ScriptedApi(TestPlayConversation.lines, edition=edition)
+        code = replay.main(["--only", "spanish_coffee", "--out", str(tmp_path / "out")],
+                           transport=api, log=_quiet)
+        assert code == 2
+        err = capsys.readouterr().err
+        assert f"runs the {edition or 'unknown'} edition, not the demo" in err
+        assert "CONVSIM_EDITION=demo" in err and "--allow-full-edition" in err
+        assert not any(p == "/api/sessions" for _, p, _ in api.calls)
+        assert not (tmp_path / "out").exists()
+
+    def test_allow_full_edition_runs_and_is_labelled(self, tmp_path: Path) -> None:
+        api = ScriptedApi(TestPlayConversation.lines, scores={"comprehension": 55.0}, edition="full",
+                          deltas=[{"comprehension": 5}] + [{}] * 5)
+        code = replay.main(
+            ["--only", "spanish_coffee", "--repeat", "1", "--out", str(tmp_path), "--allow-full-edition"],
+            transport=api, log=_quiet,
+        )
+        assert code == 0
+        summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "- **Not a D-05 result:** the engine runs the `full` edition (--allow-full-edition)" in summary
+        assert "**Verdict: PASS (not a D-05 result).**" in summary
+
+    def test_not_d05_reasons(self) -> None:
+        demo = {"engine": {"edition": "demo"}}
+        assert replay.not_d05_reasons(demo) == []
+        assert len(replay.not_d05_reasons({**demo, "runtime_id": "fake"})) == 1
+        assert len(replay.not_d05_reasons({"engine": {"edition": "full"}, "runtime_id": "fake"})) == 2
+
+
+def _recap(npc_id: str, pack_id: str, sessions: int = 3) -> Dict[str, Any]:
+    return {
+        "npc_id": npc_id, "pack_id": pack_id, "session_count": sessions,
+        "updated_at": "2026-11-01T00:00:00Z", "key_observations": ["Asks few questions"],
+        "player_style_tags": [], "last_outcome": "success", "last_session_at": None,
+    }
+
+
+class TestNpcMemory:
+    """Each debrief writes the NPC's relationship recap and the next session's
+    prompt reads it, so the replay deletes it around every run."""
+
+    def _run(self, tmp_path: Path, api: ScriptedApi, *extra: str) -> int:
+        return replay.main(
+            ["--only", "spanish_coffee,used_car_negotiation", "--repeat", "2",
+             "--out", str(tmp_path), *extra],
+            transport=api, log=_quiet,
+        )
+
+    def _api(self, **kw: Any) -> ScriptedApi:
+        return ScriptedApi(TestPlayConversation.lines, scores={"comprehension": 55.0}, **kw)
+
+    def test_every_run_starts_without_a_recap_and_none_is_left(self, tmp_path: Path) -> None:
+        api = self._api()
+        assert self._run(tmp_path, api) == 0
+        assert api.sessions == 4
+        # The engine wrote a recap at every debrief; no session started with one.
+        assert api.recaps_at_start == [[], [], [], []]
+        assert api.recaps == {}
+        for name in ("used_car_negotiation-run1", "spanish_coffee-run2"):
+            record = json.loads((tmp_path / f"{name}.json").read_text(encoding="utf-8"))
+            assert record["npc_memory"]["cleared_before"] == []
+            assert record["npc_memory"]["errors"] == []
+            [after] = record["npc_memory"]["cleared_after"]
+            assert after["npc_id"] == _facts(record["scenario_id"]).npc_id
+            assert after["pack_id"] == record["scenario_id"]
+        summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "before and after every run" in summary
+        assert "(4 recap(s) written during the replay deleted; none existed before it)" in summary
+        assert "throwaway `CONVSIM_DATA_ROOT`" in summary
+
+    def test_other_npcs_memory_is_left_alone(self, tmp_path: Path) -> None:
+        other = _recap("hiring_manager", "behavioral_interview")
+        api = self._api(recaps=[other])
+        assert self._run(tmp_path, api) == 0
+        assert list(api.recaps.values()) == [other]
+
+    def test_an_existing_recap_refuses_to_start(self, tmp_path: Path, capsys) -> None:
+        api = self._api(recaps=[_recap("car_dealer", "used_car_negotiation")])
+        assert self._run(tmp_path / "out", api) == 2
+        err = capsys.readouterr().err
+        assert "car_dealer/used_car_negotiation (3 session(s))" in err
+        assert "CONVSIM_DATA_ROOT" in err and "--clear-npc-memory" in err
+        assert api.sessions == 0 and len(api.recaps) == 1
+        assert not (tmp_path / "out").exists()
+
+    def test_clear_npc_memory_deletes_and_keeps_a_copy(self, tmp_path: Path) -> None:
+        existing = _recap("car_dealer", "used_car_negotiation")
+        api = self._api(recaps=[existing])
+        assert self._run(tmp_path, api, "--clear-npc-memory") == 0
+        assert api.recaps_at_start == [[], [], [], []] and api.recaps == {}
+        assert json.loads((tmp_path / "npc-memory-before.json").read_text(encoding="utf-8")) == [existing]
+        summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "1 that existed before it deleted with --clear-npc-memory" in summary
+
+    def test_an_engine_without_the_memory_api_exits_two(self, tmp_path: Path, capsys) -> None:
+        assert self._run(tmp_path, self._api(memory_api=False)) == 2
+        assert "cannot read the engine's NPC relationship memory" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("exc", [KeyboardInterrupt(), RuntimeError("boom")])
+    def test_memory_is_cleared_on_an_interrupt_or_a_crash(self, tmp_path: Path, exc: BaseException) -> None:
+        # The engine stored the recap, then the replay stopped inside the debrief.
+        api = self._api(raise_at_debrief=exc)
+        if isinstance(exc, KeyboardInterrupt):
+            assert self._run(tmp_path, api) == 130
+            summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+            assert "- Interrupted: only the runs below finished." in summary
+            assert "(1 recap(s) written during the replay deleted" in summary
+        else:
+            with pytest.raises(RuntimeError):
+                self._run(tmp_path, api)
+        assert api.sessions == 1
+        assert api.recaps == {}
+
+    def test_a_recap_that_cannot_be_deleted_fails_the_run(self, tmp_path: Path) -> None:
+        api = self._api()
+        real = api.request
+
+        def no_delete(method: str, path: str, body: Any = None, *, timeout: float = 30.0):
+            if method == "DELETE":
+                raise replay.ApiError(method, path, 500, {"detail": "locked"})
+            return real(method, path, body, timeout=timeout)
+
+        api.request = no_delete  # type: ignore[method-assign]
+        assert self._run(tmp_path, api) == 1
+        record = json.loads((tmp_path / "spanish_coffee-run1.json").read_text(encoding="utf-8"))
+        assert "NPC memory after the run" in record["error"]
+        assert record["verdict"] == "fail"
+        summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "except around 4 run(s) where the delete failed" in summary
+        assert "so no run's prompt carried an earlier debrief" not in summary
+        assert "**NPC memory not cleared at the end:**" in summary
+
+
 class _TestClientTransport:
     """The replay's transport interface over an in-process FastAPI app."""
 
@@ -698,19 +1097,11 @@ class _TestClientTransport:
         return resp.status_code, data
 
 
-def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, monkeypatch) -> None:
-    """The API contract the replay relies on, end to end, without a model.
-
-    The fake runtime says the same line every turn, so the repetition check
-    must fail every run, and the run must still be played to the debrief.
-    """
-    from fastapi.testclient import TestClient
-
-    from convsim_core.app import create_app
+def _engine_config(tmp_path: Path, monkeypatch, **overrides: Any):
     from convsim_core.config import ServiceConfig
 
     monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "no-whisper-cli"))
-    config = ServiceConfig(
+    return ServiceConfig(
         host="127.0.0.1",
         port=7355,
         data_dir=str(tmp_path / "data"),
@@ -718,27 +1109,76 @@ def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, mo
         db_dir=str(tmp_path / "db"),
         packs_dir=str(tmp_path / "packs"),
         official_packs_dir=str(_PACKS),
+        **overrides,
     )
+
+
+def test_replay_against_in_process_engine_on_the_fake_runtime(tmp_path: Path, monkeypatch) -> None:
+    """The API contract the replay relies on, end to end, without a model.
+
+    The engine runs the demo edition (``CONVSIM_EDITION=demo``), as for D-05,
+    so it plays the five from their curated packs. The fake runtime says the
+    same line every turn, so the repetition check must fail every run, and the
+    run must still be played to the debrief. Every debrief stores the NPC's
+    relationship recap; the replay must find it under the key the engine
+    uses, delete it before the next run, and leave none behind.
+    """
+    from fastapi.testclient import TestClient
+
+    from convsim_core.app import create_app
+
+    config = _engine_config(tmp_path, monkeypatch, edition="demo")
     out = tmp_path / "out"
     with TestClient(create_app(config)) as client:
         code = replay.main(
-            ["--only", "behavioral_interview,spanish_coffee", "--repeat", "1",
+            ["--only", "behavioral_interview,spanish_coffee", "--repeat", "2",
              "--runtime-id", "fake", "--out", str(out)],
             transport=_TestClientTransport(client),
             log=_quiet,
         )
+        left = client.get("/api/relationship-memory").json()
     assert code == 1
+    assert left["total"] == 0, left
     for scenario_id, language in (("behavioral_interview", "en"), ("spanish_coffee", "es")):
-        record = json.loads((out / f"{scenario_id}-run1.json").read_text(encoding="utf-8"))
-        assert record["error"] is None, record["error"]
-        assert record["language"] == language
-        assert record["player_role_name"]
-        assert len(record["turns"]) == 6
-        assert record["debrief"]["status"] == 200
-        assert record["transcript"]["transcript_saved"] is True
-        by_letter = {c["letter"]: c for c in record["checks"]}
-        assert by_letter["a"]["status"] == "FAIL"
-        assert by_letter["a"]["findings"][0]["turn"] == 2
-        assert record["verdict"] == "fail"
+        for run in (1, 2):
+            record = json.loads((out / f"{scenario_id}-run{run}.json").read_text(encoding="utf-8"))
+            assert record["error"] is None, record["error"]
+            assert record["language"] == language
+            assert record["player_role_name"]
+            assert len(record["turns"]) == 6
+            assert [t["fallback"] for t in record["turns"]] == [False] * 6
+            assert record["debrief"]["status"] == 200
+            assert record["transcript"]["transcript_saved"] is True
+            by_letter = {c["letter"]: c for c in record["checks"]}
+            assert by_letter["a"]["status"] == "FAIL"
+            assert by_letter["a"]["findings"][0]["turn"] == 2
+            assert by_letter["f"]["status"] == "pass"
+            assert record["verdict"] == "fail"
+            # The debrief's recap was found under the engine's own key and
+            # deleted, so run 2 started without run 1's.
+            memory = record["npc_memory"]
+            assert memory["cleared_before"] == []
+            assert [(m["npc_id"], m["pack_id"], m["session_count"]) for m in memory["cleared_after"]] == [
+                (_facts(scenario_id).npc_id, scenario_id, 1)
+            ]
     summary = (out / "summary.md").read_text(encoding="utf-8")
     assert "model-free `fake` runtime" in summary
+    assert "edition (--allow-full-edition)" not in summary
+    assert "(4 recap(s) written during the replay deleted; none existed before it)" in summary
+
+
+def test_replay_refuses_an_in_process_full_edition_engine(tmp_path: Path, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from convsim_core.app import create_app
+
+    with TestClient(create_app(_engine_config(tmp_path, monkeypatch))) as client:
+        code = replay.main(
+            ["--only", "used_car_negotiation", "--repeat", "1", "--runtime-id", "fake",
+             "--out", str(tmp_path / "out")],
+            transport=_TestClientTransport(client),
+            log=_quiet,
+        )
+        sessions = client.get("/api/sessions").json()["sessions"]
+    assert code == 2
+    assert sessions == []

@@ -243,16 +243,26 @@ of the five conversations to the debrief against a running convsim-core on the
 real model, twice by default, with scripted player turns that press on each
 NPC's hidden agenda (`tests/fixtures/demo-gate/player-turns.yaml`). On every
 turn and run it asserts that the NPC repeats no 6-word run and no closing
-question from its previous line, says no 5-word run of its hidden agenda
-aloud, moves at least one variable the scenario authors, and gets a debrief
-that generated without the template fallback and scored only the rubric's own
-dimension ids. It writes a JSON record per run and a markdown summary, and
-exits non-zero on a hard failure. The authored-state and rubric checks are
-warnings until the engine wires both into play (issue #580); `--strict` makes
-them blocking. A release candidate should pass the pre-check before the manual
-D-05 run. It does not replace the manual judgement: whether each reply makes
-sense, keeps its role and answers the player is still read by a person on
-reference hardware.
+question of 4+ words from its previous line, says no 5-word run of its hidden
+agenda aloud and no 3+ digit number from it (Ray's $13,800 floor, in digits or
+words), never answers with the engine's canned fallback line, applies a
+non-zero change to at least one variable the scenario authors, and gets a
+debrief that generated without the template fallback and scored only the
+rubric's own dimension ids. It writes a JSON record per run and a markdown
+summary, and exits non-zero on a hard failure. The authored-state and rubric
+checks are warnings until the engine wires both into play (issue #580);
+`--strict` makes them blocking. The engine must run the demo edition
+(`CONVSIM_EDITION=demo`), which plays the five from their curated packs; the
+replay refuses any other edition unless `--allow-full-edition` is given, and
+then marks the result as not a D-05 result. Runs are kept independent: the
+replay deletes each NPC's relationship-memory recap, which every debrief
+writes and the next session's prompt reads, before and after every run, and
+refuses to start over a recap that already existed (`--clear-npc-memory`
+deletes it). The sessions themselves stay in the engine's history, so run the
+engine on a throwaway `CONVSIM_DATA_ROOT`. A release candidate should pass the
+pre-check before the manual D-05 run. It does not replace the manual
+judgement: whether each reply makes sense, keeps its role and answers the
+player is still read by a person on reference hardware.
 
 ---
 

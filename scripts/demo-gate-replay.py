@@ -12,22 +12,45 @@ player turns in ``tests/fixtures/demo-gate/player-turns.yaml``, several times
 each, and asserts on every turn and every run:
 
   (a) repetition      no run of 6+ words shared with the previous NPC line, and
-                      no NPC line ending with the same question as the last
-  (b) agenda_leak     no run of 5+ words of the NPC's hidden agenda said aloud
-  (c) authored_state  some turn moved a variable the scenario authors (not an
-                      engine baseline variable)
+                      no NPC line ending with the same question (4+ words) as
+                      the last
+  (b) agenda_leak     no run of 5+ words of the NPC's hidden agenda said aloud,
+                      and no 3+ digit number from it (Ray's $13,800 floor)
+  (c) authored_state  some turn applied a non-zero change to a variable the
+                      scenario authors (not an engine baseline variable)
   (d) rubric_ids      the debrief scored the scenario rubric's dimension ids,
                       and only those
   (e) debrief         the debrief generated (HTTP 200), used_fallback false
+  (f) turn_fallback   no NPC reply was the engine's canned safe fallback line
 
-By default (a), (b) and (e) are hard failures and (c) and (d) are warnings:
-the engine does not wire authored state or the rubric into play yet (fixes 3
-and 4 of issue #580), so both fail on every run today. ``--strict`` makes all
-five hard; ``--hard`` and ``--warn`` set one check at a time.
+By default (a), (b), (e) and (f) are hard failures and (c) and (d) are
+warnings: the engine does not wire authored state or the rubric into play yet
+(fixes 3 and 4 of issue #580), so both fail on every run today. ``--strict``
+makes all six hard; ``--hard`` and ``--warn`` set one check at a time.
 
 It does not start anything. Start convsim-core on the real runtime first (the
 desktop app, or ``scripts/dev.sh`` with a model installed) and point ``--api``
 at it. Turns take minutes on a CPU-only machine; the timeouts are generous.
+
+The engine must run the demo edition (``CONVSIM_EDITION=demo``): it plays each
+conversation from its curated pack, the files the checks read. A full-edition
+engine resolves a scenario id catalog-first, so a conversation that also has a
+built-in catalog entry plays that entry instead. The replay exits 2 when
+``GET /api/health`` does not report ``edition: demo``; ``--allow-full-edition``
+runs anyway, and the summary marks the result as not a D-05 result.
+
+Runs are kept independent of each other. Every debrief folds its session into
+a relationship recap the engine keeps per NPC, and the NPC's next session reads
+it into the prompt (the RELATIONSHIP_MEMORY layer); no setting turns that off.
+So the replay deletes the recap of each conversation's NPC through
+``/api/relationship-memory`` before and after every run, and once more when it
+stops, also on an interrupt or a crash, and the summary says what it deleted.
+A recap that already existed before the replay cannot be put back through the
+API, so the replay refuses to start over one unless ``--clear-npc-memory`` is
+given (it saves a copy to ``npc-memory-before.json`` first). The sessions,
+transcripts and debriefs themselves stay in the engine's history, so a
+throwaway ``CONVSIM_DATA_ROOT`` for the engine is still recommended: the
+profile the manual D-05 run then uses starts clean.
 
 Usage
 -----
@@ -51,11 +74,11 @@ Output
 ``--out DIR`` (default ``out/demo-gate/<UTC time>`` under the repository root,
 which git ignores) receives one ``<scenario>-run<N>.json`` per run, with the
 session setup, every turn's player and NPC line, state delta, rubric
-observations and timing, the debrief, the stored transcript and each check's
-result, plus ``summary.md``: a table of every run against every check, the
-findings with the words that tripped them, and latency (noted, not judged).
-Both are rewritten after every run, so an interrupted replay keeps what it
-finished.
+observations, timing and fallback flag, the debrief, the stored transcript,
+the NPC recaps deleted around it and each check's result, plus ``summary.md``:
+a table of every run against every check, the findings with the words that
+tripped them, and latency (noted, not judged). Both are rewritten after every
+run, so an interrupted replay keeps what it finished.
 
 Seeds are recorded on each session (``--seed`` is the first; run N adds N-1).
 The engine does not pass a session's seed to the model yet, so runs differ
@@ -70,8 +93,9 @@ Exit codes
 ----------
 0  No hard failure (warnings allowed).
 1  A hard check failed, or a run could not be played to the debrief.
-2  Usage or setup error: bad arguments, an engine that does not answer, a
-   conversation with no scripted turns.
+2  Usage or setup error: bad arguments, an engine that does not answer or is
+   not the demo edition, a conversation with no scripted turns, NPC memory
+   that cannot be read or already holds a recap.
 130  Interrupted; the summary covers the runs that finished.
 
 Standard library and PyYAML only.
@@ -79,6 +103,7 @@ Standard library and PyYAML only.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
 import time
@@ -110,11 +135,14 @@ DEFAULT_TURNS = REPO_ROOT / "tests" / "fixtures" / "demo-gate" / "player-turns.y
 DEFAULT_PACKS_DIR = REPO_ROOT / "packs" / "official"
 EDITION_PY = REPO_ROOT / "services" / "convsim-core" / "convsim_core" / "edition.py"
 SCENARIO_STATE_PY = REPO_ROOT / "services" / "convsim-core" / "convsim_core" / "scenario_state.py"
+TURN_OUTPUT_PY = REPO_ROOT / "packages" / "prompt-composer" / "src" / "convsim_prompt" / "turn_output.py"
 
 DIFFICULTIES = ("warm", "standard", "hard", "adversarial")
 MODEL_FREE_RUNTIMES = ("fake", "scripted")
+DEMO_EDITION = "demo"
 RECORD_SCHEMA = "convsim.demo-gate-replay/1"
 FALLBACK_ROLE_NAME = "Demo Gate Tester"
+MEMORY_BEFORE_FILE = "npc-memory-before.json"
 
 # Requests that do not wait on the model.
 SHORT_TIMEOUT_S = 30.0
@@ -205,6 +233,7 @@ class ScenarioFacts:
     scenario_path: Path
     npc_path: Path
     rubric_path: Path
+    npc_id: str
     npc_name: str
     hidden_agenda: List[str]
     authored_variables: List[str]
@@ -245,6 +274,7 @@ def load_scenario_facts(
         scenario_path=scenario_path,
         npc_path=npc_path,
         rubric_path=rubric_path,
+        npc_id=str(npc.get("npc_id") or ""),
         npc_name=str(npc.get("display_name") or npc.get("npc_id") or "NPC"),
         hidden_agenda=checks.hidden_agenda(npc),
         authored_variables=checks.authored_variables(scenario, baseline),
@@ -258,6 +288,13 @@ def demo_scenarios() -> List[Tuple[str, str]]:
 
 def baseline_variables() -> List[str]:
     return checks.parse_baseline_variables(SCENARIO_STATE_PY.read_text(encoding="utf-8"))
+
+
+def safe_fallback_utterance() -> str:
+    """The line the engine speaks when it gives up on a reply (check (f))."""
+    return checks.parse_string_constant(
+        TURN_OUTPUT_PY.read_text(encoding="utf-8"), "SAFE_FALLBACK_UTTERANCE"
+    )
 
 
 def load_player_turns(path: Path) -> Dict[str, List[str]]:
@@ -386,6 +423,7 @@ def play_conversation(
             )
             seconds = round(time.monotonic() - t0, 1)
             npc = _event(resp.get("events"), "npc_turn")
+            timing = npc.get("timing")
             state = resp.get("state")
             record["ending_type"] = resp.get("ending_type") or npc.get("ending_type")
             record["turns"].append({
@@ -402,7 +440,10 @@ def play_conversation(
                 "ending_type": npc.get("ending_type"),
                 "state": state,
                 "seconds": seconds,
-                "timing": npc.get("timing"),
+                # The engine's own flag for a reply it replaced with the canned
+                # safe line; None when the turn has no timing record.
+                "fallback": timing.get("fallback") if isinstance(timing, Mapping) else None,
+                "timing": timing,
             })
             log(f"{tag} turn {number}/{len(player_turns)} {seconds:.1f}s: {_short(npc.get('content'))}")
     except ApiError as exc:
@@ -465,13 +506,18 @@ def npc_lines_of(record: Mapping[str, Any]) -> List[checks.NpcLine]:
 
 
 def evaluate_record(
-    record: Dict[str, Any], facts: ScenarioFacts, severity: Mapping[str, str]
+    record: Dict[str, Any],
+    facts: ScenarioFacts,
+    severity: Mapping[str, str],
+    *,
+    fallback_utterance: Optional[str] = None,
 ) -> List[checks.CheckResult]:
-    """Run the five checks on a played record and store them on it."""
+    """Run the six checks on a played record and store them on it."""
     debrief = record.get("debrief") or {}
+    turns = record.get("turns") or []
     results = checks.evaluate_run(
         npc_lines=npc_lines_of(record),
-        turn_deltas=[(int(t["turn"]), t.get("state_delta") or {}) for t in record.get("turns") or []],
+        turn_deltas=[(int(t["turn"]), t.get("state_delta") or {}) for t in turns],
         debrief_status=debrief.get("status"),
         debrief=debrief.get("body") if isinstance(debrief.get("body"), Mapping) else None,
         hidden_agenda=facts.hidden_agenda,
@@ -479,10 +525,115 @@ def evaluate_record(
         rubric_ids=facts.rubric_ids,
         severity=severity,
         debrief_error=debrief.get("error"),
+        turn_fallbacks=[(int(t["turn"]), _turn_fallback_flag(t)) for t in turns],
+        fallback_utterance=fallback_utterance,
     )
     record["checks"] = [r.to_dict() for r in results]
     record["verdict"] = checks.run_verdict(results, error=record.get("error"))
     return results
+
+
+def _turn_fallback_flag(turn: Mapping[str, Any]) -> Any:
+    if turn.get("fallback") is not None:
+        return turn["fallback"]
+    timing = turn.get("timing")
+    return timing.get("fallback") if isinstance(timing, Mapping) else None
+
+
+# ---------------------------------------------------------------------------
+# NPC memory
+# ---------------------------------------------------------------------------
+
+
+class NpcMemory:
+    """Keeps NPC relationship memory from carrying from one run to the next.
+
+    Every debrief folds its session into a recap the engine stores per NPC
+    (``relationship_state``, keyed by the NPC id and the session's pack id,
+    which for a session created over the API is the scenario id), and the
+    NPC's next session reads it into the prompt's RELATIONSHIP_MEMORY layer.
+    No setting turns that off, so the replay deletes the recaps of the NPCs it
+    plays through ``/api/relationship-memory``.
+    """
+
+    PATH = "/api/relationship-memory"
+
+    def __init__(self, transport: Any):
+        self.transport = transport
+
+    @staticmethod
+    def _keys(facts_list: Sequence[ScenarioFacts]) -> set:
+        keys = set()
+        for f in facts_list:
+            keys.add((f.npc_id, f.scenario_id))
+            keys.add((f.npc_id, f.pack_id))
+        return keys
+
+    def recaps_for(self, facts_list: Sequence[ScenarioFacts]) -> List[Dict[str, Any]]:
+        """The stored recaps a session of these conversations would read."""
+        _, body = self.transport.request("GET", self.PATH)
+        keys = self._keys(facts_list)
+        recaps = (body or {}).get("recaps") if isinstance(body, Mapping) else None
+        return [
+            dict(r) for r in recaps or []
+            if isinstance(r, Mapping) and (r.get("npc_id"), r.get("pack_id")) in keys
+        ]
+
+    def clear(self, facts_list: Sequence[ScenarioFacts]) -> List[Dict[str, Any]]:
+        """Delete those recaps; return what was deleted (npc, pack, session count)."""
+        deleted: List[Dict[str, Any]] = []
+        for r in self.recaps_for(facts_list):
+            npc_id, pack_id = str(r["npc_id"]), str(r["pack_id"])
+            try:
+                self.transport.request("DELETE", f"{self.PATH}/{_quote(npc_id)}/{_quote(pack_id)}")
+            except ApiError as exc:
+                if exc.status != 404:  # gone already is what we wanted
+                    raise
+            deleted.append({
+                "npc_id": npc_id,
+                "pack_id": pack_id,
+                "session_count": r.get("session_count"),
+            })
+        return deleted
+
+
+def _isolated_run(
+    memory: NpcMemory,
+    facts: ScenarioFacts,
+    play: Callable[[], Dict[str, Any]],
+    *,
+    log: Log = print,
+) -> Dict[str, Any]:
+    """Play one run with no relationship recap of its NPC before or after it.
+
+    The recap before a run is normally gone already; one found there was left
+    by a debrief that finished after its run's request timed out. A recap that
+    cannot be deleted makes the run an error: its conditions are not known.
+    """
+    errors: List[str] = []
+    try:
+        before = memory.clear([facts])
+    except ApiError as exc:
+        before = []
+        errors.append(f"NPC memory before the run: {exc}")
+    record = play()
+    try:
+        after = memory.clear([facts])
+    except ApiError as exc:
+        after = []
+        errors.append(f"NPC memory after the run: {exc}")
+    record["npc_memory"] = {"cleared_before": before, "cleared_after": after, "errors": errors}
+    if errors:
+        record["error"] = "; ".join(([record["error"]] if record.get("error") else []) + errors)
+        log(f"[{facts.scenario_id} run {record.get('run')}] ERROR {'; '.join(errors)}")
+    return record
+
+
+def _recap_names(recaps: Sequence[Mapping[str, Any]]) -> str:
+    return ", ".join(
+        f"{r.get('npc_id')}/{r.get('pack_id')} ({r.get('session_count')} session(s))"
+        for r in recaps
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -520,11 +671,9 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
         f"{engine.get('edition', '?')}, runtime {engine.get('runtime_id') or '?'}, model "
         f"{engine.get('model_name') or engine.get('model_id') or '?'})"
     )
-    if meta.get("runtime_id"):
-        out.append(
-            f"- Sessions pinned to the model-free `{meta['runtime_id']}` runtime: a harness "
-            "self-test, not a D-05 result."
-        )
+    caveats = not_d05_reasons(meta)
+    if caveats:
+        out.append("- **Not a D-05 result:** " + "; ".join(caveats) + ".")
     out.append(
         f"- Difficulty `{meta['difficulty']}`, {meta['repeat']} run(s) per conversation, "
         f"player turns from `{meta['turns_file']}`"
@@ -534,18 +683,22 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
         + ", ".join(f"({c.letter}) {c.name} {sev[c.letter]}" for c in checks.CHECKS)
         + (" (--strict)" if meta.get("strict") else "")
     )
+    out.extend(_memory_lines(records, meta.get("npc_memory") or {}))
     if meta.get("interrupted"):
         out.append("- Interrupted: only the runs below finished.")
     out.append("")
     out.append(
-        f"**Verdict: {verdict}.** {len(failed)} of {len(records)} run(s) failed a hard check "
+        f"**Verdict: {verdict}"
+        + (" (not a D-05 result)" if caveats else "")
+        + f".** {len(failed)} of {len(records)} run(s) failed a hard check "
         f"or did not finish; {len(warned)} passed with warnings."
     )
     out.append("")
     out.append(
         "This pre-check does not replace the manual D-05 judgement. It catches the "
         "failures a script can see (repetition, agenda said aloud, state that never "
-        "moves, debriefs off the rubric or on the template); whether each reply makes "
+        "moves, debriefs off the rubric or on the template, canned fallback turns); "
+        "whether each reply makes "
         "sense, keeps its role and answers the player is still read by a person."
     )
     out.append("")
@@ -606,6 +759,58 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
     return "\n".join(out)
 
 
+def not_d05_reasons(meta: Mapping[str, Any]) -> List[str]:
+    """Why a replay's result does not count for D-05 (empty when it does)."""
+    reasons: List[str] = []
+    if meta.get("runtime_id"):
+        reasons.append(
+            f"sessions pinned to the model-free `{meta['runtime_id']}` runtime (a harness self-test)"
+        )
+    edition = (meta.get("engine") or {}).get("edition")
+    if edition != DEMO_EDITION:
+        reasons.append(
+            f"the engine runs the `{edition or 'unknown'}` edition (--allow-full-edition), "
+            "which plays a conversation with a built-in catalog entry from that entry, "
+            "not from the pack files the checks read"
+        )
+    return reasons
+
+
+def _memory_lines(records: Sequence[Mapping[str, Any]], memory: Mapping[str, Any]) -> List[str]:
+    before = memory.get("existing_before") or []
+    between = sum(
+        len((r.get("npc_memory") or {}).get(k) or [])
+        for r in records for k in ("cleared_before", "cleared_after")
+    )
+    at_end = len(memory.get("cleared_at_end") or [])
+    failed = [r for r in records if (r.get("npc_memory") or {}).get("errors")]
+    line = (
+        "- NPC memory: the replay deleted the relationship recap of each conversation's NPC "
+        "before and after every run, so no run's prompt carried an earlier debrief "
+        if not failed else
+        "- NPC memory: the replay deleted the relationship recap of each conversation's NPC "
+        f"before and after every run, except around {len(failed)} run(s) where the delete "
+        "failed (see their run errors), whose prompt may have carried an earlier debrief "
+    )
+    line += f"({between + at_end} recap(s) written during the replay deleted"
+    line += (
+        f"; {len(before)} that existed before it deleted with --clear-npc-memory, "
+        f"copies in `{MEMORY_BEFORE_FILE}`)." if before else "; none existed before it)."
+    )
+    lines = [line]
+    if memory.get("error"):
+        lines.append(
+            f"- **NPC memory not cleared at the end:** {_md(memory['error'])}. Check "
+            "`GET /api/relationship-memory` before the manual D-05 run."
+        )
+    lines.append(
+        "- The replay's sessions, transcripts and debriefs stay in the engine's history, and a "
+        "debrief still generating when the replay stopped can leave a recap after it: run the "
+        "engine on a throwaway `CONVSIM_DATA_ROOT` so the profile the manual D-05 uses starts clean."
+    )
+    return lines
+
+
 def write_record(out_dir: Path, record: Mapping[str, Any]) -> Path:
     path = out_dir / f"{record['scenario_id']}-run{record['run']}.json"
     path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -642,6 +847,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--runtime-id", choices=MODEL_FREE_RUNTIMES, default=None,
         help="pin sessions to a model-free runtime to exercise the harness (not a D-05 result)",
+    )
+    p.add_argument(
+        "--allow-full-edition", action="store_true",
+        help="run against an engine that is not the demo edition (not a D-05 result)",
+    )
+    p.add_argument(
+        "--clear-npc-memory", action="store_true",
+        help=(
+            "delete relationship recaps that already exist for the NPCs played, instead of "
+            f"refusing to start (a copy goes to {MEMORY_BEFORE_FILE}; the API cannot restore them)"
+        ),
     )
     return p
 
@@ -700,6 +916,10 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
         }
     except (OSError, ValueError, KeyError, yaml.YAMLError) as exc:
         return fail_setup(f"cannot read the authored pack files: {exc}")
+    try:
+        fallback_utterance = safe_fallback_utterance()
+    except (OSError, ValueError, SyntaxError) as exc:
+        return fail_setup(f"cannot read the engine's safe fallback line from {TURN_OUTPUT_PY}: {exc}")
 
     transport = transport or HttpTransport(args.api)
     try:
@@ -707,10 +927,41 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
     except ApiError as exc:
         return fail_setup(f"convsim-core does not answer at {args.api} ({exc}); start it first")
     engine = _engine_info(health or {})
+    if engine.get("edition") != DEMO_EDITION:
+        if not args.allow_full_edition:
+            return fail_setup(
+                f"the engine at {args.api} runs the {engine.get('edition') or 'unknown'} edition, "
+                "not the demo. D-05 judges the demo edition, which plays each conversation from "
+                "its curated pack, the files these checks read; the full edition resolves a "
+                "scenario id catalog-first and plays a built-in catalog entry where one exists. "
+                "Start convsim-core with CONVSIM_EDITION=demo, or pass --allow-full-edition "
+                "for a run that is not a D-05 result"
+            )
+        log(
+            f"warning: the engine runs the {engine.get('edition') or 'unknown'} edition; "
+            "this is not a D-05 run"
+        )
     if not args.runtime_id and engine.get("runtime_id") in MODEL_FREE_RUNTIMES:
         log(
             f"warning: the engine's runtime is {engine['runtime_id']!r}; "
             "this is not a real-model D-05 run"
+        )
+
+    memory = NpcMemory(transport)
+    all_facts = [facts[s] for s in selected]
+    try:
+        existing = memory.recaps_for(all_facts)
+    except ApiError as exc:
+        return fail_setup(
+            f"cannot read the engine's NPC relationship memory ({exc}); the replay clears "
+            "it around every run so each run starts from the same prompt"
+        )
+    if existing and not args.clear_npc_memory:
+        return fail_setup(
+            f"the engine already holds NPC relationship memory for {_recap_names(existing)}. "
+            "A run would start from it, and the API cannot restore it once the replay deletes "
+            "it. Point the engine at a throwaway CONVSIM_DATA_ROOT, or pass --clear-npc-memory "
+            f"to delete it (a copy goes to {MEMORY_BEFORE_FILE} in the output folder)"
         )
 
     started_at = _now()
@@ -727,7 +978,17 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
         "strict": args.strict,
         "runtime_id": args.runtime_id,
         "interrupted": False,
+        "npc_memory": {"existing_before": [], "cleared_at_end": [], "error": None},
     }
+    if existing:
+        (out_dir / MEMORY_BEFORE_FILE).write_text(
+            json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        try:
+            meta["npc_memory"]["existing_before"] = memory.clear(all_facts)
+        except ApiError as exc:
+            return fail_setup(f"cannot delete the existing NPC relationship memory ({exc})")
+        log(f"deleted existing NPC relationship memory: {_recap_names(existing)}")
     log(
         f"D-05 pre-check: {len(selected)} conversation(s) x {args.repeat} run(s) at "
         f"{args.difficulty} against {args.api}; writing to {out_dir}"
@@ -738,7 +999,8 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
     try:
         for scenario_id in selected:
             for run in range(1, args.repeat + 1):
-                record = play_conversation(
+                play = functools.partial(
+                    play_conversation,
                     transport,
                     facts[scenario_id],
                     player_turns[scenario_id],
@@ -750,7 +1012,10 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
                     runtime_id=args.runtime_id,
                     log=log,
                 )
-                evaluate_record(record, facts[scenario_id], severity)
+                record = _isolated_run(memory, facts[scenario_id], play, log=log)
+                evaluate_record(
+                    record, facts[scenario_id], severity, fallback_utterance=fallback_utterance
+                )
                 records.append(record)
                 write_record(out_dir, record)
                 summary_path.write_text(render_summary(records, meta), encoding="utf-8")
@@ -758,11 +1023,19 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
                 log(f"[{scenario_id} run {run}] {record['verdict'].upper()}: {statuses}")
     except KeyboardInterrupt:
         meta["interrupted"] = True
+    finally:
+        # Also on an interrupt or a crash: leave no recap of the replay behind
+        # for the next run or the manual D-05 session.
+        try:
+            meta["npc_memory"]["cleared_at_end"] = memory.clear(all_facts)
+        except ApiError as exc:
+            meta["npc_memory"]["error"] = str(exc)
+            log(f"warning: could not clear NPC relationship memory at the end: {exc}")
         summary_path.write_text(render_summary(records, meta), encoding="utf-8")
+
+    if meta["interrupted"]:
         log(f"interrupted; summary of {len(records)} finished run(s): {summary_path}")
         return 130
-
-    summary_path.write_text(render_summary(records, meta), encoding="utf-8")
     failed = sum(1 for r in records if r["verdict"] == "fail")
     warned = sum(1 for r in records if r["verdict"] == "warn")
     log(
