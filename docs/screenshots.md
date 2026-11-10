@@ -2,46 +2,46 @@
 # Screenshots and demo assets
 
 Every image in `docs/assets/` is a capture of the app running a real session against a
-real local model. Nothing here is a mockup, a composite, or a retouched frame. This
-document records what each asset shows, the alt text that must travel with it, the
-machine it was captured on, and the single command that remakes the whole set.
+real local model. Nothing here is a mockup, a composite, or a retouched frame. The one
+edit is the hero recording's playback speed, and every frame of it says so (see
+[Demo asset](#demo-asset-readme-hero)). This document records what each asset shows,
+the alt text that must travel with it, the machine it was captured on, and the single
+command that remakes the whole set.
 
 ---
 
-
-> **Stale against v0.4:** `03-conversation.png` and the README's `demo.gif` show
-> the amber "first token took…" advisory and the meters below the transcript.
-> Both are gone (#501, #539) and the reply now arrives sentence by sentence
-> (#538). The recapture is tracked in #554 and needs a real local-model session.
-
 ## Capture environment
 
-Recorded 2 October 2026 from the development build.
+Recorded 10 November 2026 from the development build of the v0.4.0 release (#554).
 
 | | |
 |---|---|
-| Hardware | Apple M1 Pro, 16 GB unified memory, macOS 14.8.2 |
-| Model | Qwen3 4B Instruct Q4_K_M (Apache-2.0), 2.5 GB on disk (2.3 GiB), loaded as a local GGUF |
-| Engine | llama.cpp `b9415` `llama-server`, `--ctx-size 8192 --n-gpu-layers 99` |
+| Hardware | Cloud VM: 4 vCPU Intel Xeon @ 2.10 GHz, 15 GB RAM, no GPU, Ubuntu 24.04 |
+| Model | Qwen3 4B Instruct Q4_K_M (Apache-2.0), 2.5 GB, installed by the app's own one-click set-up: download, SHA-256 verify, warm-up |
+| Engine | llama.cpp `b9415` `llama-server`, CPU only, launched by convsim-core with `--ctx-size 8192` and its one-conversation profile (#523) |
+| Measured speed | about 63 tokens/s reading the prompt and 6.5 tokens/s writing, so a turn late in the session takes one to two minutes |
 | App | `./scripts/dev.sh` — UI on `http://127.0.0.1:7354`, core on `http://127.0.0.1:7355` |
-| Profile | a throwaway `CONVSIM_DATA_ROOT` with the six official packs seeded and no personal data |
-| Scenario | **Making the Case** (Job Interview Basics), standard difficulty, seed `455`, text input, NPC state meters enabled |
-| Browser | Chromium (Playwright), 1280 CSS px wide at `devicePixelRatio` 2 |
+| Profile | a throwaway `CONVSIM_DATA_ROOT` with the official packs seeded, onboarding completed through the real welcome screen ("Set me up"), and no personal data |
+| Scenario | **Making the Case** (Job Interview Basics), standard difficulty, seed `455`, text input, conversation meters on |
+| Browser | Chromium (Playwright 1.63), 1280 CSS px wide at `devicePixelRatio` 2 |
 
-Two things visible in the captures are the app reporting on **this machine**, not on the
+This machine is slower than any the app recommends: it has no graphics card and four
+cores. Two things in the captures are the app reporting on **this machine**, not on the
 product, and are kept rather than staged away:
 
-- **The amber performance advisories.** The app raises two, and both are in frame here:
-  "NPC response is slow" on `03-conversation.png`, where the first token took 9.6 s, and
-  "Full NPC response is very slow" at the end of the hero recording, where the whole
-  reply took 14.0 s. The product budgets 2.5 s to first token and 10 s to a full response
-  on the recommended tier ([`packages/shared/src/types/metrics.ts`](../packages/shared/src/types/metrics.ts)); a 2021
-  laptop running a 4B model at a ~1,500-token prompt lands well past both and the app
-  says so. Capturing on faster hardware removes the banners; editing them out would be a
-  lie about the thing the README is selling.
-- **STT and TTS reading "Not installed"** on the home screen. Voice needs whisper.cpp and
-  a local Kokoro server, which are optional runtimes a text-only install does not have
-  (see [`docs/install.md`](install.md)). The app runs fully in text mode without them.
+- **How long the turn takes.** The hero recording is played back at 6x, with the factor
+  and the real length of the turn on every frame. In real time the player waits through
+  the staged panel ("Elena Vasquez is thinking…", the reading bar) for most of a minute
+  before the reply starts, and then watches it arrive a sentence at a time. On the
+  reference hardware in the release checklist the same turn takes a few seconds.
+- **Voice input and output reading "Not installed"** on the home screen. Voice needs
+  whisper.cpp and a local Kokoro server, which are optional runtimes a text-only install
+  does not have (see [`docs/install.md`](install.md)). The app runs fully in text mode
+  without them.
+
+The Status panel names the model by its file, `qwen3-4b-instruct-q4_k_m.gguf`, because
+that is what the engine reports once the one-click set-up has installed it; shorter,
+friendlier model names are #555.
 
 No real people, faces, voices, or private data appear in any asset. Every NPC, company
 and transcript line is fictional scenario content or model output responding to it.
@@ -86,6 +86,22 @@ recording; anything left off the list keeps the file already committed). A name 
 script does not write — or a pair of flags that cancel out, like `--skip-hero
 --only=hero` — is rejected before the playthrough starts, so neither can cost a run. The
 scenario, player turns and seed are constants at the top of the file.
+
+`--hero-speed=N` (1 to 16, default 1) plays the hero recording back N times faster and
+draws "Played at Nx speed — this turn took S s on the capture machine" on every frame.
+Use it only where a real-time turn would make the recording minutes long; on the
+recommended hardware the default real-time recording fits the GIF budget.
+
+Two things that cost a run: `./scripts/dev.sh` serves convsim-core with `--reload`, so
+editing anything under `services/convsim-core/` mid-capture restarts the core and its
+engine and fails the turn in flight; and a run that stops mid-session leaves that session
+open, so the next run's screens carry a "Conversation in progress" banner. End it first
+(`POST /api/sessions/<id>/end`).
+
+The demo app's Steam store screenshots are a separate set, made by
+[`scripts/capture-store-screenshots.mjs`](../scripts/capture-store-screenshots.mjs)
+against a demo-edition engine on a fresh profile; see
+[`publishing/STEAM_NEXT_FEST_DEMO.md`](../publishing/STEAM_NEXT_FEST_DEMO.md) §4.2.
 
 A run that loses a screen keeps going — the other outputs are worth more than the one
 that failed — but it **exits non-zero** and names what it missed. Those files still hold
