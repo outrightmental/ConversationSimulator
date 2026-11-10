@@ -154,11 +154,15 @@ events:
       band, and I'll want to talk to HR about the process. What you've laid out
       is a legitimate conversation. Let me come back to you by end of week."
     repeat: false
+  # Below 27, not 25 (#580): impression moves at most 12 a turn, so from 27 or
+  # more it cannot pass the failure ending (below 15) on the turn it passes
+  # this, and Diane's polite no comes before the conversation fails. At 25,
+  # the path 45, 37, 25, 13 failed on turn 3 without it.
   - id: deflation_signal
     when:
       type: variable_below
       variable: impression
-      threshold: 25
+      threshold: 27
     npc_instruction: >-
       Diane has lost confidence in the player's case. She begins closing the
       conversation professionally but without encouragement: "I appreciate you

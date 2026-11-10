@@ -90,9 +90,9 @@ static_assertions:
     path: events[id=aggression_pushback].repeat
     check: "equals true"
 
-  - description: close_the_gap event fires when deal_progress exceeds 60
+  - description: close_the_gap event fires when deal_progress exceeds 50
     path: events[id=close_the_gap].when
-    check: "type=variable_above AND variable=deal_progress AND threshold=60"
+    check: "type=variable_above AND variable=deal_progress AND threshold=50"
 
   - description: close_the_gap fires only once
     path: events[id=close_the_gap].repeat

@@ -138,11 +138,16 @@ events:
       launch a new topic. This is the moment a player with good timing will
       use to make an ask.
     repeat: false
+  # Below 42, not 30 (#580): jordan_comfort moves at most 15 a turn, so from 42
+  # or more it needs two more turns to pass the failure ending (below 12).
+  # The warning speaks on the turn after it fires, and the player then has a
+  # turn to answer it, as its text promises. At 30, the path 65, 50, 35, 20,
+  # 5 failed at the end of the very turn the warning spoke on.
   - id: comfort_warning
     when:
       type: variable_below
       variable: jordan_comfort
-      threshold: 30
+      threshold: 42
     npc_instruction: >-
       Jordan is starting to feel like this interaction has run longer than
       they wanted or that the player is angling somewhere. Signal mild

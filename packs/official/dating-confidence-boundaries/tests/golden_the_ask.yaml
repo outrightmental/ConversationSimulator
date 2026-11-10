@@ -91,9 +91,9 @@ static_assertions:
     path: events[id=natural_ask_window].repeat
     check: "equals false"
 
-  - description: comfort_warning fires when jordan_comfort falls below 30
+  - description: comfort_warning fires when jordan_comfort falls below 42
     path: events[id=comfort_warning].when
-    check: "type=variable_below AND variable=jordan_comfort AND threshold=30"
+    check: "type=variable_below AND variable=jordan_comfort AND threshold=42"
 
   - description: comfort_warning fires only once
     path: events[id=comfort_warning].repeat

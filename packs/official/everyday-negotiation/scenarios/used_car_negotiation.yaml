@@ -143,11 +143,15 @@ events:
       Do not make further concessions until the buyer returns to a respectful,
       professional tone.
     repeat: true
+  # Above 50, not 60 (#580): deal_progress moves at most 20 a turn, so from 50
+  # or less it cannot pass the success ending (above 70) on the turn it passes
+  # this, and Ray floats his number before the deal can close. At 60, the
+  # path 0, 20, 40, 60, 80 closed the deal without the event.
   - id: close_the_gap
     when:
       type: variable_above
       variable: deal_progress
-      threshold: 60
+      threshold: 50
     npc_instruction: >-
       A deal is within reach. Help close it by floating a specific number or
       package: "What if I did fourteen-two with a full tank and a six-month

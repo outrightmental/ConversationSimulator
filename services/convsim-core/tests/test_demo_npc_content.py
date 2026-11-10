@@ -213,6 +213,87 @@ def test_jordan_warms_before_the_conversation_can_succeed():
     assert _turns_to_event(info, "positive_signal") < _turns_to_ending(info, "success")
 
 
+def _lead_ins(info: ScenarioInfo):
+    """(event, ending kind) for each event on an ending's variable, crossed the same way."""
+    for kind, ending in (info.ending_conditions or {}).items():
+        if not isinstance(ending, dict) or ending.get("type") not in ("variable_above", "variable_below"):
+            continue
+        for event in info.events or []:
+            if (event.when.get("type"), event.when.get("variable")) == (ending["type"], ending["variable"]):
+                yield event, kind
+
+
+def _margin(info: ScenarioInfo, event, kind: str) -> float:
+    """Per-turn steps between the event's threshold and the ending's, at the delta limit."""
+    ending = info.ending_conditions[kind]
+    step = build_variable_defs(info.state_variable_overrides)[ending["variable"]].max_delta_per_turn
+    gap = ending["threshold"] - event.when["threshold"]
+    return (gap if ending["type"] == "variable_above" else -gap) / step
+
+
+# Events whose text promises the player time to answer them before the ending
+# they warn of: the ending must be two steps past them, so it cannot come at
+# the end of the turn the warning speaks on.
+_WARNINGS = {("the_ask", "comfort_warning")}
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_an_event_leading_into_an_ending_speaks_before_it(scenario_id):
+    """An event fires on the turn after its threshold is crossed (#580), and the
+    ending is evaluated at the end of the turn that crossed it. So an event
+    within one per-turn step of its ending can be jumped: the same turn passes
+    both, and the session ends before the event speaks. the_ask's
+    positive_signal was the only one placed for that; used_car's close_the_gap
+    (60, success 70, ±20) and ask_for_raise's deflation_signal (25, failure 15,
+    ±12) were not."""
+    info = _load(scenario_id)
+    for event, kind in _lead_ins(info):
+        margin = _margin(info, event, kind)
+        assert margin >= 1, f"{scenario_id}: {kind} can end the session before {event.id} speaks"
+        if (scenario_id, event.id) in _WARNINGS:
+            assert margin >= 2, f"{scenario_id}: {kind} can follow {event.id} on the turn it speaks"
+
+
+def test_the_lead_ins_the_review_found_are_pinned():
+    pinned = {
+        (scenario_id, event.id): (kind, _margin(_load(scenario_id), event, kind))
+        for scenario_id in _DEMO_IDS for event, kind in _lead_ins(_load(scenario_id))
+    }
+    assert pinned[("used_car_negotiation", "close_the_gap")] == ("success", 1.0)
+    assert pinned[("ask_for_raise", "deflation_signal")] == ("failure", 1.0)
+    assert pinned[("the_ask", "positive_signal")] == ("success", 1.0)
+    assert pinned[("the_ask", "comfort_warning")] == ("failure", 2.0)
+
+
+def test_ray_floats_his_number_before_the_deal_can_close():
+    """The path the review played: deal_progress 0, 20, 40, 60, 80."""
+    info = _load("used_car_negotiation")
+    defs = build_variable_defs(info.state_variable_overrides)
+    state = initialize_state(defs)
+    fired: set = set()
+    spoke = []
+    for turn in range(1, info.max_turns + 1):
+        spoke += evaluate_event_triggers(state, turn, info.events, fired)
+        state = apply_state_delta(state, {"deal_progress": 20}, defs).new_state
+        if evaluate_ending_condition(state, turn, info.max_turns, info.ending_conditions) == "success":
+            break
+    assert turn == 4 and "close_the_gap" in spoke
+
+
+def test_diane_says_her_polite_no_before_the_conversation_fails():
+    """The path the review played: impression 45, 37, 25, 13."""
+    info = _load("ask_for_raise")
+    defs = build_variable_defs(info.state_variable_overrides)
+    state = initialize_state(defs)
+    fired: set = set()
+    spoke = []
+    for turn, delta in enumerate([-8, -12, -12], start=1):
+        spoke += evaluate_event_triggers(state, turn, info.events, fired)
+        state = apply_state_delta(state, {"impression": delta}, defs).new_state
+        ending = evaluate_ending_condition(state, turn, info.max_turns, info.ending_conditions)
+    assert ending == "failure" and turn == 3 and "deflation_signal" in spoke
+
+
 def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
     info = _load("ask_for_raise")
     defs = build_variable_defs(info.state_variable_overrides)
