@@ -165,6 +165,63 @@ class TestConversationRules:
         assert _short_role("") == ""
         assert len(_short_role("word " * 40).split()) == 12
 
+    def test_a_long_role_is_cut_at_a_clause_not_mid_phrase(self):
+        # The 12-word cap alone gave "... and lives in the apartment one".
+        assert _short_role(
+            "A paramedic who works rotating shifts and lives in the apartment one floor "
+            "above the player. They have been neighbors for about eight months."
+        ) == "a paramedic who works rotating shifts"
+
+    def test_a_long_role_without_a_clause_is_cut_at_a_phrase(self):
+        assert _short_role(
+            "Part-time store clerk at a 24-hour convenience store in the Shinjuku district "
+            "of Tokyo near the station"
+        ) == "Part-time store clerk at a 24-hour convenience store in the Shinjuku district"
+
+    def test_an_abbreviation_period_is_kept_and_does_not_end_the_role(self):
+        assert _short_role(
+            "Warehouse Operations Supervisor at Crestview Distribution Co., a regional "
+            "logistics and fulfillment company. Ray has worked his way up."
+        ) == "Warehouse Operations Supervisor at Crestview Distribution Co."
+        assert _short_role("Clerk at Smith Bros. Hardware. Sam is new.") == "Clerk at Smith Bros. Hardware"
+        assert _short_role("Tutorial guide for Conversation Simulator.") == (
+            "Tutorial guide for Conversation Simulator"
+        )
+
+    def test_parentheticals_are_dropped(self):
+        # The role is itself shown in parentheses.
+        assert _short_role("Store clerk at a konbini (convenience store) in Tokyo") == (
+            "Store clerk at a konbini in Tokyo"
+        )
+        # A comma inside a parenthesis must not leave it open.
+        assert _short_role("Store clerk (konbini, a corner shop) in Tokyo") == "Store clerk"
+
+    def test_second_person_reads_as_the_player(self):
+        # Occupations written for the setup screen address the player; in
+        # "You are Jordan (...)" a "your" would be the NPC's.
+        assert _short_role("Software engineer on your team") == "Software engineer on the player's team"
+        assert _short_role("Your landlord of six years") == "the player's landlord of six years"
+        assert _short_role("Helps you find a car") == "Helps the player find a car"
+        assert _short_role("Says you're late") == "Says you're late"
+
+    def test_generic_player_labels_fall_back_to_the_player(self):
+        for label in ("Player", "player", "New Player", "the Player", "You", "Yourself", "Me", " "):
+            scenario = make_interview_scenario()
+            scenario.player_role_label = label
+            rules = _rules_text(scenario)
+            assert "the player is the" not in rules, label
+            layer = build_recent_transcript_layer(
+                _two_exchange_transcript(), npc_name="Maya Chen", player_label=label
+            )
+            assert f"Player: {_PLAYER_REPLY}" in layer, label
+            assert "(the player)" not in layer, label
+
+    def test_role_labels_are_kept(self):
+        for label in ("Car Buyer", "Yoga Teacher", "Tenant"):
+            scenario = make_interview_scenario()
+            scenario.player_role_label = label
+            assert f"the player is the {label}." in _rules_text(scenario), label
+
     def test_no_occupation_and_no_player_label(self):
         scenario = make_interview_scenario()
         scenario.npc.public_persona.occupation = ""

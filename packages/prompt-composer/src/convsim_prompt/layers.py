@@ -18,6 +18,7 @@ Layer ordering (SPEC §10.1):
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from .types import (
@@ -45,6 +46,47 @@ def _one_line(text: Optional[str]) -> str:
     return " ".join((text or "").split())
 
 
+# Words that open a new clause, then words that open a new phrase. An
+# occupation's first clause that runs past the word cap is cut before the last
+# of these inside the cap, clause words first, so the role reads as a whole
+# phrase: "a paramedic who works rotating shifts", not "a paramedic who works
+# rotating shifts and lives in the apartment one".
+_CLAUSE_WORDS = frozenset({"who", "whose", "which", "that", "where", "and", "but", "while"})
+_PHRASE_WORDS = frozenset({"in", "at", "on", "near", "for", "with", "from", "of", "by"})
+
+# Abbreviations whose period ends neither the sentence nor the role:
+# "Warehouse Operations Supervisor at Crestview Distribution Co., a ...".
+_ABBREVIATIONS = frozenset({
+    "co.", "inc.", "ltd.", "corp.", "llc.", "bros.", "st.", "dr.", "mr.", "mrs.", "ms.", "jr.", "sr.",
+})
+
+# Second person in an occupation is the player-facing voice of the setup
+# screen ("Software engineer on your team"). In "You are Jordan (Software
+# engineer on your team)" the "your" would be the NPC's, so it is rewritten.
+_SECOND_PERSON = re.compile(r"\b(?:(your)|you)\b(?!['’])", re.IGNORECASE)
+
+
+def _first_sentence(text: str) -> str:
+    """Text up to its first sentence-ending period, skipping abbreviations."""
+    for match in re.finditer(r"\.\s", text):
+        last_word = text[:match.end() - 1].rsplit(" ", 1)[-1]
+        if last_word.lower() not in _ABBREVIATIONS:
+            return text[:match.start()]
+    return text
+
+
+def _cap_words(words: List[str], max_words: int) -> List[str]:
+    """At most ``max_words`` words, cut at a clause or phrase boundary when one is in reach."""
+    if len(words) <= max_words:
+        return words
+    reach = words[:max_words + 1]
+    for boundary in (_CLAUSE_WORDS, _PHRASE_WORDS):
+        cuts = [i for i in range(2, len(reach)) if reach[i].lower() in boundary]
+        if cuts:
+            return words[:cuts[-1]]
+    return words[:max_words]
+
+
 def _short_role(occupation: Optional[str], max_words: int = 12) -> str:
     """Who the NPC is, from the first clause of its authored occupation.
 
@@ -53,21 +95,44 @@ def _short_role(occupation: Optional[str], max_words: int = 12) -> str:
     has been in automotive sales for eleven years..."). The conversation rules
     only need the first clause; the full text is in NPC_PUBLIC_PERSONA.
     """
-    text = _one_line(occupation)
-    for separator in (". ", "; ", ", ", " — "):
+    text = _SECOND_PERSON.sub(
+        lambda m: "the player's" if m.group(1) else "the player",
+        _one_line(occupation),
+    )
+    text = _first_sentence(text)
+    for separator in ("; ", ", ", " — "):
         cut = text.find(separator)
         if cut != -1:
             text = text[:cut]
-    words = text.rstrip(".;,").split()[:max_words]
+    # The role is shown in parentheses, where a gloss such as "(konbini)"
+    # would nest; a cut inside a parenthesis leaves it open. Drop both.
+    text = re.sub(r"\s*\([^()]*\)", "", text)
+    if "(" in text:
+        text = text[:text.find("(")]
+    text = " ".join(_cap_words(text.split(), max_words))
+    text = text.rstrip(" ,;:—")
+    if text.endswith(".") and text.rsplit(" ", 1)[-1].lower() not in _ABBREVIATIONS:
+        text = text[:-1]
+    words = text.split()
     if words and words[0] in ("A", "An", "The"):
         words[0] = words[0].lower()
     return " ".join(words)
 
 
+# Labels that name no role: "the player is the Yourself" and "Yourself (the
+# player)" read wrongly, and "New Player" adds nothing to "the player".
+_GENERIC_PLAYER_LABELS = frozenset({
+    "player", "new player", "you", "yourself", "me", "myself", "self",
+})
+
+
 def _player_label(label: Optional[str]) -> str:
-    """The player's authored role label, or "" when it says nothing more than "Player"."""
+    """The player's authored role label, or "" when it names no role ("Player", "Yourself")."""
     text = _one_line(label)
-    return "" if text.lower() == "player" else text
+    words = text.lower().split()
+    if words and words[0] in ("a", "an", "the"):
+        words = words[1:]
+    return text if words and " ".join(words) not in _GENERIC_PLAYER_LABELS else ""
 
 
 def _speaker_labels(npc_name: Optional[str], player_label: Optional[str]) -> Tuple[str, str]:
