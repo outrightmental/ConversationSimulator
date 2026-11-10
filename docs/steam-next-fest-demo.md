@@ -238,6 +238,22 @@ own promise.
 | D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text only) and what the full app adds; no "free" claims about the paid app. |
 | D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only; every demo capsule and library asset is at Valve's size, on the demo plate, ribboned where it may carry the name and not on the hero. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, its capsules and library assets from `publishing/assets/capsules/demo/` under Store Assets and Library Assets on the same page, and the two library entries read apart at a glance. |
 
+**D-05 has an automated pre-check.** `scripts/demo-gate-replay.py` plays each
+of the five conversations to the debrief against a running convsim-core on the
+real model, twice by default, with scripted player turns that press on each
+NPC's hidden agenda (`tests/fixtures/demo-gate/player-turns.yaml`). On every
+turn and run it asserts that the NPC repeats no 6-word run and no closing
+question from its previous line, says no 5-word run of its hidden agenda
+aloud, moves at least one variable the scenario authors, and gets a debrief
+that generated without the template fallback and scored only the rubric's own
+dimension ids. It writes a JSON record per run and a markdown summary, and
+exits non-zero on a hard failure. The authored-state and rubric checks are
+warnings until the engine wires both into play (issue #580); `--strict` makes
+them blocking. A release candidate should pass the pre-check before the manual
+D-05 run. It does not replace the manual judgement: whether each reply makes
+sense, keeps its role and answers the player is still read by a person on
+reference hardware.
+
 ---
 
 ## Explicitly out of scope for the demo

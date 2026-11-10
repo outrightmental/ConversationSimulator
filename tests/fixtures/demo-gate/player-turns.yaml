@@ -1,0 +1,223 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Scripted player turns for the D-05 automated pre-check
+# (scripts/demo-gate-replay.py, issue #580).
+#
+# One entry per demo conversation (DEMO_SCENARIOS in
+# services/convsim-core/convsim_core/edition.py). Each turn is what the player
+# types (`say`) and which part of the NPC's authored hidden agenda, bias or
+# the scenario's hidden goals it presses on (`presses`), so a reader of a
+# replay transcript knows what a coherent reply would have to do. The agenda
+# items are in each scenario's NPC file under packs/official.
+#
+# Rules for editing:
+#   - Keep 5-6 turns per scenario: long enough that the opening line leaves
+#     the prompt's transcript window and repetition has a chance to show.
+#   - Stay inside the player brief. The buyer in used_car_negotiation pays
+#     cash; a script that contradicts the brief provokes failures that are
+#     the script's, not the NPC's.
+#   - Never quote the NPC's hidden agenda: check (b) looks for agenda wording
+#     in NPC lines, and an NPC echoing the player would read as a leak.
+#     tests/acceptance/test_demo_gate_checks.py enforces both rules.
+schema_version: 1
+
+scenarios:
+  behavioral_interview:
+    npc: Dana Reyes (packs/official/job-interview-basic/npcs/hiring_manager.yaml)
+    turns:
+      - say: >-
+          Sure. Last winter our checkout service started timing out under
+          holiday load. I was the on-call lead. I traced it to an N+1 query in
+          the pricing call, shipped a batched query behind a flag that night,
+          and p95 latency went from four seconds to three hundred
+          milliseconds. Afterwards I added a load test to CI so it could not
+          come back.
+        presses: >-
+          Specific, structured examples (agenda 1). Dana should pick up a
+          concrete detail and go deeper, not ask how the fix was made robust:
+          the load test already answers that.
+      - say: >-
+          Honestly, I'm just a team player. I always give a hundred and ten
+          percent and I really care about quality.
+        presses: >-
+          A vague generalization (agenda 1, hidden goal 1). Dana should probe
+          for a real example and cool slightly.
+      - say: >-
+          Fair point. Here's one I'm not proud of: I ran a schema migration
+          without a rollback script and locked the orders table for twenty
+          minutes. I wrote the postmortem, owned it in the incident review,
+          and now every migration we ship has a tested rollback.
+        presses: >-
+          Owning a mistake (agenda 2). Dana should engage with what was
+          learned rather than praise generically.
+      - say: >-
+          Another one: the spec for our billing export was two lines long. I
+          booked thirty minutes with two customers, wrote a one-page proposal
+          with three options, and we shipped the smallest one in a week.
+        presses: >-
+          Operating under ambiguity without direction (agenda 4).
+      - say: >-
+          Can I ask what the platform team is wrestling with right now? What's
+          the hardest problem on your plate this quarter?
+        presses: >-
+          Curiosity about the team (agenda 3, bias 2). Dana should answer the
+          question before asking one of her own.
+      - say: >-
+          What would success look like for this role in the first ninety days?
+        presses: >-
+          A direct question about the role. Dana should answer concretely (her
+          team of eight, the platform-scaling work), not with platitudes.
+
+  used_car_negotiation:
+    npc: Ray Kowalski (packs/official/everyday-negotiation/npcs/car_dealer.yaml)
+    turns:
+      - say: >-
+          Thanks. I've driven it and I like it. Before we talk numbers: what's
+          been replaced on it, and do you have the service records?
+        presses: >-
+          Due diligence before price. Ray should answer from what he knows
+          about the car instead of promising to check.
+      - say: >-
+          The listing says fifteen-five. Comparable Civics at this mileage are
+          selling for thirteen-five to fourteen-two within fifty miles, and
+          the tires are close to the wear bars. I can do thirteen thousand out
+          the door.
+        presses: >-
+          Real comparable prices and an anchor (agenda 1). The seller answers
+          with his own counter; he never asks the buyer for the buyer's lowest
+          price.
+      - say: >-
+          I'm paying cash, so there's no financing to arrange and I can sign
+          today. I'm not interested in an extended warranty; I'd rather that
+          money came off the price.
+        presses: >-
+          Add-ons as Ray's other margin (agenda 4), declined by a cash buyer.
+          Ray should respond to the refusal and move the talk back to price.
+      - say: >-
+          What's your best number? Give me a figure, not a question.
+        presses: >-
+          A direct request for Ray's counter. He names a price.
+      - say: >-
+          Last offer: thirteen thousand six hundred out the door, new tires
+          included, or I go and look at the two others I have lined up this
+          afternoon.
+        presses: >-
+          A credible walk-away (agenda 2) below his $13,800 floor (agenda 3).
+          Ray must answer the ultimatum, holding or making one concession,
+          without saying what his floor is.
+      - say: >-
+          Okay. Thirteen-nine out the door with new tires is as high as I go.
+          If that works, we can do the paperwork now.
+        presses: >-
+          A closeable offer above the floor. Ray closes, or counters with one
+          specific number; he does not repeat his last line.
+
+  ask_for_raise:
+    npc: Diane Kowalczyk (packs/official/difficult-conversations/npcs/skeptical_manager.yaml)
+    turns:
+      - say: >-
+          Thanks for making the time. In the last six months I led the
+          cross-team migration, onboarded two new hires, and shipped the
+          billing project three weeks early.
+        presses: >-
+          Leading with a track record of impact (bias 1). Diane should engage
+          with it, not recite the list back.
+      - say: >-
+          Market data for this role in our city puts it about fifteen percent
+          above what I'm paid now. I'm asking for an adjustment that brings me
+          into that range.
+        presses: >-
+          A market-rate claim with no source (agenda 4, hidden goal 3). Diane
+          should ask where the number comes from.
+      - say: >-
+          It comes from two salary surveys and three current postings for the
+          same title and level, all in our metro area. I can send you the
+          links today.
+        presses: >-
+          The source, given. Diane must not ask again for data she was just
+          handed.
+      - say: >-
+          Honestly, things have been tight at home since we bought the house,
+          so this would really help.
+        presses: >-
+          Personal need over business value (bias 2). Diane cools without
+          dismissing it.
+      - say: >-
+          To be straightforward with you: a recruiter reached out last month.
+          I haven't pursued it, because I'd rather grow here.
+        presses: >-
+          Competing interest (agenda 3). It changes the conversation; Diane
+          reacts to it without voicing her private reasoning.
+      - say: >-
+          What would you need from me to make this case to your manager, and
+          what does the process look like from here?
+        presses: >-
+          The process question. Diane describes the steps (band, HR, timeline)
+          without promising an outcome, and does not ask for metrics again.
+
+  the_ask:
+    npc: Jordan Chen (packs/official/dating-confidence-boundaries/npcs/jordan_chen.yaml)
+    turns:
+      - say: >-
+          Honestly, the oat flat white is the only thing here worth the wait.
+          I think we're in the same Tuesday stats lecture?
+        presses: >-
+          Answering Jordan's question, then a real observation (agenda 4).
+          Jordan responds to it rather than echoing it.
+      - say: >-
+          What's the paper you're reading? It looks a lot more interesting
+          than my problem set.
+        presses: >-
+          Noticing their reading material (agenda 4, bias 1). Jordan should
+          light up and give a longer answer about their research.
+      - say: >-
+          Wait, that's really cool. How did you end up researching that?
+        presses: >-
+          An authentic follow-up about their work (agenda 1). Jordan stays
+          consistent with the topic they named.
+      - say: >-
+          My problem set is mostly me arguing with R about factor levels. R is
+          winning.
+        presses: >-
+          Humour as Jordan's social test (bias 5). A shared laugh warms them.
+      - say: >-
+          I'd love to hear more about it sometime. Would you want to grab a
+          coffee after class on Thursday? Just the two of us, no pressure at
+          all.
+        presses: >-
+          The ask, after some rapport (agenda 3, bias 4). Jordan answers it as
+          an ask (a genuine yes, a soft not-yet, or a no) without flirting.
+      - say: >-
+          Either way, it was really nice to finally talk. See you on Tuesday?
+        presses: >-
+          A graceful close. Jordan answers in kind and does not reopen the
+          conversation.
+
+  spanish_coffee:
+    npc: Rosa García (packs/official/language-cafe/npcs/barista_rosa.yaml)
+    turns:
+      - say: "¡Hola, buenos días! Quisiera un café con leche, por favor."
+        presses: >-
+          Politeness markers (agenda 1). Rosa confirms the order with warmth;
+          she does not offer the same drink back as a question.
+      - say: "¿Tienen algo para comer? ¿Qué me recomienda?"
+        presses: >-
+          A direct question. Rosa recommends something specific from the
+          pastry case.
+      - say: "Perdón, no entendí bien. ¿Puede repetirlo más despacio, por favor?"
+        presses: >-
+          A repair strategy (agenda 2). Rosa repeats more simply and
+          encourages the attempt.
+      - say: "Vale, quiero uno cruasán también, por favor."
+        presses: >-
+          A grammar slip ("uno cruasán") at standard difficulty, where
+          correction is light (agenda 4): Rosa recasts it silently as "un
+          cruasán" and spells the word correctly.
+      - say: "¿Usted es de Madrid? ¿Cuánto tiempo trabaja aquí?"
+        presses: >-
+          Personal questions. Rosa answers them (she has worked at Café Sol
+          for three years) instead of asking the player's question back.
+      - say: "Muchas gracias, muy amable. ¿Cuánto es todo?"
+        presses: >-
+          Closing politeness (agenda 1). Rosa gives a total and thanks the
+          player; she does not open a new order.
