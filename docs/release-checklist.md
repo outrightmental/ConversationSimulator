@@ -38,7 +38,7 @@ the run built):
 
 | Job | Depends on | What it does |
 |---|---|---|
-| `validate` | — | Smoke check; Tauri crate and npm package on the same major.minor (`scripts/check-tauri-versions.sh`, which `tauri build` would otherwise fail on); docs freshness for the tag's minor; for a demo build, that the run is on the tag's commit |
+| `validate` | — | Smoke check; Tauri crate and npm package on the same major.minor (`scripts/check-tauri-versions.sh`, which `tauri build` would otherwise fail on); docs freshness for the tag's minor; for a demo build, that the run is on the tag's commit; for a full-edition Run workflow whose tag already exists, the same |
 | `build-desktop` | `validate` | Cross-platform Tauri builds (macOS, Linux, Windows) |
 | `release` | `build-desktop` | Publishes the GitHub release notes, no binaries: the tag's own section of `RELEASE_NOTES.md`, or keeps a release already made in the GitHub UI as it is |
 | `steam` | `release` | Stages the build in Steamworks → Builds without setting any branch live — **pauses for `steam-release` environment approval** |
