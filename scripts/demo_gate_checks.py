@@ -8,14 +8,19 @@ function is pure: it takes plain data (lines of a transcript, a turn's
 findings, so the checks are unit-tested on synthetic transcripts in
 ``tests/acceptance/test_demo_gate_checks.py`` without a model or a server.
 
-Standard library only. The replay parses the pack YAML with PyYAML and passes
-the parsed documents in.
+Standard library only, plus this checkout's prompt composer
+(``packages/prompt-composer``, itself standard library only): check (a)
+counts a repeat with the engine's own word functions, from
+``convsim_prompt.repetition``, so the pre-check and the engine's repetition
+guard agree on what a repeat is. The replay parses the pack YAML with PyYAML
+and passes the parsed documents in.
 
 The seven checks, with the letters the issue and the demo doc use:
 
   (a) repetition      per turn: no run of 6+ consecutive words shared with the
                       previous NPC line, and no NPC line ending with the same
-                      question (of 4+ words) as the previous one.
+                      question (of 4+ words) as the previous one. A reply to a
+                      player who asked for the line again is not judged.
   (b) agenda_leak     per turn: no run of 5+ consecutive words from the NPC's
                       ``private_persona.hidden_agenda`` said aloud, and no
                       number of 3+ digits from it (Ray's $13,800 floor) in an
@@ -44,19 +49,33 @@ from __future__ import annotations
 import ast
 import json
 import re
+import sys
 import unicodedata
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+# The prompt composer of this checkout, next to the script, so the checks count
+# a repeat as the engine built from the same files does. A process that already
+# imported the package (the tests, with it installed) keeps the copy it has.
+_PROMPT_COMPOSER_SRC = Path(__file__).resolve().parents[1] / "packages" / "prompt-composer" / "src"
+if "convsim_prompt" not in sys.modules and _PROMPT_COMPOSER_SRC.is_dir():
+    sys.path.insert(0, str(_PROMPT_COMPOSER_SRC))
+
+from convsim_prompt.repetition import (  # noqa: E402 - the path above comes first
+    REPEAT_RUN_WORDS,
+    SAME_QUESTION_MIN_WORDS,
+    asks_for_repeat,
+    ending_question,
+    shared_runs,
+    words,
+)
 
 HARD = "hard"
 WARN = "warn"
 SEVERITIES = (HARD, WARN)
 
-REPEAT_RUN_WORDS = 6
 AGENDA_RUN_WORDS = 5
-# A repeated closing question counts only from this length: "Okay?" or "Right?"
-# twice in a row is a tic, not a loop.
-SAME_QUESTION_MIN_WORDS = 4
 # Agenda numbers from this value (3+ digits) are secrets: a price floor, a
 # budget. Smaller ones ("two offers") are ordinary talk.
 SECRET_NUMBER_MIN = 100
@@ -193,65 +212,11 @@ def run_verdict(results: Sequence[CheckResult], *, error: Optional[str] = None) 
 # Words
 # ---------------------------------------------------------------------------
 
-_APOSTROPHES = re.compile(r"['‘’ʼ`´]")
-_WORD = re.compile(r"\w+")
-
-
-def words(text: str) -> List[str]:
-    """Case- and punctuation-insensitive words of ``text``."""
-    folded = unicodedata.normalize("NFKC", text or "").casefold()
-    return _WORD.findall(_APOSTROPHES.sub("", folded))
-
-
-def shared_runs(a: Sequence[str], b: Sequence[str], min_len: int) -> List[List[str]]:
-    """Runs of ``min_len``+ consecutive words that appear in both ``a`` and ``b``.
-
-    Each run is maximal (it cannot be extended on either side), and runs do not
-    overlap in ``a``: the longest are kept first. Returned in ``a``'s order.
-    """
-    n, m = len(a), len(b)
-    # common[i][j]: length of the common run ending at a[i-1] and b[j-1].
-    common = [[0] * (m + 1) for _ in range(n + 1)]
-    for i in range(1, n + 1):
-        for j in range(1, m + 1):
-            if a[i - 1] == b[j - 1]:
-                common[i][j] = common[i - 1][j - 1] + 1
-    candidates: List[Tuple[int, int]] = []  # (length, start in a)
-    for i in range(1, n + 1):
-        for j in range(1, m + 1):
-            length = common[i][j]
-            if length < min_len:
-                continue
-            if i < n and j < m and a[i] == b[j]:
-                continue  # extends further; the longer run is collected later
-            candidates.append((length, i - length))
-    taken: List[Tuple[int, int]] = []  # (start, end) in a
-    for length, start in sorted(candidates, key=lambda c: (-c[0], c[1])):
-        end = start + length
-        if any(start < t_end and t_start < end for t_start, t_end in taken):
-            continue
-        taken.append((start, end))
-    return [list(a[s:e]) for s, e in sorted(taken)]
-
-
-_CLOSERS = "\"'”’»)]*_ \t\r\n"
-_QUESTION_MARKS = ("?", "？")
-_SENTENCE_BREAK = re.compile(r"(?<=[.!?…！？。])\s+")
-
-
-def ending_question(text: str) -> Optional[Tuple[str, ...]]:
-    """The words of the question ``text`` ends with, or None if it ends otherwise.
-
-    The question is the last sentence, where sentences break at whitespace after
-    ``.``, ``!``, ``?`` or an ellipsis (so "8.50" stays one sentence). Spanish
-    "¿...?" questions work the same way: the opening mark is punctuation.
-    """
-    s = (text or "").rstrip(_CLOSERS)
-    if not s.endswith(_QUESTION_MARKS):
-        return None
-    last = _SENTENCE_BREAK.split(s)[-1]
-    w = tuple(words(last))
-    return w or None
+# ``words``, ``shared_runs`` and ``ending_question``, with ``REPEAT_RUN_WORDS``
+# (6) and ``SAME_QUESTION_MIN_WORDS`` (4, so "Okay?" or "Right?" twice in a
+# row is a tic, not a loop), are the engine's own, imported above from
+# ``convsim_prompt.repetition``: check (a) counts a repeat exactly as the
+# engine's repetition guard does. They keep their names here.
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +425,29 @@ def npc_lines_from_transcript(entries: Iterable[Mapping[str, Any]]) -> List[NpcL
     return lines
 
 
+def player_lines_from_transcript(entries: Iterable[Mapping[str, Any]]) -> Dict[int, str]:
+    """``game turn -> player line`` from ``GET /api/sessions/{id}/transcript`` ``turns``.
+
+    The player's line of game turn ``n`` is stored at ``turn_number`` ``2n - 1``.
+    """
+    out: Dict[int, str] = {}
+    for e in entries:
+        if e.get("role") != "player":
+            continue
+        number = int(e.get("turn_number") or 0)
+        out[(number + 1) // 2] = str(e.get("content") or "")
+    return out
+
+
+def repeat_request_turns(player_lines: Mapping[int, str]) -> List[int]:
+    """The game turns whose player line asked the NPC to say it again.
+
+    The engine's repetition guard leaves the NPC's answer to such a line alone
+    (``convsim_prompt.repetition.asks_for_repeat``), and so does check (a).
+    """
+    return sorted(turn for turn, text in player_lines.items() if asks_for_repeat(text))
+
+
 def _clip(text: str, limit: int = 160) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -475,15 +463,20 @@ def find_repetition(
     *,
     min_run: int = REPEAT_RUN_WORDS,
     min_question: int = SAME_QUESTION_MIN_WORDS,
+    repeat_requested: Iterable[int] = (),
 ) -> List[Finding]:
     """(a) Each generated NPC line against the NPC line before it.
 
     A shared closing question counts from ``min_question`` words, so a short
-    tag ("Okay?") said twice is not a repeat.
+    tag ("Okay?") said twice is not a repeat. The lines of the turns in
+    ``repeat_requested``, where the player asked for the line again, are not
+    judged: a repeat is what the player asked for, and the engine does not
+    retry it either.
     """
+    exempt = set(repeat_requested)
     findings: List[Finding] = []
     for prev, line in zip(lines, lines[1:]):
-        if line.authored:
+        if line.authored or line.turn in exempt:
             continue
         runs = shared_runs(words(line.text), words(prev.text), min_run)
         if runs:
@@ -830,20 +823,31 @@ def evaluate_run(
     fallback_utterance: Optional[str] = None,
     proposed_deltas: Sequence[Tuple[int, Optional[Mapping[str, Any]]]] = (),
     variable_specs: Optional[Mapping[str, VariableSpec]] = None,
+    player_lines: Optional[Mapping[int, str]] = None,
 ) -> List[CheckResult]:
     """All seven checks over one played conversation, in letter order.
 
     ``proposed_deltas`` is ``(game_turn, the state_delta the model wrote)``
     for (g), None for a turn whose raw output is not at hand;
     ``variable_specs`` the scenario's variables. Without specs (g) passes
-    with nothing to judge.
+    with nothing to judge. ``player_lines`` (game turn to the player's line)
+    lets check (a) leave out the NPC's answer to a player who asked for the
+    line again.
     """
     sev = dict(DEFAULT_SEVERITY)
     if severity:
         sev.update(severity)
 
     generated = sum(1 for line in npc_lines if not line.authored)
-    rep = find_repetition(npc_lines)
+    generated_turns = {line.turn for line in npc_lines if not line.authored}
+    exempt = [t for t in repeat_request_turns(player_lines or {}) if t in generated_turns]
+    rep = find_repetition(npc_lines, repeat_requested=exempt)
+    rep_detail = f"{generated} generated NPC line(s) checked"
+    if exempt:
+        rep_detail += (
+            f"; not judged: the line of turn(s) {', '.join(map(str, exempt))}, "
+            "where the player asked for the line again"
+        )
     leak = find_agenda_leaks(npc_lines, hidden_agenda)
     secrets = secret_numbers(hidden_agenda)
     fallback = find_fallback_turns(
@@ -856,7 +860,7 @@ def evaluate_run(
     )
     proposed_count = sum(1 for _, d in proposed_deltas if isinstance(d, Mapping))
     outcomes: Dict[str, Tuple[bool, List[Finding], str]] = {
-        "a": (not rep, rep, f"{generated} generated NPC line(s) checked"),
+        "a": (not rep, rep, rep_detail),
         "b": (not leak, leak, (
             f"{len(hidden_agenda)} agenda item(s) and {len(secrets)} agenda number(s) checked"
         )),

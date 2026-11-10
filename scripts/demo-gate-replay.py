@@ -13,7 +13,8 @@ each, and asserts on every turn and every run:
 
   (a) repetition      no run of 6+ words shared with the previous NPC line, and
                       no NPC line ending with the same question (4+ words) as
-                      the last
+                      the last (a reply to a player who asked for the line
+                      again is not judged)
   (b) agenda_leak     no run of 5+ words of the NPC's hidden agenda said aloud,
                       and no 3+ digit number from it (Ray's $13,800 floor)
   (c) authored_state  some turn applied a non-zero change to a variable the
@@ -43,6 +44,16 @@ whatever ``--warn`` says.
 It does not start anything. Start convsim-core on the real runtime first (the
 desktop app, or ``scripts/dev.sh`` with a model installed) and point ``--api``
 at it. Turns take minutes on a CPU-only machine; the timeouts are generous.
+
+Turns are played the way a player gets them. The conversation screen holds the
+session's socket (``/ws/session/{id}``) open, and with a socket listening the
+engine streams each turn: the line goes out sentence by sentence, and the
+streamed path has rules of its own (issue #580: only a repeat in a line's
+first sentence can still be retried). So the replay opens that socket for
+every session, records what each turn showed on screen, and fails the run if
+a streamed line is not the line committed. ``--rest-only`` plays over REST
+alone, the path of a client without the conversation screen; that is not a
+D-05 result.
 
 The engine must run the demo edition (``CONVSIM_EDITION=demo``): it plays each
 conversation from its curated pack, the files the checks read. A full-edition
@@ -86,7 +97,8 @@ Output
 ``--out DIR`` (default ``out/demo-gate/<UTC time>`` under the repository root,
 which git ignores) receives one ``<scenario>-run<N>.json`` per run, with the
 session setup, every turn's player and NPC line, state delta (applied, and as
-the model proposed it), rubric observations, timing and fallback flag, the
+the model proposed it), rubric observations, timing, fallback flag and what
+streamed to the screen, the
 debrief, the stored transcript,
 the NPC recaps deleted around it and each check's result, plus ``summary.md``:
 a table of every run against every check, the findings with the words that
@@ -111,14 +123,23 @@ Exit codes
    that cannot be read or already holds a recap.
 130  Interrupted; the summary covers the runs that finished.
 
-Standard library and PyYAML only.
+Standard library and PyYAML only (the socket client is a minimal RFC 6455
+client on ``socket``). The checks read this checkout's prompt composer
+(``packages/prompt-composer``, standard library only) for the engine's own
+repetition word functions; nothing needs installing for it.
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import functools
+import hashlib
 import json
+import os
+import socket
+import struct
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -224,6 +245,10 @@ class HttpTransport:
             reason = getattr(exc, "reason", exc)
             raise ApiError(method, path, None, str(reason)) from exc
 
+    def listen(self, session_id: str) -> "SessionSocket":
+        """Open the session's socket, as the conversation screen does."""
+        return SessionSocket(self.base_url, session_id).open()
+
 
 def _parse_body(raw: bytes) -> Any:
     if not raw:
@@ -232,6 +257,279 @@ def _parse_body(raw: bytes) -> Any:
         return json.loads(raw)
     except ValueError:
         return raw.decode("utf-8", errors="replace")
+
+
+# ---------------------------------------------------------------------------
+# The session socket
+# ---------------------------------------------------------------------------
+
+
+class SocketError(Exception):
+    """The session socket could not be opened, or did not deliver a turn."""
+
+
+#: RFC 6455 section 1.3: the server proves it read the key with this GUID.
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+_OP_CONTINUATION, _OP_TEXT, _OP_BINARY, _OP_CLOSE, _OP_PING, _OP_PONG = 0x0, 0x1, 0x2, 0x8, 0x9, 0xA
+
+
+class SessionSocket:
+    """The session socket the conversation screen holds open, read on a thread.
+
+    With a socket listening on the session, the engine streams each turn
+    (issue #538): the line goes out sentence by sentence as each passes the
+    output check, a first sentence that repeats an earlier line is held for the
+    repetition guard (issue #580), and a later repeat streams. Over REST alone
+    none of that runs, so a replay that only POSTs turns judges a path players
+    do not take. This is just enough RFC 6455 for a client, on the standard
+    library: the handshake, masked frames out, and text, fragmented, ping and
+    close frames in.
+
+    ``connect`` opens the TCP connection (``socket.create_connection`` by
+    default); the tests hand it one end of a ``socket.socketpair``.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        session_id: str,
+        *,
+        timeout: float = SHORT_TIMEOUT_S,
+        connect: Callable[..., socket.socket] = socket.create_connection,
+    ):
+        parts = urllib.parse.urlsplit(base_url)
+        if parts.scheme != "http":
+            raise SocketError(f"the session socket needs an http:// engine address, not {base_url!r}")
+        self.host = parts.hostname or "127.0.0.1"
+        self.port = parts.port or 80
+        self.path = f"/ws/session/{_quote(session_id)}"
+        self.timeout = timeout
+        self._connect = connect
+        self._sock: Optional[socket.socket] = None
+        self._buf = b""
+        self._events: List[Dict[str, Any]] = []
+        self._taken = 0
+        self._cond = threading.Condition()
+        self._done = False
+        self._closing = False
+        self._error: Optional[str] = None
+        self._send_lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+
+    # -- opening ------------------------------------------------------------
+
+    def open(self) -> "SessionSocket":
+        try:
+            self._sock = self._connect((self.host, self.port), self.timeout)
+            key = base64.b64encode(os.urandom(16)).decode("ascii")
+            self._sock.sendall((
+                f"GET {self.path} HTTP/1.1\r\n"
+                f"Host: {self.host}:{self.port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            ).encode("ascii"))
+            status, headers = self._read_head()
+        except (OSError, EOFError) as exc:
+            self._abandon()
+            raise SocketError(f"cannot open the session socket at {self.path}: {exc}") from exc
+        accept = base64.b64encode(hashlib.sha1((key + _WS_GUID).encode("ascii")).digest()).decode("ascii")
+        if status.split(" ", 2)[1:2] != ["101"]:
+            self._abandon()
+            raise SocketError(f"the engine refused the session socket at {self.path}: {status}")
+        if headers.get("sec-websocket-accept") != accept:
+            self._abandon()
+            raise SocketError("the engine's socket handshake did not answer its key")
+        self._sock.settimeout(None)
+        self._thread = threading.Thread(target=self._read_loop, name="session-socket", daemon=True)
+        self._thread.start()
+        # The engine registers the socket and then sends session.state: once
+        # that is here, the next turn streams to this socket.
+        self._wait(lambda: self._find("session.state", 0) is not None, "the first session.state")
+        with self._cond:
+            first = self._find("session.state", 0)
+            assert first is not None
+            self._taken = first + 1
+        return self
+
+    def _read_head(self) -> Tuple[str, Dict[str, str]]:
+        while b"\r\n\r\n" not in self._buf:
+            if len(self._buf) > 65536:
+                raise EOFError("the handshake answer is too long")
+            self._buf += self._recv()
+        head, self._buf = self._buf.split(b"\r\n\r\n", 1)
+        lines = head.decode("latin-1").split("\r\n")
+        headers: Dict[str, str] = {}
+        for line in lines[1:]:
+            name, _, value = line.partition(":")
+            headers[name.strip().lower()] = value.strip()
+        return lines[0], headers
+
+    # -- frames ---------------------------------------------------------------
+
+    def _recv(self) -> bytes:
+        sock = self._sock
+        if sock is None:
+            raise EOFError("the socket is closed")
+        chunk = sock.recv(65536)
+        if not chunk:
+            raise EOFError("the engine closed the connection")
+        return chunk
+
+    def _recv_exact(self, n: int) -> bytes:
+        while len(self._buf) < n:
+            self._buf += self._recv()
+        out, self._buf = self._buf[:n], self._buf[n:]
+        return out
+
+    def _send(self, opcode: int, payload: bytes = b"") -> None:
+        """One masked frame, as RFC 6455 requires of a client."""
+        n = len(payload)
+        if n < 126:
+            head = struct.pack(">BB", 0x80 | opcode, 0x80 | n)
+        elif n < 65536:
+            head = struct.pack(">BBH", 0x80 | opcode, 0x80 | 126, n)
+        else:
+            head = struct.pack(">BBQ", 0x80 | opcode, 0x80 | 127, n)
+        mask = os.urandom(4)
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        sock = self._sock
+        if sock is None:
+            raise OSError("the socket is closed")
+        with self._send_lock:
+            sock.sendall(head + mask + masked)
+
+    def _read_loop(self) -> None:
+        message = b""
+        message_op: Optional[int] = None
+        try:
+            while True:
+                b0, b1 = self._recv_exact(2)
+                fin, opcode = b0 & 0x80, b0 & 0x0F
+                n = b1 & 0x7F
+                if n == 126:
+                    (n,) = struct.unpack(">H", self._recv_exact(2))
+                elif n == 127:
+                    (n,) = struct.unpack(">Q", self._recv_exact(8))
+                mask = self._recv_exact(4) if b1 & 0x80 else b""
+                payload = self._recv_exact(n)
+                if mask:
+                    payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+                if opcode == _OP_CLOSE:
+                    if not self._closing:
+                        self._closing = True
+                        self._send(_OP_CLOSE, payload[:2])
+                    break
+                if opcode == _OP_PING:
+                    self._send(_OP_PONG, payload)
+                    continue
+                if opcode == _OP_PONG:
+                    continue
+                if opcode in (_OP_TEXT, _OP_BINARY):
+                    message, message_op = payload, opcode
+                elif opcode == _OP_CONTINUATION and message_op is not None:
+                    message += payload
+                else:
+                    raise ValueError(f"unexpected frame opcode {opcode:#x}")
+                if not fin:
+                    continue
+                if message_op == _OP_TEXT:
+                    event = json.loads(message.decode("utf-8"))
+                    with self._cond:
+                        self._events.append(event if isinstance(event, dict) else {"type": None})
+                        self._cond.notify_all()
+                message, message_op = b"", None
+        except (OSError, EOFError, ValueError) as exc:
+            if not self._closing:
+                self._error = str(exc) or type(exc).__name__
+        finally:
+            with self._cond:
+                self._done = True
+                self._cond.notify_all()
+
+    # -- events ---------------------------------------------------------------
+
+    def _find(self, event_type: str, start: int, turn_number: Optional[int] = None) -> Optional[int]:
+        for i in range(start, len(self._events)):
+            e = self._events[i]
+            if e.get("type") != event_type:
+                continue
+            if turn_number is not None and (e.get("payload") or {}).get("turn_number") != turn_number:
+                continue
+            return i
+        return None
+
+    def _wait(self, ready: Callable[[], bool], what: str, timeout: Optional[float] = None) -> None:
+        deadline = time.monotonic() + (self.timeout if timeout is None else timeout)
+        with self._cond:
+            while not ready():
+                if self._done:
+                    why = f" ({self._error})" if self._error else ""
+                    raise SocketError(f"the session socket closed before {what}{why}")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise SocketError(f"no {what} on the session socket within {self.timeout:.0f} s")
+                self._cond.wait(remaining)
+
+    def turn_events(self, turn_number: int, timeout: Optional[float] = None) -> List[Dict[str, Any]]:
+        """The events of one turn: everything since the last turn up to its commit.
+
+        A turn commits with ``scenario.state_delta`` for its ``turn_number``
+        and then ``session.state``; the engine sends both before it answers
+        the turn's POST, so they are on their way once that has returned.
+        """
+        def end() -> Optional[int]:
+            at = self._find("scenario.state_delta", self._taken, turn_number)
+            return None if at is None else self._find("session.state", at + 1)
+
+        self._wait(lambda: end() is not None, f"commit of turn {turn_number}", timeout)
+        with self._cond:
+            stop = end()
+            assert stop is not None
+            events, self._taken = self._events[self._taken:stop + 1], stop + 1
+        return events
+
+    def close(self) -> None:
+        if self._sock is None:
+            return
+        if not self._closing:
+            self._closing = True
+            try:
+                self._send(_OP_CLOSE, struct.pack(">H", 1000))
+            except OSError:
+                pass
+        self._abandon()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+
+    def _abandon(self) -> None:
+        sock, self._sock = self._sock, None
+        if sock is None:
+            return
+        self._closing = True
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        sock.close()
+
+
+def streamed_turn(events: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """What one turn showed on the conversation screen, from its socket events."""
+    payloads = [(e.get("type"), e.get("payload") or {}) for e in events]
+    sentences = [str(p.get("text") or "") for t, p in payloads if t == "npc.token"]
+    finals = [p.get("content") for t, p in payloads if t == "npc.final"]
+    stages: List[str] = []
+    for t, p in payloads:
+        if t == "turn.progress" and p.get("stage") and (not stages or stages[-1] != p["stage"]):
+            stages.append(str(p["stage"]))
+    return {
+        "text": "".join(sentences),
+        "sentences": len(sentences),
+        "final": finals[-1] if finals else None,
+        "stages": stages,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -374,9 +672,16 @@ def play_conversation(
     turn_timeout: float = 900.0,
     debrief_timeout: float = 900.0,
     runtime_id: Optional[str] = None,
+    listen: bool = False,
     log: Log = print,
 ) -> Dict[str, Any]:
     """Create, start, play, end and debrief one session; return its raw record.
+
+    With ``listen`` the session's socket is open while the turns are played,
+    as the conversation screen holds it (``transport.listen``), so the engine
+    streams each turn as it does for a player; each turn records what the
+    screen showed (``streamed``). A line that streamed must be the line
+    committed (#538); a turn where it is not is a run error.
 
     Never raises on an API error: the step that failed is recorded in
     ``error`` and the session is still ended and debriefed where it exists,
@@ -392,6 +697,7 @@ def play_conversation(
         "seed": seed,
         "difficulty": difficulty,
         "runtime_id": runtime_id,
+        "listened": listen,
         "started_at": _now(),
         "finished_at": None,
         "session_id": None,
@@ -412,6 +718,8 @@ def play_conversation(
     step = "scenario lookup"
     session_id: Optional[str] = None
     state: Optional[str] = None
+    listener: Any = None
+    mismatched: List[int] = []
     try:
         _, detail = transport.request("GET", f"/api/scenarios/{_quote(facts.scenario_id)}")
         languages = list((detail or {}).get("supported_languages") or ["en"])
@@ -443,6 +751,9 @@ def play_conversation(
         record["opening"] = _event(started.get("events"), "npc_opening").get("content")
         state = started.get("state")
         log(f"{tag} session {session_id} started")
+        if listen:
+            step = "session socket"
+            listener = transport.listen(session_id)
 
         for number, text in enumerate(player_turns, start=1):
             if state != "PlayerTurnListening":
@@ -458,6 +769,12 @@ def play_conversation(
             npc = _event(resp.get("events"), "npc_turn")
             timing = npc.get("timing")
             state = resp.get("state")
+            streamed = None
+            if listener is not None:
+                streamed = streamed_turn(listener.turn_events(number))
+                if streamed["text"] and streamed["text"] != (npc.get("content") or ""):
+                    mismatched.append(number)
+                    log(f"{tag} turn {number}: the line streamed is not the line committed")
             record["ending_type"] = resp.get("ending_type") or npc.get("ending_type")
             record["turns"].append({
                 "turn": number,
@@ -477,14 +794,25 @@ def play_conversation(
                 # safe line; None when the turn has no timing record.
                 "fallback": timing.get("fallback") if isinstance(timing, Mapping) else None,
                 "timing": timing,
+                # What the conversation screen showed; None over REST alone.
+                "streamed": streamed,
             })
             log(f"{tag} turn {number}/{len(player_turns)} {seconds:.1f}s: {_short(npc.get('content'))}")
-    except ApiError as exc:
+    except (ApiError, SocketError) as exc:
         record["error"] = f"{step}: {exc}"
         log(f"{tag} ERROR {record['error']}")
     except (KeyError, TypeError, AttributeError) as exc:
         record["error"] = f"{step}: unexpected response shape ({exc!r})"
         log(f"{tag} ERROR {record['error']}")
+    finally:
+        if listener is not None:
+            listener.close()
+    if mismatched:
+        problem = (
+            f"turn(s) {', '.join(map(str, mismatched))}: the line streamed to the screen "
+            "is not the line committed"
+        )
+        record["error"] = f"{record['error']}; {problem}" if record["error"] else problem
 
     if session_id is not None:
         sid = _quote(session_id)
@@ -552,6 +880,17 @@ def npc_lines_of(record: Mapping[str, Any]) -> List[checks.NpcLine]:
     return lines
 
 
+def player_lines_of(record: Mapping[str, Any]) -> Dict[int, str]:
+    """The player's line of each game turn: the stored transcript, else the turns."""
+    transcript = record.get("transcript") or {}
+    if transcript.get("transcript_saved") and transcript.get("turns"):
+        return checks.player_lines_from_transcript(transcript["turns"])
+    return {
+        int(t["turn"]): str(t.get("player") or "")
+        for t in record.get("turns") or [] if t.get("turn") is not None
+    }
+
+
 def evaluate_record(
     record: Dict[str, Any],
     facts: ScenarioFacts,
@@ -576,6 +915,7 @@ def evaluate_record(
         fallback_utterance=fallback_utterance,
         proposed_deltas=[(int(t["turn"]), t.get("proposed_state_delta")) for t in turns],
         variable_specs=facts.variable_specs,
+        player_lines=player_lines_of(record),
     )
     record["checks"] = [r.to_dict() for r in results]
     record["verdict"] = checks.run_verdict(results, error=record.get("error"))
@@ -700,6 +1040,31 @@ def _md(text: Any) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 
 
+def repetition_retries(record: Mapping[str, Any]) -> int:
+    """How many of a run's turns the engine's repetition guard generated twice.
+
+    Read from each turn's timing record, where the retry is an extra model
+    call of kind ``repetition_retry`` (issue #580).
+    """
+    count = 0
+    for turn in record.get("turns") or []:
+        timing = turn.get("timing") if isinstance(turn, Mapping) else None
+        calls = timing.get("extra_calls") if isinstance(timing, Mapping) else None
+        count += sum(
+            1 for c in calls or [] if isinstance(c, Mapping) and c.get("kind") == "repetition_retry"
+        )
+    return count
+
+
+def streamed_count(record: Mapping[str, Any]) -> str:
+    """``streamed/played`` turns of a run, or ``-`` for a run played over REST alone."""
+    turns = [t for t in record.get("turns") or [] if isinstance(t, Mapping)]
+    if not record.get("listened"):
+        return "-"
+    streamed = sum(1 for t in turns if (t.get("streamed") or {}).get("text"))
+    return f"{streamed}/{len(turns)}"
+
+
 def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]) -> str:
     sev = meta["severity"]
     failed = [r for r in records if r.get("verdict") == "fail"]
@@ -727,6 +1092,11 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
         f"- Difficulty `{meta['difficulty']}`, {meta['repeat']} run(s) per conversation, "
         f"player turns from `{meta['turns_file']}`"
     )
+    if meta.get("listen", True):
+        out.append(
+            "- Turns played with the session socket open, as the conversation screen holds "
+            "it: the engine streamed each line, and the checks read what streamed"
+        )
     out.append(
         "- Severity: "
         + ", ".join(f"({c.letter}) {c.name} {sev[c.letter]}" for c in checks.CHECKS)
@@ -794,8 +1164,22 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
         out.append("")
     out.append("## Latency (noted, not judged)")
     out.append("")
-    out.append("| Conversation | Run | Mean turn s | Max turn s | Debrief s |")
-    out.append("|---|---|---|---|---|")
+    out.append(
+        "Repetition retries: turns the engine generated twice because the first "
+        "reply repeated one of the NPC's last two lines (issue #580)."
+    )
+    out.append("")
+    out.append(
+        "Streamed: turns whose line reached the screen sentence by sentence, of the turns "
+        "played (- over REST alone). A turn that streamed nothing held its line back, its "
+        "first sentence having repeated an earlier line or failed the output check, so the "
+        "engine could still replace it."
+    )
+    out.append("")
+    out.append(
+        "| Conversation | Run | Mean turn s | Max turn s | Repetition retries | Streamed | Debrief s |"
+    )
+    out.append("|---|---|---|---|---|---|---|")
     for r in records:
         secs = [t["seconds"] for t in r.get("turns") or [] if t.get("seconds") is not None]
         mean = f"{sum(secs) / len(secs):.1f}" if secs else "-"
@@ -803,7 +1187,7 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
         deb = (r.get("debrief") or {}).get("seconds")
         out.append(
             f"| {r['scenario_id']} | {r['run']} | {mean} | {top} | "
-            f"{deb if deb is not None else '-'} |"
+            f"{repetition_retries(r)} | {streamed_count(r)} | {deb if deb is not None else '-'} |"
         )
     out.append("")
     return "\n".join(out)
@@ -815,6 +1199,11 @@ def not_d05_reasons(meta: Mapping[str, Any]) -> List[str]:
     if meta.get("runtime_id"):
         reasons.append(
             f"sessions pinned to the model-free `{meta['runtime_id']}` runtime (a harness self-test)"
+        )
+    if not meta.get("listen", True):
+        reasons.append(
+            "turns played over REST alone (--rest-only), not streamed as the conversation "
+            "screen plays them"
         )
     edition = (meta.get("engine") or {}).get("edition")
     if edition != DEMO_EDITION:
@@ -899,6 +1288,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="pin sessions to a model-free runtime to exercise the harness (not a D-05 result)",
     )
     p.add_argument(
+        "--rest-only", action="store_true",
+        help=(
+            "play over REST alone, without the session socket the conversation screen holds "
+            "open, so no turn streams (not a D-05 result)"
+        ),
+    )
+    p.add_argument(
         "--allow-full-edition", action="store_true",
         help="run against an engine that is not the demo edition (not a D-05 result)",
     )
@@ -972,6 +1368,9 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
         return fail_setup(f"cannot read the engine's safe fallback line from {TURN_OUTPUT_PY}: {exc}")
 
     transport = transport or HttpTransport(args.api)
+    listen = not args.rest_only
+    if listen and not callable(getattr(transport, "listen", None)):
+        return fail_setup("this transport cannot open the session socket; pass --rest-only")
     try:
         _, health = transport.request("GET", "/api/health")
     except ApiError as exc:
@@ -1027,6 +1426,7 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
         "severity": severity,
         "strict": args.strict,
         "runtime_id": args.runtime_id,
+        "listen": listen,
         "interrupted": False,
         "npc_memory": {"existing_before": [], "cleared_at_end": [], "error": None},
     }
@@ -1041,7 +1441,9 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
         log(f"deleted existing NPC relationship memory: {_recap_names(existing)}")
     log(
         f"D-05 pre-check: {len(selected)} conversation(s) x {args.repeat} run(s) at "
-        f"{args.difficulty} against {args.api}; writing to {out_dir}"
+        f"{args.difficulty} against {args.api}"
+        + (" with the session socket open" if listen else " over REST alone")
+        + f"; writing to {out_dir}"
     )
 
     records: List[Dict[str, Any]] = []
@@ -1060,6 +1462,7 @@ def main(argv: Optional[Sequence[str]] = None, *, transport: Any = None, log: Lo
                     turn_timeout=args.turn_timeout,
                     debrief_timeout=args.debrief_timeout,
                     runtime_id=args.runtime_id,
+                    listen=listen,
                     log=log,
                 )
                 record = _isolated_run(memory, facts[scenario_id], play, log=log)

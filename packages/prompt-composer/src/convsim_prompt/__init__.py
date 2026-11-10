@@ -4,8 +4,10 @@ from .composer import (
     LAYER_ORDER,
     EVENTS_BUDGET_ALLOWANCE,
     OPTIONAL_SYSTEM_LAYERS,
+    RETRY_USER_LAYER_ORDER,
     SYSTEM_LAYER_ORDER,
     USER_LAYER_ORDER,
+    compose_repetition_retry_prompt,
     compose_turn_prompt,
 )
 from .debrief_composer import DebriefComposerInput, DebriefTurnRecord, compose_debrief_prompt
@@ -27,6 +29,13 @@ from .output_validator import (
     validate_npc_output,
 )
 from .rubric import RubricIdMatcher, normalize_dimension_id
+from .repetition import (
+    RepetitionMatch,
+    RepetitionReport,
+    asks_for_repeat,
+    check_repetition,
+    less_repetitive,
+)
 from .turn_output import (
     RubricObservation,
     RuntimeProtocol,
@@ -66,9 +75,11 @@ from .types import (
 
 __all__ = [
     "compose_turn_prompt",
+    "compose_repetition_retry_prompt",
     "LAYER_ORDER",
     "EVENTS_BUDGET_ALLOWANCE",
     "OPTIONAL_SYSTEM_LAYERS",
+    "RETRY_USER_LAYER_ORDER",
     "SYSTEM_LAYER_ORDER",
     "USER_LAYER_ORDER",
     "UNTRUSTED_CONTENT_BEGIN",
@@ -115,6 +126,12 @@ __all__ = [
     "validate_npc_output",
     "OutputValidationResult",
     "OutputViolation",
+    # Repetition guard (issue #580)
+    "asks_for_repeat",
+    "check_repetition",
+    "less_repetitive",
+    "RepetitionMatch",
+    "RepetitionReport",
     # Debrief prompt composer and output parser
     "compose_debrief_prompt",
     "DebriefComposerInput",

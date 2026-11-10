@@ -301,6 +301,27 @@ that completed before the cut are kept. The REST response always equals what
 was streamed. A runtime that does not put the spoken line first releases
 nothing, and the turn behaves as it did before streaming.
 
+**Repeats are held back before release, not replaced after it** (issue #580).
+The engine retries once, with the repeated line quoted and the temperature
+0.1 higher, a reply that repeats one of the NPC's last two lines (a shared run
+of 6+ words, the same closing question of 4+ words as the previous line, or
+word-trigram similarity above 0.5 between lines of 6+ words; the opening
+counts), and keeps whichever reply repeats less. The retry is a
+`repetition_retry` extra call in the turn's `timing`. Streaming keeps the
+contract above, so only the first sentence is judged: it is released only if,
+taken as the whole line, it shares no 6-word run with those lines and does not
+end with the previous line's closing question (similarity counts only when it
+is the whole line). If it fails that, nothing has been shown, no `npc.final`
+is sent, the line is retried as above (`checking` stage), and the REST
+response carries the result. Once the first sentence is out, the rest of the
+line streams as usual, held back only by the output check: cutting it for a
+repeat would leave the player a stub, an answer without its question, that no
+retry could replace. A repeat there is kept and noted in the turn's debug
+events (`repetition_retry_skipped`). When the player asks for the line again
+("¿Puede repetir más despacio?", "Say that again?", もう一度), the NPC's answer
+is neither held nor retried: there the repeat is the answer, and in the
+language packs asking for it is a repair strategy the rubric rewards.
+
 Reserved for future speech support (clients should accept and ignore):
 
 | Type               | Planned purpose                              |

@@ -243,16 +243,21 @@ of the five conversations to the debrief against a running convsim-core on the
 real model, twice by default, with scripted player turns that press on each
 NPC's hidden agenda (`tests/fixtures/demo-gate/player-turns.yaml`). On every
 turn and run it asserts that the NPC repeats no 6-word run and no closing
-question of 4+ words from its previous line, says no 5-word run of its hidden
+question of 4+ words from its previous line (unless the player asked it to say
+it again, as spanish_coffee's third turn does), says no 5-word run of its hidden
 agenda aloud and no 3+ digit number from it (Ray's $13,800 floor, in digits or
 words), never answers with the engine's canned fallback line, applies a
 non-zero change to at least one variable the scenario authors, and gets a
 debrief that generated without the template fallback and scored only the
-rubric's own dimension ids. It writes a JSON record per run and a markdown
-summary, and exits non-zero on a hard failure. Those checks are blocking by
-default (`--warn <check>` makes one a warning): the engine scores each demo
-debrief on its scenario rubric's dimensions only (issue #578), and the turn
-schema requires every variable the scenario authors in each reply's state
+rubric's own dimension ids. It plays each turn with the session's socket open,
+as the conversation screen holds it, so the engine streams every line as it
+does for a player and the checks read what reached the screen; a streamed
+line that differs from the one committed fails the run (`--rest-only` plays
+over REST alone, which is not a D-05 result). It writes a JSON record per run
+and a markdown summary, and exits non-zero on a hard failure. Those checks are
+blocking by default (`--warn <check>` makes one a warning): the engine scores
+each demo debrief on its scenario rubric's dimensions only (issue #578), and the
+turn schema requires every variable the scenario authors in each reply's state
 change, with the prompt saying what each means (issue #580). One more check
 is a warning by default (`--hard g` makes it blocking): the state change
 reads as changes, not as the values the prompt showed. The schema's numbers
@@ -271,6 +276,16 @@ engine on a throwaway `CONVSIM_DATA_ROOT`. A release candidate should pass the
 pre-check before the manual D-05 run. It does not replace the manual
 judgement: whether each reply makes sense, keeps its role and answers the
 player is still read by a person on reference hardware.
+
+The engine counts a repeat with the same word rules as the pre-check
+(`convsim_prompt.repetition`, which the checks import), and generates once
+more any reply that repeats one of the NPC's last two lines (issue #580),
+unless part of it is already on screen: with the conversation screen open the
+line streams, and only a repeat in its first sentence can still be retried. So
+a repetition finding means that the retry did not help, or that the repeat
+came after the first sentence of a streamed line. Each retry is an extra model
+call on that turn; the summary counts them per run next to the turn times, to
+watch against the latency budget on reference hardware.
 
 ---
 
