@@ -157,8 +157,8 @@ def test_the_five_demo_scenarios_all_have_a_rubric() -> None:
 )
 def test_the_rubric_layer_stays_short(scenario_file: Path) -> None:
     """The layer is read on the first turn of every session (and again on any
-    turn the prompt cache misses): one line of at most 16 words per dimension,
-    about 200 tokens at the composer's four-characters-per-token estimate."""
+    turn the prompt cache misses): one line of at most 24 words per dimension,
+    at most about 260 tokens at the composer's four-characters-per-token estimate."""
     from convsim_prompt.layers import build_rubric_layer
 
     info = load_scenario_info_from_pack(scenario_file.parents[1], f"scenarios/{scenario_file.name}")
@@ -168,10 +168,10 @@ def test_the_rubric_layer_stays_short(scenario_file: Path) -> None:
     assert len(dims) == len(info.scenario_data.rubric.dimensions)
     for line in dims:
         _, brief = line.split(": ", 1)
-        assert len(brief.removesuffix(" …").split()) <= 16, line
+        assert len(brief.removesuffix(" …").split()) <= 24, line
         assert brief.count("(") == brief.count(")"), line
         assert brief.count('"') % 2 == 0, line
-    assert len(layer) // 4 <= 220
+    assert len(layer) // 4 <= 260
 
 
 def test_the_hardcoded_catalog_has_no_rubric() -> None:
@@ -362,6 +362,13 @@ def test_hidden_variables_are_left_out_of_the_state_arc() -> None:
 # ---------------------------------------------------------------------------
 
 
+_RECORDED_LINES = [
+    "Where does that number come from?",
+    "And what did the migration save the team, in hours?",
+    "Walk me through how you would measure that next quarter.",
+]
+
+
 class _RecordingRuntime(FakeChatRuntime):
     """A runtime that writes rubric notes and bands, and records every request.
 
@@ -395,8 +402,12 @@ class _RecordingRuntime(FakeChatRuntime):
             if self.debrief_text is not None:
                 response = None
         else:
+            # A different line each turn: the repetition guard (issue #580)
+            # retries a reply that repeats the NPC's last line, which would
+            # add a request these tests do not count.
+            turn = len(self.turn_requests())
             response = {
-                "npc_utterance": "Where does that number come from?",
+                "npc_utterance": _RECORDED_LINES[(turn - 1) % len(_RECORDED_LINES)],
                 "npc_emotion": "skeptical",
                 "state_delta": {"evidence_strength": 5, "impression": 3},
                 "event_flags": ["skeptical_of_claim"],
@@ -437,8 +448,14 @@ def app(tmp_path):
     return create_app(config)
 
 
-def _play(app, scenario_id: str, runtime: _RecordingRuntime, turns: int = 2):
-    """Play ``turns`` turns of ``scenario_id`` on ``runtime``, end it, debrief it twice."""
+def _play(
+    app, scenario_id: str, runtime: _RecordingRuntime, turns: int = 2,
+    stored: Optional[List[Dict[str, Any]]] = None,
+):
+    """Play ``turns`` turns of ``scenario_id`` on ``runtime``, end it, debrief it twice.
+
+    ``stored``, when given, receives the debrief document as it was persisted.
+    """
     from convsim_core.services.model_manager_service import set_active_config
 
     with TestClient(app) as client:
@@ -461,6 +478,11 @@ def _play(app, scenario_id: str, runtime: _RecordingRuntime, turns: int = 2):
         client.post(f"/api/sessions/{session_id}/end")
         first = client.post(f"/api/sessions/{session_id}/debrief")
         again = client.post(f"/api/sessions/{session_id}/debrief")
+        if stored is not None:
+            row = app.state.db.connection().execute(
+                "SELECT content_json FROM session_debriefs WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            stored.append(json.loads(row[0]))
     assert first.status_code == 200, first.text
     assert again.status_code == 200, again.text
     return first.json(), again.json()
@@ -487,7 +509,17 @@ class TestAScenarioWithARubric:
             assert enum == {"type": "string", "enum": _RAISE_IDS}
             system = request.messages[0].content
             assert "--- LAYER:RUBRIC ---" in system
-            assert "  - business_case: Player cites specific outcomes they delivered …" in system
+            assert (
+                "  - business_case: Player cites specific outcomes they delivered, names the "
+                "expanded scope of their current role relative to their job description or "
+                "compensation band …"
+            ) in system
+            # The line keeps the clause that says what good looks like.
+            assert (
+                "  - listening: Player tracks what Diane's questions reveal about her underlying "
+                "concern and adapts their argument to address that concern specifically rather "
+                "than recycling earlier points\n"
+            ) in system
             # The schema the prompt quotes is the one sent.
             assert json.dumps(request.json_schema, indent=2) in system
 
@@ -512,6 +544,21 @@ class TestAScenarioWithARubric:
         # The stored debrief answers the same.
         for key in ("scores", "overall_score", "dimension_names", "dimension_bands"):
             assert again[key] == body[key], key
+
+    @pytest.mark.parametrize("debrief_text", [None, "not json at all"])
+    def test_the_stored_debrief_matches_the_published_schema(self, app, debrief_text) -> None:
+        # schemas/debrief.schema.json closes its top level, so a key the
+        # engine stores and the schema does not declare fails validation.
+        import jsonschema
+
+        from convsim_core.schema_paths import get_schema
+
+        stored: List[Dict[str, Any]] = []
+        kwargs = {} if debrief_text is None else {"debrief_text": debrief_text}
+        _play(app, "ask_for_raise", _RecordingRuntime(**kwargs), stored=stored)
+        [doc] = stored
+        jsonschema.validate(doc, get_schema("debrief.schema.json"))
+        assert doc["dimension_names"] == _RAISE_NAMES
 
     def test_the_debrief_request_asks_for_the_bands(self, app) -> None:
         runtime = _RecordingRuntime()

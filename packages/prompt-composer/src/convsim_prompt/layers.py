@@ -306,9 +306,12 @@ def build_npc_private_persona_layer(scenario: ScenarioData) -> str:
 
 # What good looks like, per rubric dimension, in the turn prompt: one line of
 # at most this many words. The authored high bands run 20-46 words; the turn
-# prompt only needs enough to tell the dimensions apart. The debrief, which
+# prompt needs enough to tell the dimensions apart and to say what good looks
+# like. At 16 words a cut often fell before the clause that defines the
+# dimension ("…adapts their argument to address …"); 24 keeps the largest pack
+# rubric near 240 estimated tokens, in the cached prefix. The debrief, which
 # judges them, gets every band in full.
-_RUBRIC_LINE_WORDS = 16
+_RUBRIC_LINE_WORDS = 24
 
 
 def _rubric_brief(dimension: RubricDimension, max_words: int = _RUBRIC_LINE_WORDS) -> str:

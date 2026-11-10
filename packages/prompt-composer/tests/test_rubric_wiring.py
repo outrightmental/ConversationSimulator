@@ -225,7 +225,8 @@ class TestRubricLayer:
             "the coffee shop itself) and responds to what Jordan actually says rather than "
             "steering every topic back to themselves."
         ))
-        brief = _rubric_brief(dim)
+        # A short cap, so this sentence is cut whatever the default is.
+        brief = _rubric_brief(dim, max_words=16)
         assert "(" not in brief and ")" not in brief
         assert len(brief.split()) <= 17  # 16 words and the ellipsis
         assert brief.endswith(" …")
@@ -233,7 +234,7 @@ class TestRubricLayer:
             'Player frames proposals around what both sides gain, "a two-year lease gives you '
             'stability and gives me predictability at a fair rate", and never as a demand.'
         ))
-        brief = _rubric_brief(quoted)
+        brief = _rubric_brief(quoted, max_words=16)
         assert brief.count('"') % 2 == 0
         assert brief == "Player frames proposals around what both sides gain …"
 

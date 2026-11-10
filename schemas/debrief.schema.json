@@ -199,6 +199,19 @@
       "type": "string",
       "enum": ["warm", "standard", "hard", "adversarial"],
       "description": "The difficulty preset the player selected for this session."
+    },
+    "dimension_names": {
+      "type": "object",
+      "description": "Display name of each rubric dimension, keyed by its id (issue #578). Empty for a scenario with no rubric.",
+      "additionalProperties": { "type": "string" }
+    },
+    "dimension_bands": {
+      "type": "object",
+      "description": "The band the debrief placed each rubric dimension in, keyed by its id (issue #578). Empty when the debrief fell back to the template or the scenario has no rubric.",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "not_observed"]
+      }
     }
   }
 }
