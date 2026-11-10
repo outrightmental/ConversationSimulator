@@ -46,7 +46,8 @@ and stops the engine itself. No external software to install.
    While the model downloads, it explains how to play and previews your first
    missions.
 4. When every stage is done, the app opens the **Scenario Library**, where you
-   pick your first conversation.
+   pick your first conversation. The demo edition opens the Home screen
+   instead, which lists **Your five conversations**.
 
 That is the complete process — no additional steps are required.
 
