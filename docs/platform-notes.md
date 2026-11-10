@@ -354,12 +354,14 @@ additional tooling).
 | CPU | 64-bit x86 processor, 8+ cores (for faster CPU inference) |
 | RAM | 16 GB |
 | Disk | 20 GB free (for multiple models and session history) |
-| GPU | NVIDIA GPU with 4+ GB VRAM (enables GPU-accelerated inference via llama.cpp's CUDA backend) |
+| GPU | Not used in v0.4: the Steam build bundles llama.cpp's CPU `llama-server.exe` |
 
-> **Note on GPU acceleration:** GPU acceleration is not required and not
-> automatically enabled.  If a supported NVIDIA GPU is present the player can
-> opt in via the Model Manager.  CUDA toolkit is not required — the bundled
-> `llama-server.exe` includes the CUDA runtime.
+> **Note on GPU acceleration:** the v0.4 Steam build for Windows runs the model
+> on the CPU. Its bundled `llama-server.exe` is llama.cpp's CPU build
+> (`runtimes/llama_cpp/download-runtime.ps1` defaults to the `cpu` variant and
+> does not offer CUDA builds), and the app has no switch to a GPU build yet.
+> Bundling the Vulkan build, which accelerates NVIDIA, AMD and Intel GPUs, and
+> using the GPU by default are planned in #530 and #531.
 
 #### Verified Steam client version
 

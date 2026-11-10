@@ -300,11 +300,11 @@ Every session runs through a layered safety system before and after the model is
 | Milestone | Goal | Status |
 | --------- | ---- | ------ |
 | 0 | Monorepo skeleton, dev setup, official scenario packs | Complete |
-| 1 | Text-only local simulator (browser UI + Python backend + local LLM) | In progress |
-| 2 | Scenario pack system (import, validate, browse community packs) | Planned |
-| 3 | Local voice input (Whisper speech-to-text) | Planned |
-| 4 | Local voice output (TTS with Kokoro / sherpa-onnx) | Planned |
-| 5 | Polished playable alpha | Planned |
+| 1 | Text-only local simulator (browser UI + Python backend + local LLM) | Complete |
+| 2 | Scenario pack system (import, validate, browse community packs) | Import, export and validation complete; in-app community pack browser planned ([#465](https://github.com/outrightmental/ConversationSimulator/issues/465)) |
+| 3 | Local voice input (Whisper speech-to-text) | Complete (opt-in) |
+| 4 | Local voice output (TTS with Kokoro / sherpa-onnx) | Complete (opt-in) |
+| 5 | Polished playable alpha | Complete (v0.1.0-alpha.1); v0.4.0 is the first public demo |
 
 **[ROADMAP.md](ROADMAP.md)** — MVP acceptance criteria, build order, what is
 deliberately out of scope, and links to the acceptance criteria and docs.
