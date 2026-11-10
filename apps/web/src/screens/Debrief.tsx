@@ -14,28 +14,7 @@ import { useIsDemo } from '../edition'
 import DemoUpsellCard from '../components/DemoUpsellCard'
 import FamiliarityReaskCard from '../components/FamiliarityReaskCard'
 import { wholeTurnNumbersFor } from '../lib/wholeTurns'
-
-type TranscriptEvent = {
-  event_id: number
-  event_type: string
-  payload: Record<string, unknown>
-}
-
-// One entry of the export's event log. Its payload is whatever the event
-// stored: an object for most events, but a list for `rubric_observations`.
-type ExportedEvent = Omit<TranscriptEvent, 'payload'> & { payload: unknown }
-
-const TRANSCRIPT_EVENT_TYPES = new Set(['player_turn', 'npc_turn', 'npc_opening'])
-
-function transcriptEventsOf(events: ExportedEvent[] | undefined): TranscriptEvent[] {
-  return (events ?? []).filter(
-    (e): e is TranscriptEvent =>
-      TRANSCRIPT_EVENT_TYPES.has(e.event_type) &&
-      typeof e.payload === 'object' &&
-      e.payload !== null &&
-      !Array.isArray(e.payload),
-  )
-}
+import { readExport, type TranscriptEvent } from '../lib/sessionExport'
 
 export default function Debrief() {
   const { sessionId } = useParams<{ sessionId: string }>()
@@ -144,17 +123,10 @@ export default function Debrief() {
         const r2 = await api.exportSession(sessionId!)
         if (cancelled) return
         if (r2.ok) {
-          const exportData = r2.data as {
-            session?: { setup?: SessionCreateRequest; scenario_id?: string }
-            events?: ExportedEvent[]
-          }
-          if (exportData.session?.setup) {
-            setSessionSetup(exportData.session.setup)
-          }
-          if (exportData.session?.scenario_id) {
-            setExportedScenarioId(exportData.session.scenario_id)
-          }
-          setTranscript(transcriptEventsOf(exportData.events))
+          const exported = readExport(r2.data)
+          if (exported.setup) setSessionSetup(exported.setup)
+          if (exported.scenarioId) setExportedScenarioId(exported.scenarioId)
+          setTranscript(exported.transcript)
         }
         // silently ignore export error
       }
@@ -213,13 +185,10 @@ export default function Debrief() {
       setPhase('error')
       return
     }
-    const exportData = r.data as {
-      session?: { setup?: SessionCreateRequest; scenario_id?: string }
-      events?: ExportedEvent[]
-    }
-    if (exportData.session?.setup) setSessionSetup(exportData.session.setup)
-    if (exportData.session?.scenario_id) setExportedScenarioId(exportData.session.scenario_id)
-    setTranscript(transcriptEventsOf(exportData.events))
+    const exported = readExport(r.data)
+    if (exported.setup) setSessionSetup(exported.setup)
+    if (exported.scenarioId) setExportedScenarioId(exported.scenarioId)
+    setTranscript(exported.transcript)
     setPhase('transcript_only')
   }
 

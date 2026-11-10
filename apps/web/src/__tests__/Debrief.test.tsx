@@ -371,6 +371,40 @@ describe('Debrief screen', () => {
       expect(screen.getAllByText('Turn 2')).toHaveLength(2)
     })
 
+    // convsim-core's export (the backend the app talks to) carries the
+    // transcript as `turns`, the setup at the top level and the scenario as
+    // `scenario.id`, and no player_turn / npc_turn events at all. Reading only
+    // the legacy shape left every real debrief without its transcript.
+    it("renders the transcript from convsim-core's export shape", async () => {
+      const coreExport = {
+        session_id: SESSION_ID,
+        scenario: { id: 'behavioral_interview', name: 'The Behavioral Interview' },
+        setup: { scenario_id: 'behavioral_interview', difficulty: 'standard', player_role_name: 'Sam' },
+        state: 'DebriefReady',
+        turns: [
+          { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in.', created_at: '2024-01-01T00:00:00Z' },
+          { turn_number: 1, role: 'player', content: 'Player one.', created_at: '2024-01-01T00:00:01Z' },
+          { turn_number: 2, role: 'npc', content: 'Npc one.', emotion: 'warm', created_at: '2024-01-01T00:00:02Z' },
+        ],
+        events: [
+          // A list payload, as the turn pipeline writes rubric observations.
+          { id: 9, turn_number: 2, event_type: 'rubric_observations', payload: [{ rubric_id: 'x', observation: 'y' }], occurred_at: '2024-01-01T00:00:02Z' },
+        ],
+      }
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: coreExport })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      const numbers = screen
+        .getAllByTestId('transcript-turn')
+        .map((el) => el.getAttribute('data-turn-number'))
+      expect(numbers).toEqual(['0', '1', '1'])
+      expect(screen.getByText('Npc one.')).toBeInTheDocument()
+      expect(screen.getByText('warm')).toBeInTheDocument()
+    })
+
     it('labels the NPC mood rather than bracketing it beside the turn number', async () => {
       // Next to a turn number it read as one of the meters (issue #501 §3).
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
