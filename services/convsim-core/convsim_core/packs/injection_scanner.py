@@ -356,6 +356,23 @@ def _scenario_texts(data: dict) -> list[tuple[str, str, bool]]:
             val = knobs.get("description") if isinstance(knobs, dict) else None
             if isinstance(val, str):
                 results.append((val, f"/difficulty/options/{preset}/description", False))
+    # Since issue #580 the turn prompt also carries each state variable's
+    # description (STATE_VARIABLES) and the npc_instruction of every event
+    # that fires (SCENARIO_EVENTS), the first sentence of which it quotes for
+    # a variable with no description.
+    state = data.get("state")
+    variables = state.get("variables") if isinstance(state, dict) else None
+    if isinstance(variables, dict):
+        for name, spec in variables.items():
+            val = spec.get("description") if isinstance(spec, dict) else None
+            if isinstance(val, str):
+                results.append((val, f"/state/variables/{name}/description", False))
+    events = data.get("events")
+    if isinstance(events, list):
+        for i, event in enumerate(events):
+            val = event.get("npc_instruction") if isinstance(event, dict) else None
+            if isinstance(val, str):
+                results.append((val, f"/events/{i}/npc_instruction", False))
     return results
 
 
@@ -494,8 +511,9 @@ def scan_pack_dir(pack_dir: Path) -> list[InjectionFinding]:
 
     Scans the following locations:
     - ``scenarios/*.yaml`` — scenario titles, summaries, player role labels
-      and briefs, opening NPC lines, player/hidden goal strings, and each
-      difficulty preset's description.
+      and briefs, opening NPC lines, player/hidden goal strings, each
+      difficulty preset's description, each state variable's description and
+      each event's npc_instruction.
     - ``npcs/*.yaml`` — NPC display names, public persona descriptions, and all
       private persona string fields.
     - ``rubrics/*.yaml`` — rubric titles, dimension names/descriptions, and
