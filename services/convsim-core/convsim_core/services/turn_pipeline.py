@@ -5,13 +5,18 @@ Processing steps (SPEC §6):
   1. Normalize player text: strip, reject empty, reject oversized.
   2. Local input safety gate: route player text through deterministic rule
      checks (route_player_input) before the LLM; refuse/stop/redirect as needed.
-  3. Build prompt context: scenario, NPC, state, transcript, rubric, player utterance.
-  4. Call ChatRuntime and collect the structured response.
-  5. Validate / repair / fallback the model response.
-  6. Apply bounded state deltas.
-  7. Evaluate scenario event triggers and ending conditions.
-  8. Persist player turn, NPC turn, and updated session state atomically.
-  9. Return a TurnPipelineResult.
+  3. Evaluate scenario event triggers on the state the previous turn left.
+  4. Build prompt context: scenario, NPC, rubric, the scenario's state
+     variables, the instructions of the events that fired, transcript,
+     player utterance.
+  5. Call ChatRuntime and collect the structured response, constrained by the
+     session's output schema (its rubric_id an enum of the rubric's ids, its
+     state_delta the scenario's variables).
+  6. Validate / repair / fallback the model response.
+  7. Apply bounded state deltas.
+  8. Evaluate ending conditions.
+  9. Persist player turn, NPC turn, and updated session state atomically.
+ 10. Return a TurnPipelineResult.
 """
 from __future__ import annotations
 
@@ -26,7 +31,6 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Set
 
 from convsim_prompt import (
-    NPC_TURN_OUTPUT_SCHEMA,
     SAFE_FALLBACK_UTTERANCE,
     PromptComposerInput,
     SafetyPolicy,
@@ -34,11 +38,13 @@ from convsim_prompt import (
     TranscriptEntry,
     TurnEvent,
     compose_turn_prompt,
+    filter_rubric_observations,
     parse_turn_output,
+    state_variables_in_schema,
+    turn_output_schema_for,
 )
 from convsim_prompt.output_validator import validate_npc_output
 from convsim_prompt.turn_output import _extract_json
-from convsim_prompt.types import ScenarioData
 from convsim_prompt.types import ResponseStyleOverrides, ScenarioData
 
 from convsim_core.input_router import (
@@ -504,6 +510,41 @@ def _persist_input_safety_stop(
     )
 
 
+def _previous_event_flags(session_id: str, conn: sqlite3.Connection) -> Set[str]:
+    """The event flags the NPC's last reply raised, for this turn's ``flag`` events.
+
+    Events are evaluated before the turn (issue #580), so a ``flag`` condition
+    reads the flags of the reply before it, as a variable condition reads the
+    state that reply left. None before the first reply.
+    """
+    row = conn.execute(
+        "SELECT event_flags_json FROM turn_session_turns "
+        "WHERE session_id = ? AND role = 'npc' ORDER BY turn_number DESC LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        return set()
+    try:
+        flags = json.loads(row["event_flags_json"] or "[]")
+    except (TypeError, ValueError):
+        return set()
+    return {f for f in flags if isinstance(f, str)} if isinstance(flags, list) else set()
+
+
+def _fired_event_instructions(
+    events: List[ScenarioEvent], triggered_ids: List[str]
+) -> List[str]:
+    """The ``npc_instruction`` of each triggered event, once each, in the scenario's order."""
+    wanted = set(triggered_ids)
+    instructions: List[str] = []
+    seen: Set[str] = set()
+    for event in events:
+        if event.id in wanted and event.id not in seen:
+            seen.add(event.id)
+            instructions.append(event.npc_instruction)
+    return instructions
+
+
 def _load_recent_turns(session_id: str, conn: sqlite3.Connection, limit: int = 12) -> List[TranscriptEntry]:
     rows = conn.execute(
         "SELECT role, content, turn_number FROM turn_session_turns "
@@ -707,6 +748,22 @@ async def process_turn(
     if not state_vars:
         state_vars = initialize_state(var_defs)
 
+    # 3b. Scenario events (issue #580), on the state the previous turn left
+    #     and the flags its reply raised. Each event that fires puts its
+    #     npc_instruction into this turn's prompt, once for an event that fires
+    #     once and on every turn its condition holds for a repeating one, and
+    #     is recorded on this turn. Evaluated after the reply, as they were, no
+    #     instruction ever reached a prompt: the session had moved on.
+    events = scenario_events or []
+    triggered_events = evaluate_event_triggers(
+        state_vars,
+        turn_number,
+        events=events,
+        fired_event_ids=fired_event_ids,
+        active_flags=_previous_event_flags(session_id, conn),
+    )
+    event_instructions = _fired_event_instructions(events, triggered_events)
+
     # 4. Get recent transcript.
     recent_transcript = _load_recent_turns(session_id, conn)
 
@@ -739,6 +796,7 @@ async def process_turn(
         player_utterance=normalized,
         recent_transcript=recent_transcript,
         relationship_recap=relationship_recap,
+        scenario_event_instructions=event_instructions,
     ))
 
     # 7. Call runtime. The model's registry entry sets the temperature and
@@ -749,9 +807,13 @@ async def process_turn(
         ChatMessage(role="system", content=prompt.system_prompt),
         ChatMessage(role="user", content=prompt.user_prompt),
     ]
+    # The session's schema, the one the prompt's OUTPUT_SCHEMA layer quotes:
+    # with a rubric, rubric_id is an enum of its dimension ids (issue #578),
+    # which the engine's schema-to-grammar conversion enforces.
+    output_schema = turn_output_schema_for(scenario_data)
     request = ChatRequest(
         messages=messages,
-        json_schema=NPC_TURN_OUTPUT_SCHEMA,
+        json_schema=output_schema,
         scripted_turn_index=turn_number,
         # Structured turn output (utterance + deltas + rubric observations)
         # regularly lands in the 300-600 token range; the 512 default left no
@@ -842,6 +904,9 @@ async def process_turn(
             raw_text, native_structured, released_line, force_defaults=blocked
         )
         turn_output = salvage.output
+        turn_output.rubric_observations = filter_rubric_observations(
+            turn_output.rubric_observations, output_schema
+        )
         salvaged = salvage.salvaged
         if blocked:
             violation = gate.blocked.first_violation
@@ -882,6 +947,7 @@ async def process_turn(
             runtime=runtime_bridge,
             hidden_agenda=hidden_agenda,
             turn_events=turn_parse_events,
+            output_schema=output_schema,
         )
         used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
         if used_fallback:
@@ -898,19 +964,21 @@ async def process_turn(
     # 9. Handle safety status from model output.
     safety_stopped = turn_output.safety.status == "stop"
 
-    # 10. Apply state delta.
-    delta_result = apply_state_delta(state_vars, turn_output.state_delta, var_defs)
+    # 10. Apply state delta. With state of the scenario's own, only the
+    #     variables the session's schema names may move (issue #580): a runtime
+    #     that ignores the schema, or a repair call sent without it, can still
+    #     write a baseline the scenario never reads.
+    played = state_variables_in_schema(output_schema)
+    delta_result = apply_state_delta(
+        state_vars,
+        turn_output.state_delta,
+        var_defs,
+        allowed=played,
+    )
     if delta_result.rejected_keys:
         logger.warning("State delta had unknown keys (rejected): %s", delta_result.rejected_keys)
 
-    # 11. Evaluate scenario event triggers.
-    triggered_events = evaluate_event_triggers(
-        delta_result.new_state,
-        turn_number,
-        events=scenario_events or [],
-        fired_event_ids=fired_event_ids,
-        active_flags=set(turn_output.event_flags),
-    )
+    # 11. Scenario events were evaluated before the prompt (step 3b).
 
     # 12. Evaluate ending condition.
     ending_type = evaluate_ending_condition(
@@ -1099,7 +1167,9 @@ async def process_turn(
 
     timing.persist_ms = (time.perf_counter() - persist_started) * 1000.0
 
-    visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs)
+    # The meters: the visible variables, and with state of the scenario's own
+    # only those it plays, the ones that can move (issue #580).
+    visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs, played)
 
     logger.debug(
         "Turn %d complete for session %s: state=%s ending=%s",

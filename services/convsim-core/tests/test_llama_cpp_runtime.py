@@ -340,6 +340,55 @@ async def test_chat_stream_sends_response_format_hint_when_schema_provided(runti
 
 
 @pytest.mark.asyncio
+async def test_a_sessions_rubric_enum_reaches_the_engine_unchanged(runtime):
+    """The session's turn schema (issue #578) is what llama-server turns into
+    a grammar: its rubric_id enum must arrive as sent, so the grammar can only
+    write the rubric's ids."""
+    from convsim_prompt import build_npc_turn_output_schema
+
+    schema = build_npc_turn_output_schema(rubric_ids=["business_case", "specificity"])
+    lines = _sse_lines(_token_chunk("{}"), _final_chunk())
+    client = _mock_client(stream_response=_MockStreamResponse(lines))
+    request = ChatRequest(messages=[ChatMessage(role="user", content="go")], json_schema=schema)
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent = client.stream.call_args.kwargs["json"]["response_format"]["schema"]
+    assert sent == schema
+    item = sent["properties"]["rubric_observations"]["items"]
+    assert item["properties"]["rubric_id"] == {"type": "string", "enum": ["business_case", "specificity"]}
+
+
+@pytest.mark.asyncio
+async def test_a_sessions_state_delta_reaches_the_engine_unchanged(runtime):
+    """The session's turn schema names the scenario's variables in state_delta,
+    required and closed (issue #580): llama-server must get it as sent, so its
+    grammar writes every one of them and no other key."""
+    from convsim_prompt import StateVariable, build_npc_turn_output_schema
+
+    schema = build_npc_turn_output_schema(state_variables=[
+        StateVariable(name="deal_progress", max_delta_per_turn=20),
+        StateVariable(name="firmness", max_delta_per_turn=12),
+    ])
+    lines = _sse_lines(_token_chunk("{}"), _final_chunk())
+    client = _mock_client(stream_response=_MockStreamResponse(lines))
+    request = ChatRequest(messages=[ChatMessage(role="user", content="go")], json_schema=schema)
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent = client.stream.call_args.kwargs["json"]["response_format"]["schema"]
+    assert sent == schema
+    delta = sent["properties"]["state_delta"]
+    assert delta["required"] == ["deal_progress", "firmness"]
+    assert delta["additionalProperties"] is False
+    assert delta["properties"] == {"deal_progress": {"type": "integer"}, "firmness": {"type": "integer"}}
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_omits_response_format_when_no_schema(runtime):
     lines = _sse_lines(_token_chunk("ok"), _final_chunk())
     stream = _MockStreamResponse(lines)

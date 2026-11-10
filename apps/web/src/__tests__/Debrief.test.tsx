@@ -278,6 +278,41 @@ describe('Debrief screen', () => {
       )
       expect(screen.queryByTestId('scorecard-section')).not.toBeInTheDocument()
     })
+
+    it("labels each row with the rubric's own name when the debrief returns one (issue #578)", async () => {
+      mockApi.generateDebrief.mockResolvedValue({
+        ok: true,
+        data: {
+          ...fullDebriefResponse,
+          scores: { self_awareness: 85, vocabulary_use: 25 },
+          dimension_names: { self_awareness: 'Self-awareness', vocabulary_use: 'Vocabulary Use' },
+        },
+      })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('scorecard-section')).toBeInTheDocument(),
+      )
+      // As authored: not "Self Awareness" from the id, and not re-cased.
+      const label = screen.getByTestId('dimension-label-self_awareness')
+      expect(label).toHaveTextContent(/^Self-awareness$/)
+      expect(label).toHaveStyle({ textTransform: 'none' })
+      expect(screen.getByTestId('dimension-label-vocabulary_use')).toHaveTextContent(/^Vocabulary Use$/)
+      expect(screen.getByRole('meter', { name: /Self-awareness/ })).toHaveAttribute('aria-valuenow', '85')
+    })
+
+    it('names a row from its id when the debrief has no rubric names', async () => {
+      mockApi.generateDebrief.mockResolvedValue({
+        ok: true,
+        data: { ...fullDebriefResponse, scores: { self_awareness: 50 } },
+      })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('scorecard-section')).toBeInTheDocument(),
+      )
+      const label = screen.getByTestId('dimension-label-self_awareness')
+      expect(label).toHaveTextContent(/^self awareness$/)
+      expect(label).toHaveStyle({ textTransform: 'capitalize' })
+    })
   })
 
   describe('turning points', () => {

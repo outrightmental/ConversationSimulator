@@ -1008,7 +1008,7 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             captured["hidden_agenda"] = hidden_agenda
             return _valid_turn_output()
 
@@ -1035,7 +1035,7 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             captured["runtime"] = runtime
             return _valid_turn_output()
 
@@ -1060,7 +1060,7 @@ class TestPromptComposerWiring:
         conn = _make_unit_db()
         row = _insert_unit_session(conn)
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="structural_validation_failure",
@@ -1096,7 +1096,7 @@ class TestPromptComposerWiring:
 
         secret_keywords = "candidate leadership competency"
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="output_violation_detected",
@@ -1871,10 +1871,15 @@ class TestScenarioStateIntegration:
 
     @pytest.mark.asyncio
     async def test_scenario_event_fires_and_returned(self):
-        """An event whose condition is met appears in triggered_scenario_events."""
+        """An event whose condition is met appears in triggered_scenario_events.
+
+        Events are evaluated on the state the previous turn left (issue #580),
+        so the turn that pushes rapport over 70 does not fire it; the next one
+        does, with the event's instruction in its prompt.
+        """
         from convsim_core.scenario_state import ScenarioEvent
         conn = _make_unit_db()
-        # rapport starts at 60; delta +15 pushes to 75 which is > 70 — event fires.
+        # rapport starts at 60; delta +15 pushes to 75 which is > 70.
         row = _insert_unit_session_with_state(
             conn, state_vars={"trust": 50, "patience": 75, "pressure": 25,
                               "rapport": 60, "openness": 50, "objective_progress": 0}
@@ -1885,18 +1890,36 @@ class TestScenarioStateIntegration:
             when={"type": "variable_above", "variable": "rapport", "threshold": 70},
             npc_instruction="Acknowledge the improved atmosphere.",
         )
+        runtime = _SpecificDeltaRuntime(state_delta={"rapport": 15})
+        prompts: list = []
+        original = runtime._stream
 
-        result = await process_turn(
-            session_row=row,
-            player_text="I appreciate your perspective.",
-            scenario_data=get_scenario_data("behavioral_interview", "standard"),
-            max_turns=20,
-            runtime=_SpecificDeltaRuntime(state_delta={"rapport": 15}),
-            conn=conn,
-            scenario_events=[evt],
-        )
+        def _recording_stream(request):
+            prompts.append(request.messages[0].content)
+            return original(request)
 
-        assert "rapport_high" in result.triggered_scenario_events
+        runtime._stream = _recording_stream
+
+        async def _turn(session_row):
+            return await process_turn(
+                session_row=session_row,
+                player_text="I appreciate your perspective.",
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
+                max_turns=20,
+                runtime=runtime,
+                conn=conn,
+                scenario_events=[evt],
+            )
+
+        first = await _turn(row)
+        assert first.new_state_vars["rapport"] == 75
+        assert first.triggered_scenario_events == []
+        assert "Acknowledge the improved atmosphere." not in prompts[0]
+
+        row = conn.execute("SELECT * FROM turn_sessions WHERE session_id = 'sess-unit'").fetchone()
+        second = await _turn(row)
+        assert "rapport_high" in second.triggered_scenario_events
+        assert "  - Acknowledge the improved atmosphere." in prompts[1]
 
     @pytest.mark.asyncio
     async def test_scenario_event_does_not_fire_when_condition_not_met(self):

@@ -20,6 +20,13 @@ the session layer and persisted state always see a consistent signal.
 Validation events (structural failures, content violations, repair outcomes) are
 appended to the optional ``turn_events`` list so the debug drawer can surface
 them in dev mode and tests can assert on specific outcomes.
+
+With the session's ``output_schema`` (issue #578), rubric observations are
+kept only under the schema's ``rubric_id`` enum: a spelling of a declared id
+is folded onto it, and an observation under any other id is dropped rather
+than failing the turn. A runtime that enforces the schema never writes one;
+the parser's own repair calls, which are sent with no schema, and runtimes
+that ignore it can. The repair prompts quote the session's schema too.
 """
 from __future__ import annotations
 
@@ -30,7 +37,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
 from .output_validator import OutputViolation, validate_npc_output
-from .types import NPC_TURN_OUTPUT_SCHEMA
+from .rubric import RubricIdMatcher
+from .types import NPC_TURN_OUTPUT_SCHEMA, rubric_ids_in_schema
 
 logger = logging.getLogger(__name__)
 
@@ -48,15 +56,24 @@ _STATE_DELTA_MAX = 20
 _RUBRIC_SCORE_DELTA_MIN = -3
 _RUBRIC_SCORE_DELTA_MAX = 3
 
-_REPAIR_PROMPT = (
-    "Your previous response did not produce a valid structured JSON response. "
-    "Return ONLY a valid JSON object matching this schema — no markdown fences, "
-    "no explanation, no text outside the JSON object itself:\n"
-    + json.dumps(NPC_TURN_OUTPUT_SCHEMA, indent=2)
-)
+
+def _make_repair_prompt(schema: Optional[Dict[str, Any]] = None) -> str:
+    """The structural repair prompt, quoting ``schema`` (the canonical one by default)."""
+    return (
+        "Your previous response did not produce a valid structured JSON response. "
+        "Return ONLY a valid JSON object matching this schema — no markdown fences, "
+        "no explanation, no text outside the JSON object itself:\n"
+        + json.dumps(schema if schema is not None else NPC_TURN_OUTPUT_SCHEMA, indent=2)
+    )
 
 
-def _make_safety_repair_prompt(violation: OutputViolation) -> str:
+_REPAIR_PROMPT = _make_repair_prompt()
+
+
+def _make_safety_repair_prompt(
+    violation: OutputViolation,
+    schema: Optional[Dict[str, Any]] = None,
+) -> str:
     """Build a stricter content-safety repair prompt for the given violation."""
     return (
         f"Your previous NPC response was flagged for a safety concern "
@@ -69,7 +86,7 @@ def _make_safety_repair_prompt(violation: OutputViolation) -> str:
         "  - Does NOT claim to be a real public figure.\n"
         "Return ONLY a valid JSON object matching this schema — no markdown fences, "
         "no explanation, no text outside the JSON object itself:\n"
-        + json.dumps(NPC_TURN_OUTPUT_SCHEMA, indent=2)
+        + json.dumps(schema if schema is not None else NPC_TURN_OUTPUT_SCHEMA, indent=2)
     )
 
 
@@ -231,11 +248,20 @@ def _extract_json(raw: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _validate(data: Dict[str, Any]) -> TurnOutput:
+def _validate(
+    data: Dict[str, Any],
+    rubric_matcher: Optional[RubricIdMatcher] = None,
+    dropped_rubric_ids: Optional[List[str]] = None,
+) -> TurnOutput:
     """Validate a parsed dict and convert it to a TurnOutput.
 
     Raises ValidationError for missing required fields, wrong types, or invalid
     enum values. State delta values outside [-20, 20] are clamped and logged.
+
+    With ``rubric_matcher``, an observation is kept under the declared id its
+    ``rubric_id`` stands for, and one whose id stands for none is dropped (its
+    id is appended to ``dropped_rubric_ids``): an id outside the rubric is the
+    model's mistake, not a malformed turn.
     """
 
     def _req(key: str, parent: Dict[str, Any] = data, ctx: str = "") -> Any:
@@ -307,6 +333,14 @@ def _validate(data: Dict[str, Any]) -> TurnOutput:
                     i, score_delta, clamped_sd,
                 )
             score_delta = clamped_sd
+        if rubric_matcher is not None:
+            declared = rubric_matcher.match(r_id)
+            if declared is None:
+                logger.info("rubric_observations[%d] dropped: %r is not a rubric id", i, r_id)
+                if dropped_rubric_ids is not None:
+                    dropped_rubric_ids.append(r_id)
+                continue
+            r_id = declared
         observations.append(
             RubricObservation(rubric_id=r_id, observation=r_text, score_delta=score_delta)
         )
@@ -369,11 +403,73 @@ def _enforce_safety_consistency(result: TurnOutput) -> None:
             result.session_control.ending_type = "safety_stop"
 
 
+def filter_rubric_observations(
+    observations: List[RubricObservation],
+    output_schema: Optional[Dict[str, Any]],
+) -> List[RubricObservation]:
+    """``observations`` kept to the ``rubric_id`` enum of ``output_schema``.
+
+    The same rule as parse_turn_output's, for turns built another way (the
+    streaming salvage path). Unchanged when the schema has no enum.
+    """
+    allowed = rubric_ids_in_schema(output_schema)
+    if not allowed:
+        return list(observations)
+    matcher = RubricIdMatcher(allowed)
+    kept: List[RubricObservation] = []
+    for obs in observations:
+        declared = matcher.match(obs.rubric_id)
+        if declared is not None:
+            kept.append(RubricObservation(
+                rubric_id=declared, observation=obs.observation, score_delta=obs.score_delta,
+            ))
+    return kept
+
+
 def parse_turn_output(
     raw: str,
     runtime: Optional[RuntimeProtocol] = None,
     hidden_agenda: Optional[List[str]] = None,
     turn_events: Optional[List[TurnEvent]] = None,
+    output_schema: Optional[Dict[str, Any]] = None,
+) -> TurnOutput:
+    """Parse raw LLM output into a TurnOutput.
+
+    ``output_schema`` is the schema the turn was requested with
+    (``turn_output_schema_for``; NPC_TURN_OUTPUT_SCHEMA when omitted). Its
+    ``rubric_id`` enum, when it has one, is the set of ids rubric
+    observations are kept under: others are dropped, and a
+    ``rubric_observation_dropped`` event names them. The repair and retry
+    prompts quote this schema. See ``_parse_turn_output`` for the pipeline.
+    """
+    allowed = rubric_ids_in_schema(output_schema)
+    matcher = RubricIdMatcher(allowed) if allowed else None
+    dropped: List[str] = []
+    result = _parse_turn_output(
+        raw,
+        runtime=runtime,
+        hidden_agenda=hidden_agenda,
+        turn_events=turn_events,
+        schema=output_schema,
+        rubric_matcher=matcher,
+        dropped_rubric_ids=dropped,
+    )
+    if dropped and turn_events is not None:
+        turn_events.append(TurnEvent(
+            event_type="rubric_observation_dropped",
+            reason="not a rubric id: " + ", ".join(repr(d) for d in dict.fromkeys(dropped)),
+        ))
+    return result
+
+
+def _parse_turn_output(
+    raw: str,
+    runtime: Optional[RuntimeProtocol] = None,
+    hidden_agenda: Optional[List[str]] = None,
+    turn_events: Optional[List[TurnEvent]] = None,
+    schema: Optional[Dict[str, Any]] = None,
+    rubric_matcher: Optional[RubricIdMatcher] = None,
+    dropped_rubric_ids: Optional[List[str]] = None,
 ) -> TurnOutput:
     """Parse raw LLM output into a TurnOutput.
 
@@ -414,7 +510,7 @@ def parse_turn_output(
     data = _extract_json(raw)
     if data is not None:
         try:
-            result = _validate(data)
+            result = _validate(data, rubric_matcher, dropped_rubric_ids)
         except ValidationError as exc:
             logger.warning("Turn output validation failed (will attempt repair): %s", exc)
             _emit("structural_validation_failure", reason=str(exc))
@@ -425,10 +521,10 @@ def parse_turn_output(
         if runtime is not None:
             logger.debug("Requesting repaired turn output from runtime")
             try:
-                repaired_raw = runtime.call_llm(_REPAIR_PROMPT)
+                repaired_raw = runtime.call_llm(_make_repair_prompt(schema))
                 repaired_data = _extract_json(repaired_raw)
                 if repaired_data is not None:
-                    result = _validate(repaired_data)
+                    result = _validate(repaired_data, rubric_matcher, dropped_rubric_ids)
                     _emit("structural_repair_success")
                 else:
                     logger.warning("Repair attempt returned non-JSON output")
@@ -527,10 +623,10 @@ def parse_turn_output(
     if not validation.has_hard_violation and runtime is not None:
         logger.debug("Requesting content-safety retry from runtime")
         try:
-            retry_raw = runtime.call_llm(_make_safety_repair_prompt(violation))
+            retry_raw = runtime.call_llm(_make_safety_repair_prompt(violation, schema))
             retry_data = _extract_json(retry_raw)
             if retry_data is not None:
-                retry_result = _validate(retry_data)
+                retry_result = _validate(retry_data, rubric_matcher, dropped_rubric_ids)
                 _enforce_safety_consistency(retry_result)
                 retry_validation = validate_npc_output(
                     utterance=retry_result.npc_utterance,

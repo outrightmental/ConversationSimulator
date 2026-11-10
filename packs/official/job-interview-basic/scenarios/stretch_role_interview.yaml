@@ -69,6 +69,10 @@ state:
       default: 0
       visibility: hidden
       max_delta_per_turn: 1
+      description: >-
+        Whether the candidate has addressed the experience gap directly: two
+        years against the five-plus the role asks for. 1 once they name a
+        specific area where they would start behind; 0 until then.
 difficulty:
   default: standard
   options:
@@ -88,18 +92,23 @@ difficulty:
       disclosure: 25
       time_pressure: 60
 events:
+  # On turn 3, not on gap_acknowledged below 1 (#580): that was true at the
+  # default, so once event instructions reached the prompt Elena raised the gap
+  # in her first reply, after a candidate who had just addressed it. Whether
+  # they have is now in the instruction.
   - id: gap_probing
     when:
-      type: variable_below
-      variable: gap_acknowledged
-      threshold: 1
+      type: max_turns
+      value: 3
     npc_instruction: >-
-      The candidate has not yet addressed the experience gap directly. Elena
-      brings it up herself: "I want to come back to the experience question,
-      because I think it matters. The gap between two years and five years isn't
-      just time — it's a specific set of situations you haven't been in yet.
-      What's one area where you know you'd be starting from behind, and what
-      would you do about it in the first ninety days?"
+      Elena comes back to the experience gap. If the candidate has not yet
+      addressed it directly, she brings it up herself: "I want to come back to
+      the experience question, because I think it matters. The gap between two
+      years and five years isn't just time — it's a specific set of situations
+      you haven't been in yet. What's one area where you know you'd be starting
+      from behind, and what would you do about it in the first ninety days?" If
+      they already have, she asks only the second half: what they would do
+      about that area in their first ninety days.
     repeat: false
   - id: evidence_boost
     when:

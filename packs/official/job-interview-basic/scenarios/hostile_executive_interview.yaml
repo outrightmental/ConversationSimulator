@@ -94,9 +94,9 @@ events:
       threshold: 50
     npc_instruction: >-
       Victor is skeptical of the last claim. Challenge it directly and
-      specifically: "That's a broad statement. Walk me through the exact trade-
-      off you were weighing. What did you give up to get that outcome, and was
-      it the right call in hindsight?"
+      specifically: "That's a broad statement. Walk me through the exact
+      trade-off you were weighing. What did you give up to get that outcome,
+      and was it the right call in hindsight?"
     repeat: true
   - id: escalate_pressure
     when:

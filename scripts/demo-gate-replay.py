@@ -22,11 +22,23 @@ each, and asserts on every turn and every run:
                       and only those
   (e) debrief         the debrief generated (HTTP 200), used_fallback false
   (f) turn_fallback   no NPC reply was the engine's canned safe fallback line
+  (g) delta_shape     the model's state_delta reads as changes, not as the
+                      values CURRENT_STATE showed: most of its numbers are not
+                      those values, most are not past their per-turn limit,
+                      and not every one is at it
 
-By default (a), (b), (e) and (f) are hard failures and (c) and (d) are
-warnings: the engine does not wire authored state or the rubric into play yet
-(fixes 3 and 4 of issue #580), so both fail on every run today. ``--strict``
-makes all six hard; ``--hard`` and ``--warn`` set one check at a time.
+By default (a) to (f) are hard failures and (g) is a warning. (d) became hard
+when the engine started scoring a scenario on its rubric's dimensions only
+(fix 3, issue #578), and (c) when the turn schema started requiring each of
+the scenario's own variables in state_delta, with the prompt saying what each
+means (fix 4, issue #580). (g) measures a risk of that schema: its integers
+carry no bound, so a model that copies the state's values instead of writing
+changes moves every variable by its full limit each turn, and the engine's
+clamp is all that stops it. It reads what the model wrote from
+``GET /api/sessions/{id}/debug`` after the run, and judges the applied changes
+alone when that is not at hand. ``--warn`` makes one check (letter or name) a
+warning and ``--hard`` makes one hard; ``--strict`` makes all seven hard
+whatever ``--warn`` says.
 
 It does not start anything. Start convsim-core on the real runtime first (the
 desktop app, or ``scripts/dev.sh`` with a model installed) and point ``--api``
@@ -73,8 +85,9 @@ Output
 ------
 ``--out DIR`` (default ``out/demo-gate/<UTC time>`` under the repository root,
 which git ignores) receives one ``<scenario>-run<N>.json`` per run, with the
-session setup, every turn's player and NPC line, state delta, rubric
-observations, timing and fallback flag, the debrief, the stored transcript,
+session setup, every turn's player and NPC line, state delta (applied, and as
+the model proposed it), rubric observations, timing and fallback flag, the
+debrief, the stored transcript,
 the NPC recaps deleted around it and each check's result, plus ``summary.md``:
 a table of every run against every check, the findings with the words that
 tripped them, and latency (noted, not judged). Both are rewritten after every
@@ -110,7 +123,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -238,6 +251,8 @@ class ScenarioFacts:
     hidden_agenda: List[str]
     authored_variables: List[str]
     rubric_ids: List[str]
+    # The scenario's state variables, for check (g).
+    variable_specs: Dict[str, checks.VariableSpec] = field(default_factory=dict)
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -256,9 +271,17 @@ def find_pack_dir(packs_dir: Path, pack_id: str) -> Path:
 
 
 def load_scenario_facts(
-    packs_dir: Path, pack_id: str, scenario_id: str, baseline: Sequence[str]
+    packs_dir: Path,
+    pack_id: str,
+    scenario_id: str,
+    baseline: Sequence[str],
+    baseline_specs: Optional[Mapping[str, checks.VariableSpec]] = None,
 ) -> ScenarioFacts:
-    """What the checks compare against, read from the conversation's pack files."""
+    """What the checks compare against, read from the conversation's pack files.
+
+    ``baseline_specs`` fills in what a re-declared baseline variable leaves
+    out; by default it is read from scenario_state.py.
+    """
     pack_dir = find_pack_dir(packs_dir, pack_id)
     scenario_path = pack_dir / "scenarios" / f"{scenario_id}.yaml"
     scenario = _load_yaml(scenario_path)
@@ -279,6 +302,9 @@ def load_scenario_facts(
         hidden_agenda=checks.hidden_agenda(npc),
         authored_variables=checks.authored_variables(scenario, baseline),
         rubric_ids=checks.rubric_dimension_ids(rubric),
+        variable_specs=checks.variable_specs(
+            scenario, baseline_specs if baseline_specs is not None else baseline_variable_specs(),
+        ),
     )
 
 
@@ -288,6 +314,10 @@ def demo_scenarios() -> List[Tuple[str, str]]:
 
 def baseline_variables() -> List[str]:
     return checks.parse_baseline_variables(SCENARIO_STATE_PY.read_text(encoding="utf-8"))
+
+
+def baseline_variable_specs() -> Dict[str, checks.VariableSpec]:
+    return checks.parse_baseline_specs(SCENARIO_STATE_PY.read_text(encoding="utf-8"))
 
 
 def safe_fallback_utterance() -> str:
@@ -374,6 +404,9 @@ def play_conversation(
         "end": None,
         "debrief": {"status": None, "seconds": None, "body": None, "error": None},
         "transcript": None,
+        # Why the model's own state deltas could not be read (check (g)
+        # then judges the applied ones), or None.
+        "debug_error": None,
         "error": None,
     }
     step = "scenario lookup"
@@ -482,6 +515,20 @@ def play_conversation(
             record["transcript"] = None
             record["error"] = record["error"] or f"transcript: {exc}"
 
+        # What the model wrote in state_delta, for check (g). Best effort: a
+        # failure here is noted, and (g) judges the applied changes instead.
+        try:
+            _, debug = transport.request("GET", f"/api/sessions/{sid}/debug")
+            raw_by_turn = {
+                int(t.get("turn_number")): t.get("raw_npc_output")
+                for t in (debug or {}).get("turns") or []
+                if isinstance(t, Mapping) and isinstance(t.get("turn_number"), int)
+            }
+            for t in record["turns"]:
+                t["proposed_state_delta"] = checks.proposed_state_delta(raw_by_turn.get(t["turn"]))
+        except ApiError as exc:
+            record["debug_error"] = str(exc)
+
     record["finished_at"] = _now()
     return record
 
@@ -512,7 +559,7 @@ def evaluate_record(
     *,
     fallback_utterance: Optional[str] = None,
 ) -> List[checks.CheckResult]:
-    """Run the six checks on a played record and store them on it."""
+    """Run the seven checks on a played record and store them on it."""
     debrief = record.get("debrief") or {}
     turns = record.get("turns") or []
     results = checks.evaluate_run(
@@ -527,6 +574,8 @@ def evaluate_record(
         debrief_error=debrief.get("error"),
         turn_fallbacks=[(int(t["turn"]), _turn_fallback_flag(t)) for t in turns],
         fallback_utterance=fallback_utterance,
+        proposed_deltas=[(int(t["turn"]), t.get("proposed_state_delta")) for t in turns],
+        variable_specs=facts.variable_specs,
     )
     record["checks"] = [r.to_dict() for r in results]
     record["verdict"] = checks.run_verdict(results, error=record.get("error"))
@@ -697,7 +746,8 @@ def render_summary(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]
     out.append(
         "This pre-check does not replace the manual D-05 judgement. It catches the "
         "failures a script can see (repetition, agenda said aloud, state that never "
-        "moves, debriefs off the rubric or on the template, canned fallback turns); "
+        "moves, debriefs off the rubric or on the template, canned fallback turns, "
+        "state deltas that copy the state's values); "
         "whether each reply makes "
         "sense, keeps its role and answers the player is still read by a person."
     )

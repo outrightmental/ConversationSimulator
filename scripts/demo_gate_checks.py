@@ -11,7 +11,7 @@ findings, so the checks are unit-tested on synthetic transcripts in
 Standard library only. The replay parses the pack YAML with PyYAML and passes
 the parsed documents in.
 
-The six checks, with the letters the issue and the demo doc use:
+The seven checks, with the letters the issue and the demo doc use:
 
   (a) repetition      per turn: no run of 6+ consecutive words shared with the
                       previous NPC line, and no NPC line ending with the same
@@ -29,6 +29,11 @@ The six checks, with the letters the issue and the demo doc use:
                       template fallback.
   (f) turn_fallback   per turn: no NPC reply was the engine's canned safe
                       fallback line.
+  (g) delta_shape     per turn: the model's ``state_delta`` reads as changes,
+                      not as the variables' values: most of its numbers are
+                      not the values CURRENT_STATE showed, most are not past
+                      their per-turn limit, and not every one is at it. A
+                      warning by default: it measures a risk (issue #580).
 
 Words are compared case- and punctuation-insensitively: text is NFKC
 normalised and case-folded, apostrophes are dropped (so "What's" and
@@ -37,6 +42,7 @@ normalised and case-folded, apostrophes are dropped (so "What's" and
 from __future__ import annotations
 
 import ast
+import json
 import re
 import unicodedata
 from dataclasses import asdict, dataclass, field
@@ -54,6 +60,10 @@ SAME_QUESTION_MIN_WORDS = 4
 # Agenda numbers from this value (3+ digits) are secrets: a price floor, a
 # budget. Smaller ones ("two offers") are ordinary talk.
 SECRET_NUMBER_MIN = 100
+# (g) judges a turn only when the model proposed at least this many of the
+# scenario's variables: one number at its limit is an emphatic line, not a
+# shape.
+DELTA_SHAPE_MIN_VARIABLES = 2
 
 
 @dataclass(frozen=True)
@@ -71,13 +81,22 @@ CHECKS: Tuple[CheckSpec, ...] = (
     CheckSpec("d", "rubric_ids", "Debrief scores the rubric's own ids", "run"),
     CheckSpec("e", "debrief", "Debrief generated, no template fallback", "run"),
     CheckSpec("f", "turn_fallback", "No turn fell back to the canned line", "turn"),
+    CheckSpec("g", "delta_shape", "State deltas are changes, not values", "turn"),
 )
 CHECKS_BY_LETTER: Dict[str, CheckSpec] = {c.letter: c for c in CHECKS}
 
-# (c) and (d) fail until the engine wires authored state and the rubric
-# (fixes 3 and 4 of issue #580), so they report as warnings unless --strict.
+# Every check is hard by default. (d): the engine scores a scenario with a
+# rubric on the rubric's dimensions only (fix 3, issue #578), and every demo
+# scenario has one. (c): the turn schema requires each of the scenario's own
+# variables in state_delta and the prompt says what each means (fix 4, issue
+# #580), so a run in which none of them moves is the model ignoring its state.
+# ``--warn`` makes a check a warning again. (g) is a warning: the schema's
+# state_delta integers carry no bound, so nothing but the engine's clamp stops
+# a model that writes CURRENT_STATE's values instead of changes, and every
+# variable then moves by its full limit each turn whatever the player says
+# (issue #580). It measures how often that happens; ``--hard g`` gates on it.
 DEFAULT_SEVERITY: Dict[str, str] = {
-    "a": HARD, "b": HARD, "c": WARN, "d": WARN, "e": HARD, "f": HARD,
+    "a": HARD, "b": HARD, "c": HARD, "d": HARD, "e": HARD, "f": HARD, "g": WARN,
 }
 
 
@@ -674,6 +693,121 @@ def find_fallback_turns(
     return [found[t] for t in sorted(found)]
 
 
+@dataclass(frozen=True)
+class VariableSpec:
+    """What (g) needs of one state variable. The defaults are the engine's
+    own for a variable that does not say (``ScenarioVariableDef``)."""
+
+    default: int = 50
+    max_delta_per_turn: int = 20
+    min: int = 0
+    max: int = 100
+
+
+def _number(value: Any) -> Optional[int]:
+    """An integer value, or None for a bool, a non-integral float or anything else."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
+def proposed_state_delta(raw_output: Any) -> Optional[Dict[str, Any]]:
+    """The ``state_delta`` the model wrote in one raw turn output, or None.
+
+    ``raw_output`` is a turn's ``raw_npc_output`` from
+    ``GET /api/sessions/{id}/debug``: the model's text, normally the JSON
+    object itself. Text around the object is ignored. None when there is no
+    object with a ``state_delta`` mapping in it, as for a reply the parser
+    had to repair.
+    """
+    if not isinstance(raw_output, str):
+        return None
+    start, end = raw_output.find("{"), raw_output.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        doc = json.loads(raw_output[start:end + 1])
+    except ValueError:
+        return None
+    delta = doc.get("state_delta") if isinstance(doc, dict) else None
+    return dict(delta) if isinstance(delta, dict) else None
+
+
+def find_absolute_deltas(
+    turns: Sequence[Tuple[int, Optional[Mapping[str, Any]], Mapping[str, Any]]],
+    specs: Mapping[str, VariableSpec],
+    *,
+    min_variables: int = DELTA_SHAPE_MIN_VARIABLES,
+) -> List[Finding]:
+    """(g) Turns whose ``state_delta`` reads as the variables' values, not changes.
+
+    ``turns`` is ``(game_turn, proposed, applied)`` per played turn, in order:
+    what the model wrote (None when the raw output is not at hand) and what
+    the engine applied (the turn's ``state_delta``). ``specs`` is the
+    scenario's variables. The value CURRENT_STATE showed on each turn is
+    rebuilt from the defaults and the applied changes before it.
+
+    A turn is flagged when, over the scenario's variables the model gave a
+    number for (at least ``min_variables``):
+
+      * more than half equal the value CURRENT_STATE showed (a value of 0
+        is left out: 0 is also "no change");
+      * more than half are past their per-turn limit, as targets such as
+        "impression: 56" are;
+      * every one is at or past its limit.
+
+    Without the proposed delta, the applied one is judged by the last rule
+    alone: every variable moved by exactly its limit.
+    """
+    state: Dict[str, int] = {
+        name: max(spec.min, min(spec.max, spec.default)) for name, spec in specs.items()
+    }
+    found: List[Finding] = []
+    for turn, proposed, applied in turns:
+        source = proposed if isinstance(proposed, Mapping) else None
+        values: Dict[str, int] = {}
+        for name, value in ((source if source is not None else applied) or {}).items():
+            number = _number(value)
+            if name in specs and number is not None:
+                values[name] = number
+        if len(values) >= min_variables:
+            limit = {name: specs[name].max_delta_per_turn for name in values}
+            at_limit = [n for n, v in values.items() if abs(v) >= limit[n]]
+            evidence = ", ".join(
+                f"{n} {v:+d} (was {state.get(n)}, limit ±{limit[n]})" for n, v in values.items()
+            )
+            message = None
+            if source is not None:
+                copied = [n for n, v in values.items() if v != 0 and v == state.get(n)]
+                past = [n for n, v in values.items() if abs(v) > limit[n]]
+                if 2 * len(copied) > len(values):
+                    message = (
+                        f"{len(copied)} of {len(values)} proposed values equal the current value "
+                        f"CURRENT_STATE showed ({', '.join(copied)})"
+                    )
+                elif 2 * len(past) > len(values):
+                    message = (
+                        f"{len(past)} of {len(values)} proposed values are past their per-turn "
+                        f"limit ({', '.join(past)}): values, not changes?"
+                    )
+                elif len(at_limit) == len(values):
+                    message = f"every one of {len(values)} proposed values is at or past its per-turn limit"
+            elif all(abs(v) == limit[n] for n, v in values.items()):
+                message = f"every one of {len(values)} applied changes is exactly its per-turn limit"
+            if message:
+                found.append(Finding(turn=turn, message=message, evidence=_clip(evidence, 240)))
+        for name, change in (applied or {}).items():
+            number = _number(change)
+            if name in state and number is not None:
+                spec = specs[name]
+                state[name] = max(spec.min, min(spec.max, state[name] + number))
+    return found
+
+
 def _signed(value: Any) -> str:
     try:
         return f"{int(value):+d}"
@@ -694,8 +828,16 @@ def evaluate_run(
     debrief_error: Optional[str] = None,
     turn_fallbacks: Sequence[Tuple[int, Any]] = (),
     fallback_utterance: Optional[str] = None,
+    proposed_deltas: Sequence[Tuple[int, Optional[Mapping[str, Any]]]] = (),
+    variable_specs: Optional[Mapping[str, VariableSpec]] = None,
 ) -> List[CheckResult]:
-    """All six checks over one played conversation, in letter order."""
+    """All seven checks over one played conversation, in letter order.
+
+    ``proposed_deltas`` is ``(game_turn, the state_delta the model wrote)``
+    for (g), None for a turn whose raw output is not at hand;
+    ``variable_specs`` the scenario's variables. Without specs (g) passes
+    with nothing to judge.
+    """
     sev = dict(DEFAULT_SEVERITY)
     if severity:
         sev.update(severity)
@@ -707,6 +849,12 @@ def evaluate_run(
     fallback = find_fallback_turns(
         turn_fallbacks, npc_lines, fallback_utterance=fallback_utterance
     )
+    proposed_by_turn = dict(proposed_deltas)
+    shape = find_absolute_deltas(
+        [(turn, proposed_by_turn.get(turn), delta) for turn, delta in turn_deltas],
+        variable_specs or {},
+    )
+    proposed_count = sum(1 for _, d in proposed_deltas if isinstance(d, Mapping))
     outcomes: Dict[str, Tuple[bool, List[Finding], str]] = {
         "a": (not rep, rep, f"{generated} generated NPC line(s) checked"),
         "b": (not leak, leak, (
@@ -716,6 +864,10 @@ def evaluate_run(
         "d": check_rubric_ids(debrief, rubric_ids),
         "e": check_debrief(debrief_status, debrief, error=debrief_error),
         "f": (not fallback, fallback, f"{generated} generated NPC line(s) checked"),
+        "g": (not shape, shape, (
+            f"{len(turn_deltas)} turn(s) checked, {proposed_count} with the model's own delta"
+            if variable_specs else "no state variables to judge"
+        )),
     }
     results: List[CheckResult] = []
     for spec in CHECKS:
@@ -789,6 +941,50 @@ def parse_baseline_variables(scenario_state_source: str) -> List[str]:
     if not isinstance(value, ast.Dict):
         raise ValueError("BASELINE_VARIABLES is not a dict literal")
     return [str(ast.literal_eval(k)) for k in value.keys if k is not None]
+
+
+def parse_baseline_specs(scenario_state_source: str) -> Dict[str, VariableSpec]:
+    """``BASELINE_VARIABLES`` of scenario_state.py's source, as (g) reads them.
+
+    Each entry is a ``ScenarioVariableDef(...)`` call; the keywords it gives
+    (``default``, ``min``, ``max``, ``max_delta_per_turn``) override the
+    engine's defaults.
+    """
+    value = _module_assignment(scenario_state_source, "BASELINE_VARIABLES")
+    if not isinstance(value, ast.Dict):
+        raise ValueError("BASELINE_VARIABLES is not a dict literal")
+    specs: Dict[str, VariableSpec] = {}
+    fields = ("default", "min", "max", "max_delta_per_turn")
+    for key, call in zip(value.keys, value.values):
+        if key is None or not isinstance(call, ast.Call):
+            raise ValueError("BASELINE_VARIABLES entries must be ScenarioVariableDef(...) calls")
+        given = {k.arg: ast.literal_eval(k.value) for k in call.keywords if k.arg in fields}
+        specs[str(ast.literal_eval(key))] = VariableSpec(**given)
+    return specs
+
+
+def variable_specs(
+    scenario_doc: Mapping[str, Any],
+    baseline: Optional[Mapping[str, VariableSpec]] = None,
+) -> Dict[str, VariableSpec]:
+    """The scenario's ``state.variables`` as (g) reads them.
+
+    A field a variable leaves out comes from the baseline of the same name,
+    else the engine's default; a bare integer is a default value.
+    """
+    variables = ((scenario_doc.get("state") or {}).get("variables")) or {}
+    specs: Dict[str, VariableSpec] = {}
+    for name, raw in variables.items():
+        base = (baseline or {}).get(name, VariableSpec())
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, int):
+            specs[str(name)] = VariableSpec(**{**asdict(base), "default": raw})
+        elif isinstance(raw, Mapping):
+            given = {f: raw[f] for f in ("default", "min", "max", "max_delta_per_turn")
+                     if _number(raw.get(f)) is not None}
+            specs[str(name)] = VariableSpec(**{**asdict(base), **given})
+    return specs
 
 
 def parse_string_constant(source: str, name: str) -> str:

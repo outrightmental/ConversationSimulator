@@ -17,13 +17,12 @@ adds the cancel message.
 """
 from __future__ import annotations
 
-import json
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from convsim_core.origins import websocket_origin_allowed
-from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
+from convsim_core.routers.sessions import session_visible_state
 from convsim_core.services.session_events import SessionEventBus
 
 logger = logging.getLogger(__name__)
@@ -52,7 +51,7 @@ async def session_socket(websocket: WebSocket, session_id: str) -> None:
 
     conn = websocket.app.state.db.connection()
     row = conn.execute(
-        "SELECT flow_state, state_vars_json, ending_type FROM turn_sessions WHERE session_id = ?",
+        "SELECT scenario_id, flow_state, state_vars_json, ending_type FROM turn_sessions WHERE session_id = ?",
         (session_id,),
     ).fetchone()
 
@@ -69,11 +68,12 @@ async def session_socket(websocket: WebSocket, session_id: str) -> None:
 
     bus.register(session_id, websocket)
     try:
-        state_vars = json.loads(row["state_vars_json"] or "{}")
-        visible, _ = partition_state_by_visibility(state_vars, build_variable_defs())
+        # The same meters the session's REST detail reports (issue #580):
+        # the baselines alone sent a scenario's hidden variables, and the
+        # ones it never plays, which the client merges into its meters.
         await bus.send_to(websocket, bus.envelope(session_id, "session.state", {
             "state": row["flow_state"],
-            "state_vars": visible,
+            "state_vars": session_visible_state(websocket, row),
             "ending_type": row["ending_type"],
         }))
         while True:

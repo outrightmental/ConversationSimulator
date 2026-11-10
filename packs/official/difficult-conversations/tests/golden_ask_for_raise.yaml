@@ -125,9 +125,9 @@ static_assertions:
     path: events[id=strong_case_acknowledged].repeat
     check: "equals false"
 
-  - description: deflation_signal fires when impression falls below 25
+  - description: deflation_signal fires when impression falls below 27
     path: events[id=deflation_signal].when
-    check: "type=variable_below AND variable=impression AND threshold=25"
+    check: "type=variable_below AND variable=impression AND threshold=27"
 
   - description: Success ending condition targets case_clarity above 65
     path: ending_conditions.success

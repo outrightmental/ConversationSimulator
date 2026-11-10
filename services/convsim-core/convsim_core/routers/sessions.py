@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.requests import HTTPConnection
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -72,12 +73,13 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 _VALID_STATES_FOR_TURN = {"PlayerTurnListening"}
 
 
-def _resolve_scenario(request: Request, scenario_id: str):
+def _resolve_scenario(request: HTTPConnection, scenario_id: str):
     """Resolve a scenario the way this edition plays it.
 
     The demo edition (issue #495) plays the official packs' curated
     conversations, so it resolves pack-first and pinned to the curated pack;
-    the full app keeps the historical catalog-first order.
+    the full app keeps the historical catalog-first order. ``request`` may be
+    a WebSocket: only its app is read.
     """
     conn = request.app.state.db.connection()
     if is_demo(request.app.state.service_config):
@@ -341,6 +343,12 @@ class DebriefResponse(BaseModel):
     generated_at: str
     used_fallback: bool
     metrics: Optional[Dict[str, Any]] = None
+    # Rubric dimension id -> the rubric's name for it (issue #578), so the
+    # scorecard labels rows with the rubric's names; empty for a scenario
+    # with no rubric, whose rows the client names from their ids.
+    dimension_names: Dict[str, str] = {}
+    # Rubric dimension id -> the band the debrief placed it in.
+    dimension_bands: Dict[str, str] = {}
 
 
 class BranchSessionRequest(BaseModel):
@@ -702,14 +710,22 @@ async def get_session(session_id: str, request: Request) -> SessionResponse:
     # who stepped out to Settings came back to a conversation with no meters at
     # all — the one thing the tutorial tells them to watch — until they sent
     # another message.
-    response.visible_state = _visible_state_for(request, row)
+    response.visible_state = session_visible_state(request, row)
     return response
 
 
-def _visible_state_for(request: Request, row: Any) -> Dict[str, int]:
-    """The session's meter values, minus the variables it keeps hidden."""
+def session_visible_state(connection: HTTPConnection, row: Any) -> Dict[str, int]:
+    """The session's meter values, minus the variables it keeps hidden.
+
+    Hidden are the variables the scenario marks hidden and, for a scenario
+    with state of its own, every variable it does not play (issue #580): its
+    turns cannot move them. The turn results, the opening event, this
+    session's detail and export, and the session socket's resync all report
+    the same set. ``row`` needs the session's ``scenario_id``, ``flow_state``
+    and ``state_vars_json``.
+    """
     state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
-    info = _resolve_scenario(request, row["scenario_id"])
+    info = _resolve_scenario(connection, row["scenario_id"])
     overrides = info.state_variable_overrides if info is not None else None
     defs = build_variable_defs(overrides)
     if not state_vars and row["flow_state"] != "NotStarted":
@@ -720,7 +736,8 @@ def _visible_state_for(request: Request, row: Any) -> Dict[str, int]:
         # "go to Settings, then Resume" path lands on (issue #501). Report the
         # same values the opening event did, computed the same way.
         state_vars = initialize_state(defs)
-    visible, _ = partition_state_by_visibility(state_vars, defs)
+    played = info.played_variables() if info is not None else None
+    visible, _ = partition_state_by_visibility(state_vars, defs, played)
     return visible
 
 
@@ -782,7 +799,7 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
 
             defs = build_variable_defs(info.state_variable_overrides)
             initial_visible, _ = partition_state_by_visibility(
-                initialize_state(defs), defs
+                initialize_state(defs), defs, info.played_variables()
             )
         except Exception:  # pragma: no cover - meters are best-effort
             initial_visible = {}
@@ -1221,6 +1238,8 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
                 generated_at=doc.get("generated_at", _now_iso()),
                 used_fallback=doc.get("used_fallback", False),
                 metrics=doc.get("metrics"),
+                dimension_names=doc.get("dimension_names") or {},
+                dimension_bands=doc.get("dimension_bands") or {},
             )
         # DebriefReady state with no persisted row — data inconsistency.
         raise HTTPException(
@@ -1252,6 +1271,8 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
             conn=conn,
             runtime=runtime,
             scenario_data=scenario_data,
+            state_variable_overrides=info.state_variable_overrides,
+            played_variables=info.played_variables(),
         )
     except Exception as exc:
         logger.error("Debrief generation failed for session %s: %s", session_id, exc)
@@ -1291,6 +1312,8 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
         generated_at=result.generated_at,
         used_fallback=result.used_fallback,
         metrics=result.metrics if result.metrics else None,
+        dimension_names=result.dimension_names,
+        dimension_bands=result.dimension_bands,
     )
 
 
@@ -1607,9 +1630,9 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
         "name": info.scenario_data.title if info else scenario_id,
     }
 
-    state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
-    var_defs = build_variable_defs()
-    visible_state, _ = partition_state_by_visibility(state_vars, var_defs)
+    # The scenario's own meters, as the conversation showed them: the
+    # baselines alone left a scenario's hidden variables in the export.
+    visible_state = session_visible_state(request, row)
 
     turn_rows = (
         conn.execute(

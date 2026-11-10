@@ -47,30 +47,45 @@ state:
       default: 0
       visibility: visible
       max_delta_per_turn: 20
+      description: >-
+        How close Ray and the buyer are to a price both accept. Rises as
+        offers converge; falls when either side digs in.
     perceived_fairness:
       min: 0
       max: 100
       default: 50
       visibility: hidden
       max_delta_per_turn: 15
+      description: >-
+        Whether Ray thinks the buyer bargains in good faith. Falls with
+        insults, bullying or offers far below the comps.
     firmness:
       min: 0
       max: 100
       default: 75
       visibility: hidden
       max_delta_per_turn: 12
+      description: >-
+        How hard Ray holds his price. Falls with real comps, a credible
+        walk-away or cash today; rises with desperation or bullying.
     concession_level:
       min: 0
       max: 100
       default: 0
       visibility: visible
       max_delta_per_turn: 15
+      description: >-
+        How far Ray has come down from the $15,500 list, in price or extras.
+        Rises with each lower counter or extra; never falls.
     leverage:
       min: 0
       max: 100
       default: 30
       visibility: hidden
       max_delta_per_turn: 20
+      description: >-
+        How strong the buyer's position looks to Ray. Rises with specific
+        comps, a credible walk-away or cash today; falls with desperation.
 difficulty:
   default: standard
   options:
@@ -128,11 +143,15 @@ events:
       Do not make further concessions until the buyer returns to a respectful,
       professional tone.
     repeat: true
+  # Above 50, not 60 (#580): deal_progress moves at most 20 a turn, so from 50
+  # or less it cannot pass the success ending (above 70) on the turn it passes
+  # this, and Ray floats his number before the deal can close. At 60, the
+  # path 0, 20, 40, 60, 80 closed the deal without the event.
   - id: close_the_gap
     when:
       type: variable_above
       variable: deal_progress
-      threshold: 60
+      threshold: 50
     npc_instruction: >-
       A deal is within reach. Help close it by floating a specific number or
       package: "What if I did fourteen-two with a full tank and a six-month

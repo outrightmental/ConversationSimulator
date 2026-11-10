@@ -7,7 +7,7 @@ description: >-
   acknowledges the experience gap, backs potential with specific transferable
   examples, demonstrates genuine preparation, and shows evidence of rapid
   learning causes conviction to exceed the success threshold before the session
-  ends. Also verifies that gap_probing fires when the gap is not addressed,
+  ends. Also verifies that gap_probing comes back to the gap on turn 3,
   the evidence_boost fires on a high stretch_potential answer, and the
   preparation_challenge fires when preparation_score is low.
 
@@ -101,9 +101,9 @@ static_assertions:
     path: events
     check: min_length_1
 
-  - description: gap_probing fires when gap_acknowledged is below 1
+  - description: gap_probing comes back to the experience gap on turn 3
     path: events[id=gap_probing].when
-    check: "type=variable_below AND variable=gap_acknowledged AND threshold=1"
+    check: "type=max_turns AND value=3"
 
   - description: gap_probing fires only once
     path: events[id=gap_probing].repeat

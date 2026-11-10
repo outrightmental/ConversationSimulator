@@ -249,10 +249,18 @@ words), never answers with the engine's canned fallback line, applies a
 non-zero change to at least one variable the scenario authors, and gets a
 debrief that generated without the template fallback and scored only the
 rubric's own dimension ids. It writes a JSON record per run and a markdown
-summary, and exits non-zero on a hard failure. The authored-state and rubric
-checks are warnings until the engine wires both into play (issue #580);
-`--strict` makes them blocking. The engine must run the demo edition
-(`CONVSIM_EDITION=demo`), which plays the five from their curated packs; the
+summary, and exits non-zero on a hard failure. Those checks are blocking by
+default (`--warn <check>` makes one a warning): the engine scores each demo
+debrief on its scenario rubric's dimensions only (issue #578), and the turn
+schema requires every variable the scenario authors in each reply's state
+change, with the prompt saying what each means (issue #580). One more check
+is a warning by default (`--hard g` makes it blocking): the state change
+reads as changes, not as the values the prompt showed. The schema's numbers
+carry no bound, so a model that copies the state's values moves every
+variable by its full per-turn limit, and the conversation reaches an ending
+on pacing alone. The
+engine must run the demo edition (`CONVSIM_EDITION=demo`), which plays the
+five from their curated packs; the
 replay refuses any other edition unless `--allow-full-edition` is given, and
 then marks the result as not a D-05 result. Runs are kept independent: the
 replay deletes each NPC's relationship-memory recap, which every debrief

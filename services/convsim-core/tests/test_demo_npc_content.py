@@ -18,13 +18,16 @@ output check that play uses, and pin what the rewrite relies on:
 - the facts each NPC answers from are in a persona field the turn prompt
   renders, so they survive the three-exchange transcript window;
 - secrets stay in the private persona;
-- the longer personas still fit the prompt budget with a full transcript;
+- the longer personas still fit the prompt budget with a full transcript,
+  on a turn an event speaks too;
 - the lines the rules ask for do not trip the hidden-agenda leak check, which
   would turn a good reply into a retry or a fallback line.
 """
 from __future__ import annotations
 
+import itertools
 import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -154,6 +157,28 @@ def test_endings_are_reachable_within_the_turn_limit(scenario_id, kind):
     assert turns >= 2, f"{scenario_id}: {kind} can fire on the first turn"
 
 
+# Fewest turns, each moving the ending's variable by its per-turn limit, until
+# the ending fires (issue #580). Once the model has to report every authored
+# variable every turn, these are reachable: at the old limits two strong lines
+# ended behavioral_interview, the_ask (before any ask) and spanish_coffee.
+_EARLIEST_ENDING = {
+    "behavioral_interview": {"success": 4, "failure": 6},
+    "used_car_negotiation": {"success": 4, "failure": 3},
+    "ask_for_raise": {"success": 4, "failure": 3},
+    "the_ask": {"success": 5, "failure": 4},
+    "spanish_coffee": {"success": 4, "failure": 4},
+}
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_no_ending_can_fire_in_the_first_turns(scenario_id):
+    info = _load(scenario_id)
+    turns = {kind: _turns_to_ending(info, kind) for kind in ("success", "failure")}
+    assert turns == _EARLIEST_ENDING[scenario_id]
+    assert turns["success"] >= 4, f"{scenario_id}: success after {turns['success']} turns"
+    assert turns["failure"] >= 3, f"{scenario_id}: failure after {turns['failure']} turns"
+
+
 def _turns_to_event(info: ScenarioInfo, event_id: str) -> Optional[int]:
     """Fewest turns, at the per-turn delta limit, until the event fires (None: never)."""
     event = next(e for e in info.events if e.id == event_id)
@@ -181,6 +206,125 @@ def test_ask_for_raise_keeps_its_original_pacing():
     assert _turns_to_event(info, "strong_case_acknowledged") == 4
 
 
+def test_jordan_warms_before_the_conversation_can_succeed():
+    """positive_signal fires on the turn after jordan_interest passes 60, so at
+    the delta limit it reaches the prompt by the turn success can end it on."""
+    info = _load("the_ask")
+    assert _turns_to_event(info, "positive_signal") < _turns_to_ending(info, "success")
+
+
+def _lead_ins(info: ScenarioInfo):
+    """(event, ending kind) for each event on an ending's variable, crossed the same way."""
+    for kind, ending in (info.ending_conditions or {}).items():
+        if not isinstance(ending, dict) or ending.get("type") not in ("variable_above", "variable_below"):
+            continue
+        for event in info.events or []:
+            if (event.when.get("type"), event.when.get("variable")) == (ending["type"], ending["variable"]):
+                yield event, kind
+
+
+def _margin(info: ScenarioInfo, event, kind: str) -> float:
+    """Per-turn steps between the event's threshold and the ending's, at the delta limit."""
+    ending = info.ending_conditions[kind]
+    step = build_variable_defs(info.state_variable_overrides)[ending["variable"]].max_delta_per_turn
+    gap = ending["threshold"] - event.when["threshold"]
+    return (gap if ending["type"] == "variable_above" else -gap) / step
+
+
+# Events whose text promises the player time to answer them before the ending
+# they warn of: the ending must be two steps past them, so it cannot come at
+# the end of the turn the warning speaks on.
+_WARNINGS = {("the_ask", "comfort_warning")}
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_an_event_leading_into_an_ending_speaks_before_it(scenario_id):
+    """An event fires on the turn after its threshold is crossed (#580), and the
+    ending is evaluated at the end of the turn that crossed it. So an event
+    within one per-turn step of its ending can be jumped: the same turn passes
+    both, and the session ends before the event speaks. the_ask's
+    positive_signal was the only one placed for that; used_car's close_the_gap
+    (60, success 70, ±20) and ask_for_raise's deflation_signal (25, failure 15,
+    ±12) were not."""
+    info = _load(scenario_id)
+    for event, kind in _lead_ins(info):
+        margin = _margin(info, event, kind)
+        assert margin >= 1, f"{scenario_id}: {kind} can end the session before {event.id} speaks"
+        if (scenario_id, event.id) in _WARNINGS:
+            assert margin >= 2, f"{scenario_id}: {kind} can follow {event.id} on the turn it speaks"
+
+
+def test_the_lead_ins_the_review_found_are_pinned():
+    pinned = {
+        (scenario_id, event.id): (kind, _margin(_load(scenario_id), event, kind))
+        for scenario_id in _DEMO_IDS for event, kind in _lead_ins(_load(scenario_id))
+    }
+    assert pinned[("used_car_negotiation", "close_the_gap")] == ("success", 1.0)
+    assert pinned[("ask_for_raise", "deflation_signal")] == ("failure", 1.0)
+    assert pinned[("the_ask", "positive_signal")] == ("success", 1.0)
+    assert pinned[("the_ask", "comfort_warning")] == ("failure", 2.0)
+
+
+def test_ray_floats_his_number_before_the_deal_can_close():
+    """The path the review played: deal_progress 0, 20, 40, 60, 80."""
+    info = _load("used_car_negotiation")
+    defs = build_variable_defs(info.state_variable_overrides)
+    state = initialize_state(defs)
+    fired: set = set()
+    spoke = []
+    for turn in range(1, info.max_turns + 1):
+        spoke += evaluate_event_triggers(state, turn, info.events, fired)
+        state = apply_state_delta(state, {"deal_progress": 20}, defs).new_state
+        if evaluate_ending_condition(state, turn, info.max_turns, info.ending_conditions) == "success":
+            break
+    assert turn == 4 and "close_the_gap" in spoke
+
+
+def test_diane_says_her_polite_no_before_the_conversation_fails():
+    """The path the review played: impression 45, 37, 25, 13."""
+    info = _load("ask_for_raise")
+    defs = build_variable_defs(info.state_variable_overrides)
+    state = initialize_state(defs)
+    fired: set = set()
+    spoke = []
+    for turn, delta in enumerate([-8, -12, -12], start=1):
+        spoke += evaluate_event_triggers(state, turn, info.events, fired)
+        state = apply_state_delta(state, {"impression": delta}, defs).new_state
+        ending = evaluate_ending_condition(state, turn, info.max_turns, info.ending_conditions)
+    assert ending == "failure" and turn == 3 and "deflation_signal" in spoke
+
+
+# Events whose instruction closes the conversation. No ending is sure to
+# follow them, so each repeats and is written for the turns after it spoke
+# too: fired once, the instruction left the prompt the next turn and the NPC
+# could chat on after its goodbye (#580).
+_CLOSING_EVENTS = {
+    "the_ask": "disengagement",
+    "ask_for_raise": "deflation_signal",
+    "behavioral_interview": "low_impression_warning",
+}
+
+
+@pytest.mark.parametrize("scenario_id", sorted(_CLOSING_EVENTS))
+def test_an_event_that_closes_the_conversation_holds_until_it_ends(scenario_id):
+    info = _load(scenario_id)
+    event = next(e for e in info.events if e.id == _CLOSING_EVENTS[scenario_id])
+    assert event.repeat is True
+    # The same instruction serves the turn it first speaks and the ones after.
+    text = " ".join(event.npc_instruction.split())
+    assert re.search(r"\b(?:has not|have not)\b.*\byet\b", text), text
+    assert re.search(r"\bOnce (?:she|he|Jordan|they) ha(?:s|ve)\b", text), text
+    # It speaks on every turn its condition holds, not on the first alone.
+    defs = build_variable_defs(info.state_variable_overrides)
+    variable = event.when["variable"]
+    state = dict(initialize_state(defs), **{variable: event.when["threshold"] - 1})
+    fired: set = set()
+    assert [event.id in evaluate_event_triggers(state, turn, info.events, fired)
+            for turn in (3, 4, 5)] == [True, True, True]
+    # And it is not true at the defaults (see above), so it waits for a turn that earns it.
+    assert event.id not in evaluate_event_triggers(initialize_state(defs), 1, info.events, set())
+
+
 def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
     info = _load("ask_for_raise")
     defs = build_variable_defs(info.state_variable_overrides)
@@ -202,6 +346,47 @@ def test_ask_for_raise_probes_wait_for_a_turn_that_weakens_the_case():
     assert "vague_claim_probe" not in fired
     assert "no_number_anchor" not in fired
     assert events["vague_claim_probe"].repeat is True
+
+
+# ── What each state variable means ────────────────────────────────────────────
+
+
+def _words(text: str) -> list:
+    """Words as the D-05 replay compares them: NFKC, case-folded, no apostrophes."""
+    text = unicodedata.normalize("NFKC", text).casefold().replace("'", "").replace("’", "")
+    return [w for w in re.split(r"\W+", text) if w]
+
+
+def _runs(words: list, n: int) -> set:
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_every_variable_says_what_it_means(scenario_id):
+    """The model updates every authored variable every turn (issue #580); the
+    STATE_VARIABLES layer shows each one's authored meaning, in full."""
+    info = _load(scenario_id)
+    data = info.get_scenario_data("standard")
+    assert data.state_variable_names == list(info.state_variable_overrides)
+    layer = _turn_prompt_layers(scenario_id)["STATE_VARIABLES"]
+    for variable in data.state_variables:
+        assert variable.description, f"{scenario_id}: {variable.name} has no description"
+        assert len(variable.description.split()) <= 45, f"{scenario_id}: {variable.name} would be clipped"
+        assert variable.cues == []
+        assert f"a turn): {variable.description}" in layer
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_no_description_repeats_the_hidden_agenda(scenario_id):
+    """A reply that echoes a variable's meaning must not read as an agenda
+    leak to the D-05 replay, which flags any five-word run of the agenda."""
+    info = _load(scenario_id)
+    agenda = set()
+    for item in info.scenario_data.npc.private_persona.hidden_agenda:
+        agenda |= _runs(_words(item), 5)
+    for variable in info.get_scenario_data("standard").state_variables:
+        shared = _runs(_words(variable.description), 5) & agenda
+        assert not shared, f"{scenario_id}: {variable.name} repeats {shared}"
 
 
 # ── Facts the NPC answers from survive the transcript window ──────────────────
@@ -327,9 +512,7 @@ def test_jordan_keeps_the_pack_safety_boundaries():
 # ── Prompt budget ─────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
-def test_full_transcript_window_still_fits_the_prompt_budget(scenario_id):
-    """Over budget, the composer halves the transcript window (6 → 3 entries)."""
+def _full_window_prompt(scenario_id: str, instructions=()):
     info = _load(scenario_id)
     state = initialize_state(build_variable_defs(info.state_variable_overrides))
     line = " ".join(["word"] * 90)  # the NPC's default per-reply word cap
@@ -337,16 +520,51 @@ def test_full_transcript_window_still_fits_the_prompt_budget(scenario_id):
         TranscriptEntry(speaker="player" if i % 2 == 0 else "npc", text=line, turn_number=i // 2 + 1)
         for i in range(6)
     ]
-    bundle = compose_turn_prompt(PromptComposerInput(
+    return compose_turn_prompt(PromptComposerInput(
         scenario=info.get_scenario_data("standard"),
         session_state=SessionState(variables=state, turn_number=4),
         safety_policy=_prompt_safety_policy(scenario_id),
         player_utterance=line,
         recent_transcript=transcript,
+        scenario_event_instructions=list(instructions),
     ))
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_full_transcript_window_still_fits_the_prompt_budget(scenario_id):
+    """Over budget, the composer halves the transcript window (6 → 3 entries)."""
+    bundle = _full_window_prompt(scenario_id)
     assert not bundle.was_truncated, (
         f"{scenario_id}: {bundle.estimated_token_count} estimated tokens halves the transcript"
     )
+
+
+@pytest.mark.parametrize("scenario_id", _DEMO_IDS)
+def test_a_turn_an_event_speaks_on_keeps_the_full_window(scenario_id):
+    """The event's turn is the one that needs the conversation so far (#580).
+
+    Every event alone and every two at once (a repeating event beside
+    another): close_the_gap's "float a specific number" needs the offers
+    already made. Counted against the budget, the events layer pushed every
+    used_car and spanish_coffee event over it and halved the window.
+    """
+    from convsim_prompt import EVENTS_BUDGET_ALLOWANCE
+
+    events = _load(scenario_id).events or []
+    assert events
+    sets = [[e] for e in events] + [list(pair) for pair in itertools.combinations(events, 2)]
+    base = _full_window_prompt(scenario_id).estimated_token_count
+    for fired in sets:
+        bundle = _full_window_prompt(scenario_id, [e.npc_instruction for e in fired])
+        ids = [e.id for e in fired]
+        assert bundle.layer_map["SCENARIO_EVENTS"], ids
+        assert not bundle.was_truncated, (
+            f"{scenario_id} {ids}: {bundle.estimated_token_count} estimated tokens halves the transcript"
+        )
+        # The overrun is the events layer, and well inside the allowance.
+        events_tokens = len(bundle.layer_map["SCENARIO_EVENTS"]) // 4
+        assert bundle.estimated_token_count <= base + events_tokens + 2, ids
+        assert events_tokens <= EVENTS_BUDGET_ALLOWANCE * 2 // 3, ids
 
 
 # ── The lines the rules ask for pass the leak check ───────────────────────────

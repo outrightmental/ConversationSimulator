@@ -151,7 +151,7 @@ thirty minutes with your manager, Diane Kowalczyk, to make the case.
 - **vague_claim_probe** — repeating, fires when `evidence_strength < 10`; Diane asks for specifics. Not true at the default (10): it waits for a turn that weakens the evidence
 - **no_number_anchor** — fires once when `case_clarity < 10`; Diane asks the player to name a number. Not true at the default (10): it waits for a turn that blurs the ask
 - **strong_case_acknowledged** — fires once when `evidence_strength > 80`; Diane shifts to process (at least four strong turns)
-- **deflation_signal** — fires once when `impression < 25`; Diane begins closing without encouragement
+- **deflation_signal** — fires on every turn `impression < 27`; Diane closes without encouragement and holds her polite no
 
 **Endings:**
 - **Success** — `case_clarity > 65`: Diane has a case she can act on (at least four strong turns)

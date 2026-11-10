@@ -284,12 +284,18 @@ state:
       default: 50
       visibility: visible           # Player can see this in the session
       max_delta_per_turn: 12
+      description: >-
+        How open Morgan is to the raise. Rises with specific, measurable impact
+        and a reasoned number; falls with pressure or claims without evidence.
     evidence_score:
       min: 0
       max: 100
       default: 0
       visibility: hidden            # Player cannot see this
       max_delta_per_turn: 20
+      description: >-
+        How well the employee backs the request with concrete results. Rises
+        with numbers and examples; falls with general claims about hard work.
 
 events:
   - id: vague_request_nudge
@@ -379,6 +385,11 @@ difficulty:
 | `visible` | Player (shown as a conversation meter above the transcript) | Variables that correspond to something the player can infer from the NPC's responses |
 | `hidden` | System prompt only | NPC internal state the player has to discover through experimentation |
 
+A scenario that declares variables shows a meter only for the visible ones
+it plays: those it declares, and the baselines its events or endings read.
+The other baselines (`trust`, `patience` and the rest) cannot move in it, so
+they get no meter. To show one, declare it under `state.variables`.
+
 **Event trigger types:**
 
 | Type | Fields | When it fires |
@@ -386,7 +397,54 @@ difficulty:
 | `variable_above` | `variable`, `threshold` | When variable > threshold |
 | `variable_below` | `variable`, `threshold` | When variable < threshold |
 | `max_turns` | `value` | When the whole-turn count reaches value |
-| `flag` | `flag_id` | When a named flag is set |
+| `flag` | `flag_id` | When the NPC's previous reply set the named flag |
+
+**How the NPC learns about its state.** Every turn the NPC is shown each
+variable the scenario declares, with its range, its `max_delta_per_turn`
+and its `description`, and has to report a change for every one of them in
+its reply (zero is a valid change). Write the `description` as one or two
+sentences: what the variable means to the NPC, and what raises or lowers it.
+Without one, the NPC is told what your events on that variable say instead
+(the first sentence of each `npc_instruction`), which is a weaker hint. An
+engine baseline variable (`trust`, `patience`, `pressure`, `rapport`,
+`openness`, `objective_progress`) is shown only if your scenario declares it
+or one of its events or endings reads it; the NPC cannot move any other.
+
+**When an event fires.** Events are checked at the start of each turn, on
+the state the previous turn left (and, for `flag`, the flags the previous
+reply set). An event that fires puts its `npc_instruction` into the prompt
+for that turn's reply, so the NPC acts on it straight away: a `repeat: false`
+event once, a `repeat: true` event on every turn its condition still holds.
+Two things follow:
+
+- **An event that is true at the defaults fires on the first turn**, whatever
+  the player says. Set defaults and thresholds so it waits for a turn that
+  earns it.
+- **The instruction is read one turn after the change that caused it.**
+  Write it as how the NPC carries on from here ("The candidate has been
+  giving specific answers; follow up deeper"), not as a reply to the line
+  that crossed the threshold, which the NPC has already answered.
+- **A `repeat: false` instruction is in the prompt for one reply only.** An
+  instruction that closes the conversation (a goodbye, a polite no, "one
+  last question") is gone again on the next turn, and the NPC carries on
+  as if it had never been said, unless an ending follows. When none is sure
+  to, mark it `repeat: true` and write it for every turn its condition
+  holds: "If you have not offered a polite close yet, offer one now. Once
+  you have, keep each reply to a short goodbye."
+
+Endings are checked at the end of each turn, after its change is applied.
+A `max_delta_per_turn` that lets a variable reach an ending in one or two
+turns ends the conversation before it has started: count how many turns at
+the limit each ending needs.
+
+The same timing decides whether an event that leads into an ending (a
+closing offer before `success`, a polite no before `failure`) ever speaks.
+A turn that crosses both thresholds ends the conversation before the event
+fires, so keep the event's threshold at least one `max_delta_per_turn` short
+of the ending's: with `deal_progress` moving 20 a turn and success above
+70, fire the closing offer above 50, not 60. A warning the player is meant
+to answer before the ending needs two steps: it speaks on the turn after it
+fires, and the player answers on the turn after that.
 
 ### Counting turns
 

@@ -12,11 +12,12 @@ performance guarantees.
 """
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,51 @@ DEBRIEF_NARRATIVE_SCHEMA: Dict[str, Any] = {
     },
 }
 
+# The bands a debrief places each rubric dimension in (issue #578). The first
+# three are the rubric's own ``scoring.low`` / ``medium`` / ``high``;
+# "not_observed" is for a dimension the conversation gave the player no chance
+# to show, which is left off the scorecard rather than scored at a guess.
+DIMENSION_BANDS = ("low", "medium", "high", "not_observed")
+
+
+def build_debrief_narrative_schema(
+    *,
+    rubric_ids: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    """The debrief output schema for one session: a fresh copy of the canonical one.
+
+    With ``rubric_ids``, the schema also requires ``dimension_bands``: an
+    object with one property per rubric dimension, each an ``enum`` of
+    DIMENSION_BANDS. The keys are fixed and required, so a grammar built from
+    the schema leaves the model only the band to choose. It is placed right
+    after ``summary``: llama.cpp's schema-to-grammar writes required
+    properties in the order given, so the bands are judged against the rubric
+    before the strengths and improvements are written, and those follow from
+    them. Without ids the result equals DEBRIEF_NARRATIVE_SCHEMA.
+    """
+    schema = copy.deepcopy(DEBRIEF_NARRATIVE_SCHEMA)
+    ids = list(dict.fromkeys(i for i in (rubric_ids or ()) if isinstance(i, str) and i))
+    if not ids:
+        return schema
+    bands = {
+        "type": "object",
+        "description": "Each rubric dimension's band, judged only on what the player said.",
+        "properties": {i: {"type": "string", "enum": list(DIMENSION_BANDS)} for i in ids},
+        "required": ids,
+        "additionalProperties": False,
+    }
+    properties: Dict[str, Any] = {}
+    for key, value in schema["properties"].items():
+        properties[key] = value
+        if key == "summary":
+            properties["dimension_bands"] = bands
+    schema["properties"] = properties
+    required = list(schema["required"])
+    required.insert(required.index("summary") + 1, "dimension_bands")
+    schema["required"] = required
+    return schema
+
+
 DEBRIEF_SYSTEM_PREAMBLE = """\
 You are a practice-session coach for a conversation simulator. Your role is \
 strictly educational: you help players improve communication skills through \
@@ -121,17 +167,27 @@ class DebriefNarrative:
     replay_suggestions: List[str] = field(default_factory=list)
     missed_opportunities: List[str] = field(default_factory=list)
     used_fallback: bool = False
+    # Rubric dimension id → one of DIMENSION_BANDS, as the model placed it.
+    # Empty when the schema asked for none, the model gave none, or the
+    # narrative is the template fallback.
+    dimension_bands: Dict[str, str] = field(default_factory=dict)
 
 
 def _make_fallback_narrative(
     outcome: str,
     scores: Dict[str, float],
     key_turns: List[Dict[str, Any]],
+    dimension_names: Optional[Dict[str, str]] = None,
+    overall_score: Optional[float] = None,
 ) -> DebriefNarrative:
     """Build a minimal but honest fallback narrative from structured data.
 
     Uses only data already stored in the database — never invents evidence.
+    Dimensions are called by their rubric names when ``dimension_names`` has
+    them, and the summary quotes ``overall_score`` (the scorecard's weighted
+    figure) when given, else the plain average.
     """
+    names = dimension_names or {}
     high_dims = [dim for dim, score in scores.items() if score >= 65]
     low_dims = [dim for dim, score in scores.items() if score < 40]
 
@@ -139,18 +195,27 @@ def _make_fallback_narrative(
         f"You completed a practice session that ended with outcome: {outcome}.",
     ]
     if scores:
-        avg = sum(scores.values()) / len(scores)
-        summary_parts.append(f"Your overall average score across tracked dimensions was {avg:.0f}/100.")
+        if overall_score is not None:
+            summary_parts.append(
+                f"Your overall score across tracked dimensions was {overall_score:.0f}/100."
+            )
+        else:
+            avg = sum(scores.values()) / len(scores)
+            summary_parts.append(
+                f"Your overall average score across tracked dimensions was {avg:.0f}/100."
+            )
 
     strengths: List[str] = []
     for dim in high_dims:
-        strengths.append(f"Strong performance on '{dim}' (score: {scores[dim]:.0f}).")
+        name = names.get(dim, dim)
+        strengths.append(f"Strong performance on '{name}' (score: {scores[dim]:.0f}).")
     if not strengths:
         strengths.append("You completed the session — keep practising to build confidence.")
 
     improvements: List[str] = []
     for dim in low_dims:
-        improvements.append(f"Focus on '{dim}' in your next attempt (score: {scores[dim]:.0f}).")
+        name = names.get(dim, dim)
+        improvements.append(f"Focus on '{name}' in your next attempt (score: {scores[dim]:.0f}).")
     if not improvements:
         if scores:
             improvements.append("Continue building on your existing strengths.")
@@ -300,7 +365,23 @@ def _validate_narrative(data: Dict[str, Any]) -> DebriefNarrative:
         turning_points=turning_points,
         replay_suggestions=replay,
         used_fallback=False,
+        dimension_bands=_valid_bands(data.get("dimension_bands")),
     )
+
+
+def _valid_bands(raw: Any) -> Dict[str, str]:
+    """The well-formed entries of a ``dimension_bands`` object; never raises.
+
+    A band is extra judgement on top of a narrative that is valid without it,
+    so a missing or malformed one costs that dimension its band (it is scored
+    from the turns alone), not the debrief its narrative.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        k: v for k, v in raw.items()
+        if isinstance(k, str) and k and isinstance(v, str) and v in DIMENSION_BANDS
+    }
 
 
 def parse_debrief_narrative(
@@ -309,6 +390,8 @@ def parse_debrief_narrative(
     fallback_scores: Optional[Dict[str, float]] = None,
     fallback_key_turns: Optional[List[Dict[str, Any]]] = None,
     runtime: Optional[RuntimeProtocol] = None,
+    fallback_dimension_names: Optional[Dict[str, str]] = None,
+    fallback_overall_score: Optional[float] = None,
 ) -> DebriefNarrative:
     """Parse raw LLM output into a DebriefNarrative.
 
@@ -340,4 +423,6 @@ def parse_debrief_narrative(
         outcome=fallback_outcome,
         scores=fallback_scores or {},
         key_turns=fallback_key_turns or [],
+        dimension_names=fallback_dimension_names,
+        overall_score=fallback_overall_score,
     )

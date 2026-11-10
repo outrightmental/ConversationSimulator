@@ -285,6 +285,29 @@ function analyzePackContent(
         }
       }
     }
+    // Since issue #580 the turn prompt also carries each state variable's
+    // description and the npc_instruction of every event that fires.
+    const variables = (data.state as { variables?: unknown } | null | undefined)?.variables;
+    if (variables && typeof variables === 'object' && !Array.isArray(variables)) {
+      for (const [name, spec] of Object.entries(variables as Record<string, unknown>)) {
+        const description = (spec as { description?: unknown } | null)?.description;
+        if (typeof description === 'string') {
+          const field = `${prefix}/state.variables.${name}.description`;
+          add(scanTextForExternalUrl(description, field));
+          add(scanTextForInjection(description, field));
+        }
+      }
+    }
+    if (Array.isArray(data.events)) {
+      data.events.forEach((event, i) => {
+        const instruction = (event as { npc_instruction?: unknown } | null)?.npc_instruction;
+        if (typeof instruction === 'string') {
+          const field = `${prefix}/events[${i}].npc_instruction`;
+          add(scanTextForExternalUrl(instruction, field));
+          add(scanTextForInjection(instruction, field));
+        }
+      });
+    }
   }
 
   // ── Scenes ────────────────────────────────────────────────────────────────

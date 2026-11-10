@@ -45,7 +45,7 @@ using the STAR method earn a stronger impression; vague platitudes lower it.
 
 - **rambling_redirect** — fires when `rambling_count > 2`; Dana asks for a concrete, specific example
 - **high_specificity_reward** — fires once when `specificity_score > 75`; Dana shows deeper follow-up engagement
-- **low_impression_warning** — fires once when `impression < 25`; Dana begins wrapping up
+- **low_impression_warning** — fires on every turn `impression < 25`; Dana wraps up and asks nothing new
 
 **Endings:**
 
@@ -173,7 +173,7 @@ transferable examples, and demonstrate you have done genuine research on the rol
 
 **Events:**
 
-- **gap_probing** — fires once when `gap_acknowledged < 1`; Elena raises the experience gap directly
+- **gap_probing** — fires once on turn 3; Elena raises the experience gap directly, or, if the candidate already has, asks what they would do about it in the first ninety days
 - **evidence_boost** — fires once when `stretch_potential > 70`; Elena engages with a hard real challenge
 - **hesitation_signal** — fires once when `conviction < 30`; Elena flags her concern and asks for the strongest evidence
 - **preparation_challenge** — fires once when `preparation_score < 35`; Elena tests whether the candidate has done real research

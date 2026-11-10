@@ -48,24 +48,39 @@ state:
       default: 25
       visibility: visible
       max_delta_per_turn: 15
+      description: >-
+        How much real contact Jordan and the player have made. Rises with easy
+        back-and-forth and shared humour; falls with scripted lines or
+        pushing.
     confidence:
       min: 0
       max: 100
       default: 40
       visibility: visible
       max_delta_per_turn: 12
+      description: >-
+        How at ease the player comes across. Rises with relaxed, direct or
+        funny lines; falls with nervous apologising or showing off.
     jordan_interest:
       min: 0
       max: 100
       default: 35
       visibility: hidden
-      max_delta_per_turn: 18
+      max_delta_per_turn: 8
+      description: >-
+        How much Jordan wants to keep talking. Rises with curiosity about
+        Jordan's research and a well-timed ask; falls with smooth lines or an
+        early ask.
     jordan_comfort:
       min: 0
       max: 100
       default: 65
       visibility: hidden
       max_delta_per_turn: 15
+      description: >-
+        How comfortable Jordan feels. Falls with pressure, overly personal
+        questions, flirting or asking again after a soft no; rises when
+        Jordan's cues are respected.
 difficulty:
   default: standard
   options:
@@ -123,11 +138,16 @@ events:
       launch a new topic. This is the moment a player with good timing will
       use to make an ask.
     repeat: false
+  # Below 42, not 30 (#580): jordan_comfort moves at most 15 a turn, so from 42
+  # or more it needs two more turns to pass the failure ending (below 12).
+  # The warning speaks on the turn after it fires, and the player then has a
+  # turn to answer it, as its text promises. At 30, the path 65, 50, 35, 20,
+  # 5 failed at the end of the very turn the warning spoke on.
   - id: comfort_warning
     when:
       type: variable_below
       variable: jordan_comfort
-      threshold: 30
+      threshold: 42
     npc_instruction: >-
       Jordan is starting to feel like this interaction has run longer than
       they wanted or that the player is angling somewhere. Signal mild
@@ -135,6 +155,10 @@ events:
       front of the line, an "oh, I should probably..." trailing sentence that
       does not finish. The player has one or two turns to read this correctly.
     repeat: false
+  # It repeats (#580): no ending follows a check-out, so the conversation goes
+  # on after it. Fired once, its instruction left the prompt the next turn
+  # and Jordan could chat on after saying goodbye; it now holds for as long
+  # as jordan_interest stays below 20.
   - id: disengagement
     when:
       type: variable_below
@@ -142,10 +166,16 @@ events:
       threshold: 20
     npc_instruction: >-
       Jordan has checked out. They are not rude but they are done with the
-      interaction. Offer a polite close: "Hey, it was nice chatting — I
-      should grab my order and find a seat before my lecture." Let the player
-      respond but do not re-open the conversation after this.
-    repeat: false
+      interaction. If Jordan has not offered a polite close yet, offer one now:
+      "Hey, it was nice chatting — I should grab my order and find a seat
+      before my lecture." Once Jordan has, keep each reply to a short,
+      friendly goodbye: no new topic, no question back, and do not re-open
+      the conversation.
+    repeat: true
+# Pacing (#580): jordan_interest starts at 35 and moves at most 8 a turn, so
+# success (above 68) takes five turns at the limit, after positive_signal
+# (above 60) has had a turn, and disengagement (below 20) needs two turns. At
+# 18 a turn, two good lines ended the conversation before any ask.
 ending_conditions:
   success:
     type: variable_above

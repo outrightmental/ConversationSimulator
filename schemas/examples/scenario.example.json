@@ -36,7 +36,8 @@
         "max": 100,
         "default": 50,
         "visibility": "visible",
-        "max_delta_per_turn": 20
+        "max_delta_per_turn": 20,
+        "description": "How clearly the greeter understands why the player is here. Rises with a direct purpose statement; falls with rambling or vague answers."
       }
     }
   },
