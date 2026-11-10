@@ -1333,6 +1333,16 @@ async def process_turn(
             _note_repetition(
                 turn_output.npc_utterance, previous_npc_lines, turn_parse_events, _REPEAT_REQUESTED,
             )
+        # A first sentence the gate held back makes the line a repeat even
+        # when the whole line, which ends otherwise, does not. The gate judged
+        # the streamed reply; the parser's repair or safety retry may since
+        # have replaced it, so the line being guarded is judged again the same
+        # way, and a replacement that no longer opens with the repeat is not
+        # retried for it.
+        held: Optional[RepetitionReport] = None
+        if gate.repeated is not None and _is_model_line(turn_output):
+            again = first_sentence_repeats(turn_output.npc_utterance, guarded_lines)
+            held = again if again.flagged else None
         kept_retry = await _guard_repetition(
             turn_output,
             guarded_lines,
@@ -1345,9 +1355,7 @@ async def process_turn(
             events=turn_parse_events,
             streamer=streamer,
             first_call_s=(observation.final_at or time.perf_counter()) - observation.sent_at,
-            # A first sentence the gate held back makes the line a repeat
-            # even when the whole line, which ends otherwise, does not.
-            held=gate.repeated,
+            held=held,
         )
         if kept_retry is not None:
             # The retry is the turn: the row stores its output, which the

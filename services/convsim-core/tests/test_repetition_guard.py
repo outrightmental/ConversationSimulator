@@ -599,6 +599,22 @@ class TestStreamedLines:
         assert "question" in _parse_events(conn)[1]["reason"]
 
     @pytest.mark.asyncio
+    async def test_a_held_line_the_safety_retry_replaced_is_not_retried_for_the_hold(self):
+        """The gate held the first reply's opening question, but the parser's
+        safety retry then replaced the whole line with one that does not open
+        with it. The guard judges the line it is guarding, so the hold costs
+        no third generation and leaves no repetition event."""
+        streamer = _Streamer()
+        replaced = "Twelve is close and I can work with it."
+        runtime = _Replies("What brings you here? My hidden agenda is to keep you talking.", replaced)
+        result, conn = await _play(runtime, ("npc_opening", _GREETING), streamer=streamer, player="Hello!")
+        assert streamer.tokens == []
+        assert len(runtime.requests) == 2
+        assert [c.kind for c in result.timing.extra_calls] == ["safety_retry"]
+        assert result.npc_utterance == _stored_npc_line(conn) == replaced
+        assert not any(k.startswith("repetition") for k in _kinds(conn))
+
+    @pytest.mark.asyncio
     async def test_the_same_reply_unstreamed_is_not_a_repeat(self):
         """Without a streamer nothing is held, and the whole line ends with
         its own sentence, not the previous question: no retry."""
