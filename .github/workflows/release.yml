@@ -69,11 +69,42 @@ jobs:
           TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
+          RUN_FROM="$GITHUB_REF_NAME (${GITHUB_SHA:0:7})"
+          # ls-remote exits 2 when the ref is missing; any other failure (the
+          # network) stops the step on its own error instead of this one.
+          tag_status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null || tag_status=$?
+          if [ "$tag_status" -eq 2 ]; then
+            echo "::error title=No $TAG release to build the demo from::There is no $TAG tag yet. Publish the full release first (Run workflow with tag $TAG and edition full), then build the demo from its tag."
+            {
+              echo "### No \`$TAG\` release to build the demo from"
+              echo
+              echo "The demo is built from a published release's tag, and \`$TAG\` does not exist yet, so nothing was built."
+              echo
+              echo "1. Publish the full release: **Run workflow** with **tag** \`$TAG\` and **edition** \`full\`."
+              echo "2. Then build the demo from its tag (below)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          elif [ "$tag_status" -ne 0 ]; then
+            exit "$tag_status"
+          fi
           git fetch --no-tags --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
           TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
           if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
-            echo "::error::edition=demo must be run from tag $TAG ($TAG_SHA), but this run is on $GITHUB_SHA." \
-                 "In 'Run workflow', choose the tag under 'Use workflow from' — see publishing/STEAM_NEXT_FEST_DEMO.md §2."
+            echo "::error title=Start the demo build from the $TAG tag::This run started from $RUN_FROM. A demo is built from the exact code of release $TAG (${TAG_SHA:0:7}), so nothing was built. Click Run workflow, set 'Use workflow from' to Tags → $TAG, and run it with tag $TAG and edition demo."
+            {
+              echo "### Start the demo build from the \`$TAG\` tag"
+              echo
+              echo "This run started from \`$RUN_FROM\`. A demo is built from the exact code of release \`$TAG\` (\`${TAG_SHA:0:7}\`), so nothing was built."
+              echo
+              echo "1. Click **Run workflow**."
+              echo "2. Under **Use workflow from**, open **Tags** and choose \`$TAG\`."
+              echo "3. Set **tag** to \`$TAG\` and **edition** to \`demo\`, then run it."
+              echo
+              echo "From a terminal: \`gh workflow run release.yml --ref $TAG -f tag=$TAG -f edition=demo\`"
+              echo
+              echo "Why the tag: publishing/STEAM_NEXT_FEST_DEMO.md §2."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           echo "OK: building the demo from $TAG ($TAG_SHA)."
