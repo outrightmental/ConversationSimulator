@@ -18,7 +18,7 @@ The six stages of a turn are defined here and cited everywhere else::
     reading    prompt evaluation
     writing    the model is producing tokens
     finishing  the bookkeeping after the spoken line, up to the commit
-    checking   a repair or safety retry is running
+    checking   a repair, safety retry or repetition retry is running
     voice      speech synthesis of the reply
 """
 from __future__ import annotations
@@ -49,7 +49,10 @@ ROLLING_WINDOW = 20
 #: recorded ``stopped`` and left out of the rolling medians.
 STOPPING_FINISH_REASONS: frozenset[str] = frozenset({"length", "cancelled"})
 
-ExtraCallKind = Literal["repair", "safety_retry"]
+#: Why the turn called the model again: the parser's structural ``repair``, its
+#: content-``safety_retry``, or the repetition guard's ``repetition_retry`` of a
+#: reply that repeated one of the NPC's last two lines (issue #580).
+ExtraCallKind = Literal["repair", "safety_retry", "repetition_retry"]
 
 
 class ExtraCall(BaseModel):

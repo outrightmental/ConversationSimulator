@@ -2,7 +2,7 @@
 schema_version: "0.1"
 pack_id: official.job_interview_basic
 name: Job Interview Basics
-version: 0.2.0
+version: 0.2.1
 description: >-
   Practice four realistic job interview scenarios spanning behavioral questions,
   hostile executive pressure, blue-collar supervisor practicality, and making

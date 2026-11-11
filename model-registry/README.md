@@ -17,6 +17,18 @@ The primary registry file. Each entry includes:
 - Download provider, URL pinned to a specific repo revision, and SHA-256 checksum
 - Runtime configuration defaults (context length, temperature, top-p)
 
+The `runtime.llama_cpp` defaults are all used. `context_length` sizes the
+engine's context when the app launches it. `temperature_default` and
+`top_p_default` are the sampling a conversation on that model is sent with:
+each NPC turn, its repair and retry calls, and the debrief. The model is the
+file the app starts the engine on, matched to its entry the same way as for
+`context_length`, whether or not a selection is saved. A model whose entry
+leaves one out, a GGUF you registered yourself, and a llama-server you
+started on a data directory with no install record of its file are sent at
+temperature 0.8 and the llama.cpp adapter's top-p (0.95 unless
+`CONVSIM_LLAMA_CPP_TOP_P` sets it); `docs/runtime-adapters.md` has the
+details. The model benchmark keeps its fixed temperature of 0.
+
 All registry-managed models have a verified 64-character lowercase SHA-256
 hex digest and a Hugging Face URL pinned to a specific commit SHA.  The app
 refuses to start a download if either field is missing or equals `PENDING`.
@@ -25,7 +37,7 @@ refuses to start a download if either field is missing or equals `PENDING`.
 
 | Tier         | Model                              | Size    | Min VRAM |
 | ------------ | ---------------------------------- | ------- | -------- |
-| Starter      | Qwen3 4B Instruct Q4\_K\_M         | 2.5 GB  | 4 GB     |
+| Starter      | Qwen3 4B Instruct 2507 Q4\_K\_M    | 2.5 GB  | 4 GB     |
 | Standard     | Qwen3 8B Instruct Q4\_K\_M         | 5.0 GB  | 6 GB     |
 | High-quality | Qwen3 14B Instruct Q4\_K\_M        | 9.0 GB  | 10 GB    |
 | High-quality | Mistral Small 3.1 24B Q4\_K\_M     | 14.3 GB | 16 GB    |

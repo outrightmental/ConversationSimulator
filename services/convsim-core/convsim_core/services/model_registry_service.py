@@ -19,6 +19,9 @@ from typing import Any
 import jsonschema
 import yaml
 
+from convsim_core.runtime.active import find_ready_model_path
+from convsim_core.runtime.launch import registry_id_for_model_path
+from convsim_core.runtime.types import SamplingDefaults
 from convsim_core.schema_paths import get_schema
 
 logger = logging.getLogger(__name__)
@@ -149,6 +152,93 @@ def load_and_persist_registry(
     count = upsert_registry_models(conn, models)
     logger.info("Loaded %d model(s) from registry at %s", count, registry_path)
     return count
+
+
+#: The schema's bounds for the registry's sampling defaults
+#: (model-registry.schema.json, runtime.llama_cpp). A stored value outside
+#: them, which only a hand-edited database could hold, is ignored.
+_SAMPLING_BOUNDS = {"temperature_default": (0.0, 2.0), "top_p_default": (0.0, 1.0)}
+
+
+def _sampling_value(block: dict[str, Any], key: str) -> float | None:
+    value = block.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    low, high = _SAMPLING_BOUNDS[key]
+    return float(value) if low <= value <= high else None
+
+
+def registry_sampling_defaults(conn: sqlite3.Connection, registry_id: str | None) -> SamplingDefaults:
+    """The llama.cpp sampling defaults the registry entry ``registry_id`` declares.
+
+    Reads ``runtime.llama_cpp.temperature_default`` and ``top_p_default`` from
+    the entry's stored runtime block (``capabilities_json``). No entry, an
+    entry without the block, or a value that is missing or out of range gives
+    None for that field, so the request keeps its own default. Never raises:
+    a bookkeeping problem must not stop a turn.
+    """
+    if not registry_id:
+        return SamplingDefaults()
+    try:
+        row = conn.execute(
+            "SELECT capabilities_json FROM model_registry WHERE id = ? LIMIT 1",
+            (registry_id,),
+        ).fetchone()
+        if row is None or not row["capabilities_json"]:
+            return SamplingDefaults()
+        runtime = json.loads(row["capabilities_json"])
+        block = runtime.get("llama_cpp") if isinstance(runtime, dict) else None
+        if not isinstance(block, dict):
+            return SamplingDefaults()
+        return SamplingDefaults(
+            temperature=_sampling_value(block, "temperature_default"),
+            top_p=_sampling_value(block, "top_p_default"),
+        )
+    except (sqlite3.Error, ValueError, TypeError) as exc:
+        logger.warning("Registry sampling lookup failed (%s); using the request defaults", exc)
+        return SamplingDefaults()
+
+
+def active_model_sampling(
+    conn: sqlite3.Connection, runtime_id: str | None, config: Any = None
+) -> SamplingDefaults:
+    """The registry sampling for the model serving a request on ``runtime_id`` (issue #580).
+
+    Only the llama.cpp runtime has registry sampling defaults: the registry
+    declares them under ``runtime.llama_cpp``, and an Ollama model is a tag
+    with no registry entry. A scripted or fake runtime gets empty defaults.
+
+    The model is found the way the engine launch path finds it, so a turn is
+    sent with the values of the model the engine was started and sized for.
+    ``find_ready_model_path`` picks the file, as ``ensure_llama_sidecar_running``
+    does: the saved selection when it is a model file on disk, else the newest
+    ready install. ``registry_id_for_model_path`` maps that file to its
+    registry entry, the lookup ``resolve_launch_config`` takes the context
+    size from. A registry model therefore gets its values however it was
+    selected: by setup or Settings, which save the selection, or by a core
+    started with ``CONVSIM_RUNTIME_ID=llama_cpp`` and nothing saved, whose
+    engine the app starts on the newest ready install.
+
+    *config* is the service config, passed to ``find_ready_model_path`` as the
+    engine start passes it: in the demo edition only the demo model's own
+    install counts there, so a demo turn is sampled for the demo model its
+    engine runs, not for the full app's selection on the shared data root
+    (D-06). Without it the full edition's rule applies.
+
+    An engine the app neither started nor holds an install record for, such
+    as the external llama-server that ``scripts/nightly-model-smoke.py`` runs
+    against a fresh data directory, gets empty defaults: nothing in the app's
+    state says which file that server loaded, and the launch path has no
+    model for it either.
+    """
+    if runtime_id != "llama_cpp":
+        return SamplingDefaults()
+    try:
+        model_path = find_ready_model_path(conn, config)
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        logger.warning("Model file lookup failed (%s); using the request defaults", exc)
+        return SamplingDefaults()
+    return registry_sampling_defaults(conn, registry_id_for_model_path(model_path, conn))
 
 
 def list_registry_models(conn: sqlite3.Connection) -> list[dict[str, Any]]:

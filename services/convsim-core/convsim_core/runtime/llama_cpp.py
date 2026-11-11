@@ -246,7 +246,9 @@ class LlamaCppRuntime(ChatRuntime):
             "stream": True,
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
-            "top_p": self._top_p,
+            # The model's registry top_p when the caller set one (issue #580),
+            # else this adapter's configured value.
+            "top_p": request.top_p if request.top_p is not None else self._top_p,
             "repeat_penalty": self._repeat_penalty,
         }
 

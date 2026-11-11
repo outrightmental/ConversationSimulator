@@ -49,6 +49,9 @@ jobs:
   sync:
     name: Sync project board (${{ github.event.inputs.mode || 'audit' }})
     runs-on: ubuntu-latest
+    # A hung gh call would otherwise hold the project-sync concurrency group,
+    # and every queued run behind it, for the default six hours.
+    timeout-minutes: 20
     env:
       HAS_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN != '' }}
       MODE: ${{ github.event.inputs.mode || 'audit' }}

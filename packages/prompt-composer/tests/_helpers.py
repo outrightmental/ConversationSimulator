@@ -12,9 +12,13 @@ from convsim_prompt import (
     NpcPublicPersona,
     PromptComposerInput,
     ResponseStyleOverrides,
+    RubricDimension,
     SafetyPolicy,
     ScenarioData,
+    ScenarioRubric,
     SessionState,
+    StateVariable,
+    StateVariableCue,
     TranscriptEntry,
 )
 
@@ -111,3 +115,72 @@ def make_interview_input(
         max_transcript_turns=6,
         token_budget=4096,
     )
+
+
+def make_interview_rubric() -> ScenarioRubric:
+    """A two-dimension rubric shaped like packs/official/job-interview-basic's."""
+    return ScenarioRubric(
+        rubric_id="interview_rubric",
+        title="Interview Performance Rubric",
+        dimensions=[
+            RubricDimension(
+                id="specificity",
+                name="Specificity",
+                description="Uses concrete examples instead of generic claims.",
+                low="Mostly generic claims.",
+                medium="Some examples but thin details.",
+                high="Specific examples with context, action, and result.",
+                weight=0.6,
+            ),
+            RubricDimension(
+                id="self_awareness",
+                name="Self-awareness",
+                description="Shows reflection and learning.",
+                low="Blames others or avoids weakness.",
+                medium="Acknowledges lessons in simple terms.",
+                high="Owns mistakes and explains growth.",
+                weight=0.4,
+            ),
+        ],
+    )
+
+
+def make_rubric_interview_input(**kwargs) -> PromptComposerInput:
+    """make_interview_input with the scenario's rubric loaded, as a pack scenario has."""
+    inp = make_interview_input(**kwargs)
+    inp.scenario.rubric = make_interview_rubric()
+    return inp
+
+
+def make_interview_state_variables() -> list:
+    """State variables shaped like behavioral_interview's: two authored, one baseline it declares."""
+    return [
+        StateVariable(
+            name="impression", min=0, max=100, max_delta_per_turn=6,
+            description="Maya's overall read of the candidate as a hire.",
+        ),
+        StateVariable(
+            name="specificity_score", min=0, max=100, max_delta_per_turn=15,
+            cues=[StateVariableCue(
+                direction="above", threshold=75,
+                text="The candidate just gave a specific answer. Follow up on it.",
+            )],
+        ),
+        StateVariable(name="rapport", min=0, max=100, max_delta_per_turn=10),
+    ]
+
+
+def make_stateful_interview_input(**kwargs) -> PromptComposerInput:
+    """make_interview_input with state variables of the scenario's own (issue #580)."""
+    inp = make_interview_input(**kwargs)
+    inp.scenario.state_variables = make_interview_state_variables()
+    inp.session_state.variables.update({"impression": 50, "specificity_score": 50})
+    return inp
+
+
+def make_full_interview_input(**kwargs) -> PromptComposerInput:
+    """An input with every optional system layer filled: a rubric, state, a fired event."""
+    inp = make_stateful_interview_input(**kwargs)
+    inp.scenario.rubric = make_interview_rubric()
+    inp.scenario_event_instructions = ["Maya is losing confidence. Begin wrapping up."]
+    return inp

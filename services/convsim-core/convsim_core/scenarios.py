@@ -7,6 +7,8 @@ pipeline-level metadata (max_turns, supported_languages).
 """
 from __future__ import annotations
 
+import logging
+import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,9 +20,67 @@ from convsim_prompt.types import (
     NpcPrivatePersona,
     NpcPublicPersona,
     ResponseStyleOverrides,
+    RubricDimension,
     ScenarioData,
+    ScenarioRubric,
+    StateVariable,
+    StateVariableCue,
 )
-from convsim_core.scenario_state import ScenarioEvent
+from convsim_core.scenario_state import (
+    BASELINE_DESCRIPTIONS,
+    ScenarioEvent,
+    build_variable_defs,
+    played_variable_names,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def prompt_state_variables(
+    overrides: Optional[Dict[str, Any]],
+    events: Optional[List[ScenarioEvent]],
+    ending_conditions: Optional[Dict[str, Any]],
+) -> List[StateVariable]:
+    """The state variables a scenario's turn prompt and turn schema name (issue #580).
+
+    The variables ``played_variable_names`` picks, in its order, each with its
+    range, per-turn clamp and meaning: the description the scenario authored,
+    or else the engine's own line for a baseline plus what each of the
+    scenario's events on the variable says its level means (the event's
+    instruction, of which the prompt quotes the first sentence). [] for a
+    scenario that configures no state of its own.
+    """
+    defs = build_variable_defs(overrides)
+    variables: List[StateVariable] = []
+    for name in played_variable_names(overrides, events, ending_conditions):
+        definition = defs[name]
+        description = definition.description
+        cues: List[StateVariableCue] = []
+        if not description:
+            description = BASELINE_DESCRIPTIONS.get(name, "")
+            for event in events or []:
+                when = event.when if isinstance(event.when, dict) else {}
+                threshold = when.get("threshold")
+                kind = when.get("type")
+                if (
+                    when.get("variable") == name
+                    and kind in ("variable_above", "variable_below")
+                    and isinstance(threshold, int) and not isinstance(threshold, bool)
+                ):
+                    cues.append(StateVariableCue(
+                        direction="above" if kind == "variable_above" else "below",
+                        threshold=threshold,
+                        text=event.npc_instruction,
+                    ))
+        variables.append(StateVariable(
+            name=name,
+            min=definition.min,
+            max=definition.max,
+            max_delta_per_turn=definition.max_delta_per_turn,
+            description=description,
+            cues=cues,
+        ))
+    return variables
 
 
 @dataclass
@@ -37,7 +97,7 @@ class ScenarioInfo:
     ending_conditions: Optional[Dict[str, Any]] = None
 
     def get_scenario_data(self, difficulty: str) -> ScenarioData:
-        """Return a ScenarioData with difficulty settings applied."""
+        """Return a ScenarioData with difficulty settings and the played state applied."""
         diff_settings = self.difficulty_options.get(
             difficulty,
             self.difficulty_options.get("standard", DifficultySettings()),
@@ -53,7 +113,33 @@ class ScenarioInfo:
             response_style=self.scenario_data.response_style,
             opening_npc_says=self.opening_npc_says,
             player_visible_goals=self.scenario_data.player_visible_goals,
+            rubric=self.scenario_data.rubric,
+            state_variables=self._prompt_state_variables(),
         )
+
+    def played_variables(self) -> List[str]:
+        """The variables this scenario plays (``played_variable_names``), in order.
+
+        The ones its turn schema takes and its meters may show (issue #580);
+        [] for a scenario with no state of its own, and for a state block it
+        cannot read, whose turns are then sent the open schema.
+        """
+        return [variable.name for variable in self._prompt_state_variables()]
+
+    def _prompt_state_variables(self) -> List[StateVariable]:
+        """``prompt_state_variables`` of this scenario; [] for a state block it cannot read.
+
+        A workbench draft need not validate. Its turns fail on a malformed
+        variable as they always have (``build_variable_defs`` in the turn
+        pipeline); resolving the scenario for its debrief must not.
+        """
+        try:
+            return prompt_state_variables(
+                self.state_variable_overrides, self.events, self.ending_conditions,
+            )
+        except (TypeError, ValueError, AttributeError) as exc:
+            logger.warning("State variables of %s could not be read: %s", self.scenario_data.scenario_id, exc)
+            return []
 
 
 SCENARIOS: Dict[str, ScenarioInfo] = {
@@ -491,6 +577,9 @@ def _difficulty_options_from_yaml(raw: Dict[str, Any]) -> Dict[str, DifficultySe
 
     Unknown/missing knobs fall back to the neutral 50 baseline. Always returns
     at least a ``standard`` preset so session creation can validate against it.
+    Each preset's authored ``description`` is carried too: the prompt's scenario
+    brief renders it, and at ``standard`` it is the only difficulty text the NPC
+    gets (issue #580).
     """
     difficulty_section = raw.get("difficulty") or {}
     options_raw = difficulty_section.get("options") if isinstance(difficulty_section, dict) else None
@@ -506,11 +595,13 @@ def _difficulty_options_from_yaml(raw: Dict[str, Any]) -> Dict[str, DifficultySe
                 except (TypeError, ValueError):
                     return 50
 
+            description = knobs.get("description")
             options[str(name)] = DifficultySettings(
                 patience=_knob("patience"),
                 volatility=_knob("volatility"),
                 disclosure=_knob("disclosure"),
                 time_pressure=_knob("time_pressure"),
+                description=(description.strip() or None) if isinstance(description, str) else None,
             )
     if not options:
         options["standard"] = DifficultySettings()
@@ -542,6 +633,88 @@ def _events_from_yaml(raw: Dict[str, Any]) -> Optional[List[ScenarioEvent]]:
     return events or None
 
 
+# The id pattern rubric.schema.json gives a dimension. The ids become a JSON
+# schema enum and prompt text, so a dimension whose id breaks it is left out.
+_RUBRIC_DIMENSION_ID = re.compile(r"^[a-z0-9_]+$")
+
+
+def _optional_text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def rubric_from_yaml(raw: Any) -> Optional[ScenarioRubric]:
+    """Parse a rubric file (``schemas/rubric.schema.json``) into a ScenarioRubric.
+
+    Lenient, like the rest of this loader: a pack is validated on import, but
+    a workbench draft need not be. A dimension with a missing or malformed id,
+    or one repeating an earlier id, is left out; a missing name falls back to
+    the id, missing band text to "", and a weight that is not a number in
+    [0, 1] to None. Returns None when no dimension survives.
+    """
+    if not isinstance(raw, dict):
+        return None
+    dimensions: List[RubricDimension] = []
+    seen: set = set()
+    for entry in raw.get("dimensions") or []:
+        if not isinstance(entry, dict):
+            continue
+        dimension_id = _optional_text(entry.get("id"))
+        if not _RUBRIC_DIMENSION_ID.match(dimension_id) or dimension_id in seen:
+            continue
+        seen.add(dimension_id)
+        scoring = entry.get("scoring") if isinstance(entry.get("scoring"), dict) else {}
+        weight = entry.get("weight")
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or not 0 <= weight <= 1:
+            weight = None
+        dimensions.append(RubricDimension(
+            id=dimension_id,
+            name=_optional_text(entry.get("name")) or dimension_id,
+            description=_optional_text(entry.get("description")),
+            low=_optional_text(scoring.get("low")),
+            medium=_optional_text(scoring.get("medium")),
+            high=_optional_text(scoring.get("high")),
+            weight=float(weight) if weight is not None else None,
+        ))
+    if not dimensions:
+        return None
+    return ScenarioRubric(
+        rubric_id=_optional_text(raw.get("rubric_id")),
+        title=_optional_text(raw.get("title")),
+        dimensions=dimensions,
+    )
+
+
+def _load_rubric(pack_dir: Path, scenario_file: Path, raw: Dict[str, Any]) -> Optional[ScenarioRubric]:
+    """The rubric a scenario's ``rubric: ref:`` names, or None (issue #578).
+
+    Before this, no play-path code read the ref: the turn prompt never named
+    a dimension and the debrief scored whatever ids the model wrote. A rubric
+    that is missing, unreadable, outside the pack or empty leaves the scenario
+    without one, so it plays and debriefs as a rubric-less scenario does; it
+    never stops the scenario loading.
+    """
+    import yaml  # local import — only needed off the hot path
+
+    section = raw.get("rubric")
+    ref = section.get("ref") if isinstance(section, dict) else None
+    if not isinstance(ref, str) or not ref.strip():
+        return None
+    rubric_file = (scenario_file.parent / ref.strip()).resolve()
+    pack_root = pack_dir.resolve()
+    if rubric_file != pack_root and pack_root not in rubric_file.parents:
+        logger.warning("Rubric ref %r of %s points outside its pack; ignored", ref, scenario_file.name)
+        return None
+    try:
+        rubric_raw = yaml.safe_load(rubric_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        logger.warning("Rubric %r of %s could not be read: %s", ref, scenario_file.name, exc)
+        return None
+    rubric = rubric_from_yaml(rubric_raw)
+    if rubric is None:
+        logger.warning("Rubric %r of %s declares no usable dimension; ignored", ref, scenario_file.name)
+    return rubric
+
+
 def load_scenario_info_from_pack(
     pack_dir: Path,
     scenario_rel_path: str,
@@ -551,10 +724,11 @@ def load_scenario_info_from_pack(
     """Load a ScenarioInfo by reading scenario (and NPC) YAML files from a pack directory.
 
     Parses the full engine surface — difficulty presets, scenario events,
-    ending conditions, and state-variable overrides — so pack scenarios play
-    with the same mechanics as built-in ones (not just a neutral "standard"
-    preset). Raises ``ValueError`` or ``OSError`` if the files cannot be read
-    or parsed.
+    ending conditions, state-variable overrides and the rubric — so pack
+    scenarios play with the same mechanics as built-in ones (not just a
+    neutral "standard" preset). Raises ``ValueError`` or ``OSError`` if the
+    scenario or NPC files cannot be read or parsed; a rubric that cannot be
+    read leaves the scenario without one instead (``_load_rubric``).
     """
     import yaml  # local import — only needed off the hot path
 
@@ -609,6 +783,7 @@ def load_scenario_info_from_pack(
         player_role_brief=player_role.get("brief") or "",
         npc=npc,
         player_visible_goals=player_visible_goals,
+        rubric=_load_rubric(pack_dir, scenario_file, raw),
     )
 
     return ScenarioInfo(

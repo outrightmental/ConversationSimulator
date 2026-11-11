@@ -179,14 +179,40 @@ HTTP API. `llama-server` is the inference binary from the llama.cpp project.
 | `CONVSIM_LLAMA_CPP_BASE_URL`      | `http://127.0.0.1:7356`     | llama-server base URL              |
 | `CONVSIM_LLAMA_CPP_MODEL_ID`      | `None` (server default)     | Model id to pass in requests       |
 | `CONVSIM_LLAMA_CPP_CONTEXT_LENGTH`| `None`                      | Context length hint for `list_models` |
-| `CONVSIM_LLAMA_CPP_TEMPERATURE`   | `0.8`                       | Default temperature                |
-| `CONVSIM_LLAMA_CPP_TOP_P`         | `0.95`                      | top-p sampling                     |
+| `CONVSIM_LLAMA_CPP_TEMPERATURE`   | `0.8`                       | Not used: every request carries its own temperature (see **Sampling** below) |
+| `CONVSIM_LLAMA_CPP_TOP_P`         | `0.95`                      | top-p sampling, for a model whose registry entry declares no `top_p_default` |
 | `CONVSIM_LLAMA_CPP_REPEAT_PENALTY`| `1.1`                       | Repetition penalty                 |
 | `CONVSIM_LLAMA_CPP_THREADS`       | `None`                      | CPU thread count                   |
 | `CONVSIM_LLAMA_CPP_GPU_LAYERS`    | `None`                      | Layers to offload to GPU           |
 | `CONVSIM_LLAMA_CPP_TIMEOUT`       | `30.0`                      | Timeout for model listing (seconds) |
 | `CONVSIM_LLAMA_CPP_CHAT_TIMEOUT`  | `180.0`                     | How long generation may go quiet (seconds); covers CPU-only prompt eval |
 | `CONVSIM_LLAMA_CPP_JSON_SCHEMA_ENABLED` | `True`              | Enable structured output           |
+
+**Sampling.** A conversation's requests (each NPC turn, its repair and
+retry calls, and the debrief) carry the temperature and top-p that the
+model's registry entry declares as `runtime.llama_cpp.temperature_default`
+and `top_p_default` (issue #580). The model is found the way the app finds
+the one to start the engine on: the saved selection when it is a model file
+on disk, otherwise the newest ready install, mapped to its registry entry by
+the same install-record lookup that sets the engine's context size. It does
+not matter whether the model was selected in setup or Settings or the core
+was started with `CONVSIM_RUNTIME_ID=llama_cpp` and nothing saved. A file
+selected while the engine is running is the one whose values are sent from
+then on, although the engine keeps the earlier file until the app is
+reopened. The demo edition starts its engine only on the demo model's own
+install, so its requests carry that model's values whatever the full app,
+which shares its data directory, has selected.
+
+Where there is no registry value to use, a request is sent at temperature
+0.8, the request default, and the top-p above. That covers a GGUF the player
+registered and a value the entry does not declare. It also covers a
+llama-server the app did not start, on a data directory with no install
+record of its file, such as the one `scripts/nightly-model-smoke.py` runs:
+the app does not ask a running server which file it loaded, and without an
+install record it could not map the file to an entry. A server you start
+yourself while the app does hold a ready install is sent the values of the
+file the app would have started, whichever file the server loaded. The model
+benchmark keeps its fixed temperature of 0.
 
 **Health check.** Calls `GET /health` on the llama-server. HTTP 200 → READY;
 HTTP 503 → STARTING (model still loading); connection error → UNAVAILABLE.

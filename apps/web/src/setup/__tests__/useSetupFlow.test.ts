@@ -337,7 +337,9 @@ describe('useSetupFlow step machine', () => {
   it('pre-fetches models registry on welcome step', async () => {
     const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
     await waitFor(() => expect(mockApi.getModels).toHaveBeenCalledOnce())
-    expect(result.current.recommendedModel?.id).toBe('qwen3-4b-q4')
+    // The registry lands in state after the fetch resolves, a tick after the
+    // call itself, so wait for the model rather than reading it at once.
+    await waitFor(() => expect(result.current.recommendedModel?.id).toBe('qwen3-4b-q4'))
   })
 
   it('handleSetMeUp transitions welcome → loading → installing via auto-install', async () => {

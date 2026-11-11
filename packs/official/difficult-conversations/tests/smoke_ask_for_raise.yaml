@@ -54,6 +54,6 @@ static_assertions:
   - description: Pack manifest declares this scenario as an entry scenario
     path: manifest.entry_scenarios
     check: "contains scenarios/ask_for_raise.yaml"
-  - description: vague_claim_probe event fires when evidence_strength is below 30
+  - description: vague_claim_probe event fires when evidence_strength is below 10
     path: events[id=vague_claim_probe].when
-    check: "type=variable_below AND variable=evidence_strength AND threshold=30"
+    check: "type=variable_below AND variable=evidence_strength AND threshold=10"

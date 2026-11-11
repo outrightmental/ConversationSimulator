@@ -212,7 +212,8 @@ function analyzePackContent(
   for (const npc of npcs.values()) {
     const id = npc.npc_id;
     for (const [key, text] of Object.entries({
-      'public_persona.occupation':    npc.public_persona.occupation,
+      'display_name':                  npc.display_name,
+      'public_persona.occupation':     npc.public_persona.occupation,
       'public_persona.speaking_style': npc.public_persona.speaking_style,
       'public_persona.demeanor':       npc.public_persona.demeanor,
     })) {
@@ -244,7 +245,9 @@ function analyzePackContent(
   for (const { relPath, data } of scenarios) {
     const prefix = `scenarios/${relPath}`;
     for (const [key, text] of Object.entries({
+      'title':              data.title,
       'summary':            data.summary,
+      'player_role.label':  data.player_role.label,
       'player_role.brief':  data.player_role.brief,
       'opening.npc_says':   data.opening.npc_says,
     })) {
@@ -267,6 +270,42 @@ function analyzePackContent(
         const field = `${prefix}/goals/hidden[${i}]`;
         add(scanTextForExternalUrl(g, field));
         add(scanTextForInjection(g, field));
+      });
+    }
+    // Each difficulty preset's description is quoted in the NPC's scenario
+    // brief (issue #580), so it is prompt text like the fields above.
+    const options = data.difficulty?.options;
+    if (options && typeof options === 'object') {
+      for (const [preset, knobs] of Object.entries(options)) {
+        const description = (knobs as { description?: unknown } | null)?.description;
+        if (typeof description === 'string') {
+          const field = `${prefix}/difficulty.options.${preset}.description`;
+          add(scanTextForExternalUrl(description, field));
+          add(scanTextForInjection(description, field));
+        }
+      }
+    }
+    // Since issue #580 the turn prompt also carries each state variable's
+    // description and the npc_instruction of every event that fires.
+    const variables = (data.state as { variables?: unknown } | null | undefined)?.variables;
+    if (variables && typeof variables === 'object' && !Array.isArray(variables)) {
+      for (const [name, spec] of Object.entries(variables as Record<string, unknown>)) {
+        const description = (spec as { description?: unknown } | null)?.description;
+        if (typeof description === 'string') {
+          const field = `${prefix}/state.variables.${name}.description`;
+          add(scanTextForExternalUrl(description, field));
+          add(scanTextForInjection(description, field));
+        }
+      }
+    }
+    if (Array.isArray(data.events)) {
+      data.events.forEach((event, i) => {
+        const instruction = (event as { npc_instruction?: unknown } | null)?.npc_instruction;
+        if (typeof instruction === 'string') {
+          const field = `${prefix}/events[${i}].npc_instruction`;
+          add(scanTextForExternalUrl(instruction, field));
+          add(scanTextForInjection(instruction, field));
+        }
       });
     }
   }

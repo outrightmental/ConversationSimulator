@@ -48,25 +48,38 @@ CONVSIM_EDITION=demo ./scripts/dev.sh
 
 ### Which model?
 
-**The demo ships the registry's existing starter tier, Qwen3 4B Instruct
+**The demo ships the registry's starter tier, Qwen3 4B Instruct 2507
 Q4_K_M (2.5 GB, Apache-2.0).** The demo edition installs whatever the registry's
 `role: starter` entry is, or the model named by `CONVSIM_DEMO_MODEL_ID`, so
 this is a configuration decision, not a code one.
 
+Until v0.4 the starter was the hybrid Qwen3 4B (`qwen3-4b-instruct-q4_k_m`),
+run with reasoning off. Issue #580 replayed the five demo conversations
+(`scripts/demo-gate-replay.py`) on both 4B models with the same code, and the
+2507 instruct release was more coherent in every one. It follows Ray's counter
+ladder, confirms Rosa's orders instead of offering them back, and answers the
+player's direct questions where the hybrid model looped. It is the same size
+and licence, and needs the same hardware. Qwen publishes no GGUF of 2507, so
+the registry pins unsloth's quantisation by revision and digest. Its replies
+run longer than the hybrid model's, and the replays ran on a CPU-only VM, so
+D-05's latency clause on the reference hardware is still the check that it
+fits the budget.
+
 The note asked "can we use a smaller/faster Qwen model?" — evaluated, and not
 for the first Next Fest build:
 
-- The 4B is the only tier the nightly real-model smoke
+- A 4B is the smallest tier the nightly real-model smoke
   (`scripts/nightly-model-smoke.py`) and the release-checklist reference
-  hardware have been run against. The demo's quality bar is defined by
-  *incoherent NPC turns* and *missing debriefs* being blockers; the turn
-  pipeline asks the model for structured output (state deltas, event
-  evaluation) and the debrief asks for a rubric-scored analysis. 1.7B-class
+  hardware have been run against (the hybrid 4B, so far). The demo's
+  quality bar is defined by *incoherent NPC turns* and *missing debriefs*
+  being blockers; the turn pipeline asks the model for structured output
+  (state deltas, event evaluation) and the debrief asks for a rubric-scored
+  analysis. 1.7B-class
   models are markedly less reliable at both, and a 0.6B model is out of the
   question for this product. A stalled 2.5 GB download is recoverable (the
   pipeline resumes it); an incoherent character is the demo lost.
-- On the reference tier the 4B already hits the documented latency budget, so
-  "faster" buys little that a player would notice at Next Fest.
+- On the reference tier the hybrid 4B already hit the documented latency
+  budget, so "faster" buys little that a player would notice at Next Fest.
 
 **How to revisit it, cheaply.** `scripts/pin-model.py` prints a policy-compliant
 registry entry (commit-pinned URL, SHA-256 from the Hub's LFS metadata) for
@@ -164,6 +177,41 @@ achievements and Steam Cloud stay base-app-only (a Steam demo cannot award the
 base app's achievements). "Clear local data" in the demo clears the shared
 directory, and its copy says so.
 
+The demo plays only its own model. A full-app profile can hold other models;
+one from before v0.4 has the earlier starter (`qwen3-4b-instruct-q4_k_m`)
+installed and selected. In the demo only the demo model's own files count: the
+engine autostart (`runtime/active.py`) starts the engine only on the demo
+model's install, never on the full app's selection or its other installs, and
+the setup status, the Home screen and Support's AI-model check count only that
+install. Every turn and the debrief are sent with the demo model's registry
+sampling (its `temperature_default` and `top_p_default`), and the turn timing
+records name the demo model, whatever the full app has selected. A player who
+does not have it is offered the demo's one download, as a new player is.
+
+The demo also runs only on the managed engine (llama.cpp). Whatever runtime
+the full app's saved selection names, Ollama included, the demo boots
+llama.cpp (`resolve_startup_runtime_id` in `runtime/active.py`), and its
+autostart loads the demo model's install. With nothing saved it boots
+llama.cpp too when `CONVSIM_RUNTIME_ID` names another model runtime, and the
+configured default only when that is model-free (the `fake` runtime packaged
+builds start with), so a new player gets the no-model message instead of a
+conversation. A session that would follow a live runtime other than
+llama.cpp is refused with `EDITION_RESTRICTED`; sessions pinned to a
+model-free runtime (tests, the replay's self-test) do not use the live
+runtime and are not affected.
+
+The full app's selection is left as it is. When the demo's one-click install
+finishes (`routers/setup_install.py`), it saves the demo model as the
+selection only when nothing is selected yet, only a model-free runtime
+(`fake`, `scripted`) is, or the selection already names one of the demo
+model's files. A selection that names Ollama, or llama.cpp with any other
+file (the earlier starter, the player's own GGUF), is kept, so the full app
+keeps playing it; the demo finds its own install without it. A llama.cpp
+selection with no file is kept too, but it means "the newest ready install",
+so once the demo has downloaded its model the full app plays that one. A player who installs the demo
+model on a fresh profile and then the full app gets the model selected there,
+and no download. The demo never deletes the full app's files.
+
 ### Store assets
 
 The demo attaches to the base app's store page as its demo; Valve renders the
@@ -237,6 +285,55 @@ own promise.
 | D-08 | Offline after install | Manual | With the network disconnected after the download, all five conversations play (G2-01 / F-07 for the demo depot). |
 | D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text only) and what the full app adds; no "free" claims about the paid app. |
 | D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only; every demo capsule and library asset is at Valve's size, on the demo plate, ribboned where it may carry the name and not on the hero. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, its capsules and library assets from `publishing/assets/capsules/demo/` under Store Assets and Library Assets on the same page, and the two library entries read apart at a glance. |
+
+**D-05 has an automated pre-check.** `scripts/demo-gate-replay.py` plays each
+of the five conversations to the debrief against a running convsim-core on the
+real model, twice by default, with scripted player turns that press on each
+NPC's hidden agenda (`tests/fixtures/demo-gate/player-turns.yaml`). On every
+turn and run it asserts that the NPC repeats no 6-word run and no closing
+question of 4+ words from its previous line (unless the player asked it to say
+it again, as spanish_coffee's third turn does), says no 5-word run of its hidden
+agenda aloud and no 3+ digit number from it (Ray's $13,800 floor, in digits or
+words), never answers with the engine's canned fallback line, applies a
+non-zero change to at least one variable the scenario authors, and gets a
+debrief that generated without the template fallback and scored only the
+rubric's own dimension ids. It plays each turn with the session's socket open,
+as the conversation screen holds it, so the engine streams every line as it
+does for a player and the checks read what reached the screen; a streamed
+line that differs from the one committed fails the run (`--rest-only` plays
+over REST alone, which is not a D-05 result). It writes a JSON record per run
+and a markdown summary, and exits non-zero on a hard failure. Those checks are
+blocking by default (`--warn <check>` makes one a warning): the engine scores
+each demo debrief on its scenario rubric's dimensions only (issue #578), and the
+turn schema requires every variable the scenario authors in each reply's state
+change, with the prompt saying what each means (issue #580). One more check
+is a warning by default (`--hard g` makes it blocking): the state change
+reads as changes, not as the values the prompt showed. The schema's numbers
+carry no bound, so a model that copies the state's values moves every
+variable by its full per-turn limit, and the conversation reaches an ending
+on pacing alone. The
+engine must run the demo edition (`CONVSIM_EDITION=demo`), which plays the
+five from their curated packs; the
+replay refuses any other edition unless `--allow-full-edition` is given, and
+then marks the result as not a D-05 result. Runs are kept independent: the
+replay deletes each NPC's relationship-memory recap, which every debrief
+writes and the next session's prompt reads, before and after every run, and
+refuses to start over a recap that already existed (`--clear-npc-memory`
+deletes it). The sessions themselves stay in the engine's history, so run the
+engine on a throwaway `CONVSIM_DATA_ROOT`. A release candidate should pass the
+pre-check before the manual D-05 run. It does not replace the manual
+judgement: whether each reply makes sense, keeps its role and answers the
+player is still read by a person on reference hardware.
+
+The engine counts a repeat with the same word rules as the pre-check
+(`convsim_prompt.repetition`, which the checks import), and generates once
+more any reply that repeats one of the NPC's last two lines (issue #580),
+unless part of it is already on screen: with the conversation screen open the
+line streams, and only a repeat in its first sentence can still be retried. So
+a repetition finding means that the retry did not help, or that the repeat
+came after the first sentence of a streamed line. Each retry is an extra model
+call on that turn; the summary counts them per run next to the turn times, to
+watch against the latency budget on reference hardware.
 
 ---
 

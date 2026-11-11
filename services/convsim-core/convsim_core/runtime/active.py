@@ -22,6 +22,7 @@ from typing import Any, Optional
 
 import httpx
 
+from convsim_core.edition import demo_model_paths, is_demo, resolve_demo_model_id
 from convsim_core.runtime.registry import build_runtime, list_runtime_ids
 
 logger = logging.getLogger(__name__)
@@ -85,13 +86,24 @@ async def activate_runtime(app: Any, runtime_id: str) -> None:
         await _close_runtime(old)
 
 
-def resolve_startup_runtime_id(conn: sqlite3.Connection, config_runtime_id: str) -> str:
+def resolve_startup_runtime_id(
+    conn: sqlite3.Connection, config_runtime_id: str, config: Any = None
+) -> str:
     """Return the runtime id the app should boot with.
 
     The persisted active selection (written by /api/models/use and the setup
     pipeline) wins over the static config default, so restarting the app keeps
     the user's model choice. Unknown/corrupt persisted ids fall back to the
     config default rather than failing startup.
+
+    The demo edition (*config* says so) plays only its own model, on the
+    managed llama.cpp engine; ``/api/models/use`` refuses any other runtime
+    there. A saved selection is the full app's on the shared data root
+    (D-06), so whatever runtime it names, Ollama included, the demo boots
+    ``llama_cpp``, whose autostart loads the demo model's own install. With
+    nothing saved, a model-free config default (``fake``) still applies, so a
+    fresh profile keeps the no-model backstop (issue #473); any other default
+    boots ``llama_cpp`` too.
     """
     try:
         from convsim_core.services.model_manager_service import get_active_config
@@ -99,14 +111,33 @@ def resolve_startup_runtime_id(conn: sqlite3.Connection, config_runtime_id: str)
         persisted = (get_active_config(conn) or {}).get("runtime_id")
     except Exception:  # pragma: no cover - a fresh DB has no config yet
         persisted = None
+    if is_demo(config):
+        if persisted or config_runtime_id not in MODEL_FREE_RUNTIME_IDS:
+            return "llama_cpp"
+        return config_runtime_id
     if persisted and persisted in list_runtime_ids():
         return str(persisted)
     return config_runtime_id
 
 
-def find_ready_model_path(conn: sqlite3.Connection) -> Optional[str]:
+def find_ready_model_path(conn: sqlite3.Connection, config: Any = None) -> Optional[str]:
     """Return the newest installed-and-ready GGUF path, or the active model id
-    when it points at an existing file. None when no usable model exists."""
+    when it points at an existing file. None when no usable model exists.
+
+    In the demo edition (*config* says so) only the demo model's own files
+    count. The demo shares the full app's data root (D-06), so the saved
+    selection and the newest install can be another model, such as the
+    earlier starter a pre-v0.4 profile still has selected. Those are skipped,
+    so with no demo model installed this returns None, as on a fresh profile.
+    Without *config* the full edition's rule applies.
+    """
+    demo_id: Optional[str] = None
+    demo_paths: set[str] = set()
+    if is_demo(config):
+        demo_id = resolve_demo_model_id(conn, config)
+        if demo_id is None:
+            return None
+        demo_paths = demo_model_paths(conn, config)
     try:
         from convsim_core.services.model_manager_service import get_active_config
 
@@ -114,14 +145,18 @@ def find_ready_model_path(conn: sqlite3.Connection) -> Optional[str]:
     except Exception:
         active = None
     candidates: list[str] = []
-    if active:
+    if active and (demo_id is None or str(active) in demo_paths):
         candidates.append(str(active))
+    query = (
+        "SELECT file_path FROM installed_models "
+        "WHERE install_status IN ('ready', 'complete') AND file_path != ''"
+    )
+    params: tuple[str, ...] = ()
+    if demo_id is not None:
+        query += " AND registry_id = ?"
+        params = (demo_id,)
     try:
-        row = conn.execute(
-            "SELECT file_path FROM installed_models "
-            "WHERE install_status IN ('ready', 'complete') AND file_path != '' "
-            "ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        row = conn.execute(query + " ORDER BY id DESC LIMIT 1", params).fetchone()
         if row and row["file_path"]:
             candidates.append(str(row["file_path"]))
     except sqlite3.Error:  # pragma: no cover - table missing pre-migration
@@ -144,6 +179,11 @@ async def ensure_llama_sidecar_running(
     Best-effort: returns the model path used on success, None when starting was
     not possible (no sidecar, no executable, no model, or start failure). Never
     raises — callers decide how to surface unavailability.
+
+    In the demo edition a *model_path* that is not one of the demo model's own
+    install paths is ignored, as ``find_ready_model_path`` ignores the full
+    app's other models: the benchmark passes the saved selection, which on a
+    shared data root can name a model the demo does not play.
     """
     from convsim_core.runtime.launch import resolve_launch_config
     from convsim_core.runtime.sidecar import SidecarState, find_executable
@@ -155,13 +195,14 @@ async def ensure_llama_sidecar_running(
         return None
 
     conn = app.state.db.connection()
+    config = getattr(app.state, "service_config", None)
     path = None
-    if model_path:
+    if model_path and (not is_demo(config) or model_path in demo_model_paths(conn, config)):
         p = Path(model_path).expanduser()
         if p.is_file() and p.suffix.lower() == ".gguf":
             path = str(p)
     if path is None:
-        path = find_ready_model_path(conn)
+        path = find_ready_model_path(conn, config)
     if path is None:
         logger.info("llama-server autostart skipped: no ready model file found")
         return None

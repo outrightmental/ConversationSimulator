@@ -153,6 +153,12 @@
                     "minimum": 0,
                     "maximum": 100,
                     "default": 20
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 400,
+                    "description": "What the variable means to the NPC and what raises or lowers it, in one or two sentences. The turn prompt shows it to the model, which updates the variable every turn; without it the prompt says what the scenario's events on the variable mean instead."
                   }
                 }
               }

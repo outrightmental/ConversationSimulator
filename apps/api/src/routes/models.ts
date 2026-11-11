@@ -27,8 +27,8 @@ import { getDb } from '../db.js';
 
 const REGISTRY_ENTRIES: ModelRegistryEntry[] = [
   {
-    id: 'qwen3-4b-instruct-q4_k_m',
-    name: 'Qwen3 4B Instruct Q4_K_M',
+    id: 'qwen3-4b-instruct-2507-q4_k_m',
+    name: 'Qwen3 4B Instruct 2507 Q4_K_M',
     provider: 'huggingface',
     family: 'qwen3',
     role: 'starter',

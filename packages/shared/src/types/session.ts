@@ -168,6 +168,14 @@ export interface SessionDebriefResponse {
   missed_opportunities?: string[];
   replay_suggestions?: string[];
   scores?: Record<string, number>;
+  /**
+   * Rubric dimension id → the rubric's name for it (issue #578). Present for a
+   * scenario with a rubric; the scorecard labels its rows with these names.
+   * Absent or empty for a scenario with none, whose rows are named from ids.
+   */
+  dimension_names?: Record<string, string>;
+  /** Rubric dimension id → the band the debrief placed it in. */
+  dimension_bands?: Record<string, 'low' | 'medium' | 'high' | 'not_observed'>;
   overall_score?: number;
   turning_points?: DebriefTurningPoint[];
   used_fallback?: boolean;

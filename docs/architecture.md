@@ -101,8 +101,11 @@ Player text (HTTP POST /api/sessions/{id}/turn)
         │     (NSFW, criminal, etc.) into ok | redirect | refuse | stop |
         │     stop_with_resource_message. It is not yet wired into this pipeline.
         │
-        ▼ 3. Build prompt  (convsim_prompt.compose_turn_prompt)
-        │     scenario context, NPC persona, state variables,
+        ▼ 3. Evaluate event triggers, then build the prompt
+        │     (scenario_state.evaluate_event_triggers, on the state the previous
+        │     turn left; convsim_prompt.compose_turn_prompt)
+        │     scenario context, NPC persona, the scenario's state variables
+        │     with their meanings, the instructions of the events that fired,
         │     last 12 transcript turns, safety policy, player utterance
         │
         ▼ 4. Call ChatRuntime  (runtime.chat_stream)
@@ -113,11 +116,11 @@ Player text (HTTP POST /api/sessions/{id}/turn)
         │     "I'm not sure what to say right now. Could you repeat that?"
         │
         ▼ 6. Apply bounded state deltas  (scenario_state.apply_state_delta)
-        │     reject unknown keys, clamp per-turn delta, clamp to [min,max]
+        │     reject unknown keys and any the session's schema does not name,
+        │     clamp per-turn delta, clamp to [min,max]
         │
-        ▼ 7. Evaluate event triggers & ending conditions
-        │     (scenario_state.evaluate_event_triggers / evaluate_ending_condition)
-        │     variable_above / variable_below / max_turns / flag conditions
+        ▼ 7. Evaluate ending conditions  (scenario_state.evaluate_ending_condition)
+        │     variable_above / variable_below / max_turns conditions
         │     ending priority: safety_stop → player_exit → success → failure → timeout
         │
         ▼ 8. Persist atomically  (SQLite transaction)
@@ -270,7 +273,9 @@ scenario that was only ever registered in memory.
 
 **Reading one session back.** `GET /api/sessions/{id}` returns the same shape
 plus `visible_state`: the session's current meter values, filtered through the
-scenario's own variable visibility so a hidden variable stays hidden. Meter
+scenario's own variable visibility so a hidden variable stays hidden, and,
+for a scenario with state of its own, leaving out the variables it does not
+play (see the state section below). Meter
 values otherwise only ever arrive with a turn, so this is what lets a resumed
 conversation draw its meters before the player sends another message.
 
@@ -353,6 +358,29 @@ that completed before the cut are kept. The REST response always equals what
 was streamed. A runtime that does not put the spoken line first releases
 nothing, and the turn behaves as it did before streaming.
 
+**Repeats are held back before release, not replaced after it** (issue #580).
+The engine retries once, with the repeated line quoted and the temperature
+0.1 higher, a reply that repeats one of the NPC's last two lines (a shared run
+of 6+ words, the same closing question of 4+ words as the previous line, or
+word-trigram similarity above 0.5 between lines of 6+ words; the opening
+counts), and keeps whichever reply repeats less. The retry is a
+`repetition_retry` extra call in the turn's `timing`. Streaming keeps the
+contract above, so only the first sentence is judged: it is released only if,
+taken as the whole line, it shares no 6-word run with those lines and does not
+end with the previous line's closing question (similarity counts only when it
+is the whole line). If it fails that, nothing has been shown, no `npc.final`
+is sent, and the line is retried as above (`checking` stage) even if the
+whole line ends otherwise and is no repeat; the retry is judged the same way,
+by its whole line and then its first sentence. The REST response carries the
+result. Once the first sentence is out, the rest of the
+line streams as usual, held back only by the output check: cutting it for a
+repeat would leave the player a stub, an answer without its question, that no
+retry could replace. A repeat there is kept and noted in the turn's debug
+events (`repetition_retry_skipped`). When the player asks for the line again
+("¿Puede repetir más despacio?", "Say that again?", もう一度), the NPC's answer
+is neither held nor retried: there the repeat is the answer, and in the
+language packs asking for it is a repair strategy the rubric rewards.
+
 Reserved for future speech support (clients should accept and ignore):
 
 | Type               | Planned purpose                              |
@@ -382,6 +410,25 @@ the `state.variables` block in the scenario YAML. Each variable also carries
 `max_delta_per_turn` (default 20) which caps how much the LLM can move it
 per turn. Unknown variable names proposed by the LLM are rejected silently
 and logged at WARNING.
+
+A scenario that declares variables of its own plays exactly those, plus any
+baseline its events or ending conditions read (`played_variable_names`).
+The turn prompt's `STATE_VARIABLES` layer gives each its range, per-turn
+limit and authored `description` (or, without one, what the scenario's
+events on it say), and the turn output schema the runtime is sent makes
+`state_delta` an object with each of them a required integer and no other
+key; the engine clamps each to its `max_delta_per_turn`. A baseline nothing
+in the scenario reads is left out of the prompt and cannot be moved, so it
+has no meter either: every path that reports meters (the turn result, the
+opening event, the session detail and export, the session socket's resync
+and the debrief's state arc) shows only the visible variables the scenario
+plays. A scenario that
+configures no state (most of the hardcoded catalog) plays every baseline
+with a free-form `state_delta`, and shows each visible one, as before.
+
+Scenario events are evaluated at the start of a turn, on the state the
+previous turn left; each one that fires puts its `npc_instruction` into that
+turn's prompt (the `SCENARIO_EVENTS` layer) and is recorded on that turn.
 
 ---
 
@@ -445,14 +492,43 @@ After a session ends, `POST /api/sessions/{id}/debrief` calls
 
 1. Load all turns and raw LLM output from the database.
 2. Aggregate rubric observations (score deltas per dimension from each turn).
-3. Compute weighted per-dimension and overall scores (baseline 50, range 0–100).
-4. Identify turning points: significant state changes, event flags, safety events.
-5. Build a debrief prompt (scenario context + full transcript + rubric scores).
-6. Call `ChatRuntime.chat_stream` with the debrief JSON schema.
-7. Persist and return the debrief document.
+   With a rubric, only observations under its dimensions count.
+3. Identify turning points: significant state changes, event flags, safety events.
+4. Build a debrief prompt: scenario context, the rubric's dimensions with
+   their names, weights and low / medium / high bands, and the transcript,
+   with every line labelled with whose it is and each NPC line that closes
+   on a question (its last sentence, or the one before) marked with it and
+   the turn of the player's next line. With a rubric the turns' rubric
+   observations stay out of the prompt (they still move the scores, step 6);
+   without one they are the evidence for the scores it shows, each labelled
+   as a note on the player's line. The rules keep a dimension out of high
+   when any player line matches its low or medium description, list each NPC
+   question the player left unanswered and each slip they made as a missed
+   opportunity, and have every strength and improvement quote the player's
+   own words from a turn.
+5. Call `ChatRuntime.chat_stream` with the debrief JSON schema. Its missed
+   opportunities come first, and with a rubric the schema then asks for each
+   dimension's band (`dimension_bands`), before the summary, strengths and
+   improvements: the grammar writes the properties in that order. The
+   schema caps each list, and the reply has a 1536-token budget, which a
+   reply filled to every cap fits; a reply cut off at the budget is invalid
+   JSON, and the debrief falls back to the template.
+6. Score each dimension (0–100). A band sets the score (low 25, medium 55,
+   high 85) and the turn deltas move it at most 12 points either way; a
+   dimension with no band scores 50 plus its deltas, and one with neither is
+   left off. The overall score weights the dimensions by the rubric's weights.
+   A scenario with no rubric scores every observed id from 50 plus its
+   deltas, and the overall score is their mean.
+7. Persist and return the debrief document, with each dimension's rubric
+   name (`dimension_names`) and band (`dimension_bands`).
+
+The turn prompt names the same dimensions (its `RUBRIC` layer), and the turn
+output schema the runtime is sent makes `rubric_observations[].rubric_id` an
+enum of their ids, so the engine's grammar cannot write any other.
 
 Language guardrails in the prompt prohibit clinical advice, performance
-guarantees, and invented quotes. Evidence is cited by turn number only.
+guarantees, and invented quotes. Evidence is cited by turn number and the
+player's own words; what the NPC said is never credited to the player.
 
 ---
 

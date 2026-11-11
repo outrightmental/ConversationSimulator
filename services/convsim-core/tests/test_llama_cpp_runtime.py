@@ -340,6 +340,55 @@ async def test_chat_stream_sends_response_format_hint_when_schema_provided(runti
 
 
 @pytest.mark.asyncio
+async def test_a_sessions_rubric_enum_reaches_the_engine_unchanged(runtime):
+    """The session's turn schema (issue #578) is what llama-server turns into
+    a grammar: its rubric_id enum must arrive as sent, so the grammar can only
+    write the rubric's ids."""
+    from convsim_prompt import build_npc_turn_output_schema
+
+    schema = build_npc_turn_output_schema(rubric_ids=["business_case", "specificity"])
+    lines = _sse_lines(_token_chunk("{}"), _final_chunk())
+    client = _mock_client(stream_response=_MockStreamResponse(lines))
+    request = ChatRequest(messages=[ChatMessage(role="user", content="go")], json_schema=schema)
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent = client.stream.call_args.kwargs["json"]["response_format"]["schema"]
+    assert sent == schema
+    item = sent["properties"]["rubric_observations"]["items"]
+    assert item["properties"]["rubric_id"] == {"type": "string", "enum": ["business_case", "specificity"]}
+
+
+@pytest.mark.asyncio
+async def test_a_sessions_state_delta_reaches_the_engine_unchanged(runtime):
+    """The session's turn schema names the scenario's variables in state_delta,
+    required and closed (issue #580): llama-server must get it as sent, so its
+    grammar writes every one of them and no other key."""
+    from convsim_prompt import StateVariable, build_npc_turn_output_schema
+
+    schema = build_npc_turn_output_schema(state_variables=[
+        StateVariable(name="deal_progress", max_delta_per_turn=20),
+        StateVariable(name="firmness", max_delta_per_turn=12),
+    ])
+    lines = _sse_lines(_token_chunk("{}"), _final_chunk())
+    client = _mock_client(stream_response=_MockStreamResponse(lines))
+    request = ChatRequest(messages=[ChatMessage(role="user", content="go")], json_schema=schema)
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent = client.stream.call_args.kwargs["json"]["response_format"]["schema"]
+    assert sent == schema
+    delta = sent["properties"]["state_delta"]
+    assert delta["required"] == ["deal_progress", "firmness"]
+    assert delta["additionalProperties"] is False
+    assert delta["properties"] == {"deal_progress": {"type": "integer"}, "firmness": {"type": "integer"}}
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_omits_response_format_when_no_schema(runtime):
     lines = _sse_lines(_token_chunk("ok"), _final_chunk())
     stream = _MockStreamResponse(lines)
@@ -659,6 +708,46 @@ async def test_chat_stream_sends_top_p_and_repeat_penalty_from_config():
     sent_payload = client.stream.call_args.kwargs["json"]
     assert sent_payload["top_p"] == 0.7
     assert sent_payload["repeat_penalty"] == 1.3
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_sends_the_request_top_p_over_the_config():
+    """A request's top_p is the model's registry default (issue #580) and wins
+    over the adapter's configured value; repeat_penalty stays the config's."""
+    cfg = LlamaCppConfig(base_url="http://127.0.0.1:7356", top_p=0.7, repeat_penalty=1.3)
+    rt = LlamaCppRuntime(cfg)
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(
+        messages=[ChatMessage(role="user", content="hi")], temperature=0.6, top_p=0.85
+    )
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in rt.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert sent_payload["temperature"] == 0.6
+    assert sent_payload["top_p"] == 0.85
+    assert sent_payload["repeat_penalty"] == 1.3
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_without_a_request_top_p_sends_the_default(runtime):
+    """No registry top_p: the request goes out at today's 0.8 / 0.95."""
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert sent_payload["temperature"] == 0.8
+    assert sent_payload["top_p"] == 0.95
 
 
 @pytest.mark.asyncio

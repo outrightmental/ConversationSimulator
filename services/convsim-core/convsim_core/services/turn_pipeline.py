@@ -5,13 +5,19 @@ Processing steps (SPEC §6):
   1. Normalize player text: strip, reject empty, reject oversized.
   2. Local input safety gate: route player text through deterministic rule
      checks (route_player_input) before the LLM; refuse/stop/redirect as needed.
-  3. Build prompt context: scenario, NPC, state, transcript, rubric, player utterance.
-  4. Call ChatRuntime and collect the structured response.
-  5. Validate / repair / fallback the model response.
-  6. Apply bounded state deltas.
-  7. Evaluate scenario event triggers and ending conditions.
-  8. Persist player turn, NPC turn, and updated session state atomically.
-  9. Return a TurnPipelineResult.
+  3. Evaluate scenario event triggers on the state the previous turn left.
+  4. Build prompt context: scenario, NPC, rubric, the scenario's state
+     variables, the instructions of the events that fired, transcript,
+     player utterance.
+  5. Call ChatRuntime and collect the structured response, constrained by the
+     session's output schema (its rubric_id an enum of the rubric's ids, its
+     state_delta the scenario's variables).
+  6. Validate / repair / fallback the model response; retry once a reply that
+     repeats one of the NPC's last two lines (issue #580).
+  7. Apply bounded state deltas.
+  8. Evaluate ending conditions.
+  9. Persist player turn, NPC turn, and updated session state atomically.
+ 10. Return a TurnPipelineResult.
 """
 from __future__ import annotations
 
@@ -26,19 +32,32 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Set
 
 from convsim_prompt import (
-    NPC_TURN_OUTPUT_SCHEMA,
     SAFE_FALLBACK_UTTERANCE,
+    SAFE_REDIRECT_UTTERANCE,
+    SAFE_STOP_UTTERANCE,
     PromptComposerInput,
     SafetyPolicy,
     SessionState as PromptSessionState,
     TranscriptEntry,
     TurnEvent,
+    TurnOutput,
+    compose_repetition_retry_prompt,
     compose_turn_prompt,
+    filter_rubric_observations,
     parse_turn_output,
+    state_variables_in_schema,
+    turn_output_schema_for,
 )
 from convsim_prompt.output_validator import validate_npc_output
+from convsim_prompt.repetition import (
+    GUARD_WINDOW,
+    RepetitionReport,
+    asks_for_repeat,
+    check_repetition,
+    less_repetitive,
+)
 from convsim_prompt.turn_output import _extract_json
-from convsim_prompt.types import ScenarioData
+from convsim_prompt.types import PromptBundle
 from convsim_prompt.types import ResponseStyleOverrides, ScenarioData
 
 from convsim_core.input_router import (
@@ -49,7 +68,14 @@ from convsim_core.input_router import (
     route_player_input,
 )
 from convsim_core.runtime.base import ChatRuntime
-from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatProgress, ChatRequest, ChatToken
+from convsim_core.runtime.types import (
+    ChatFinal,
+    ChatMessage,
+    ChatProgress,
+    ChatRequest,
+    ChatToken,
+    SamplingDefaults,
+)
 from convsim_core.scenario_state import (
     ScenarioEvent,
     apply_state_delta,
@@ -59,6 +85,7 @@ from convsim_core.scenario_state import (
     initialize_state,
     partition_state_by_visibility,
 )
+from convsim_core.services.model_registry_service import active_model_sampling
 from convsim_core.services.reply_speed import (
     load_reply_speed,
     profile_for,
@@ -71,7 +98,11 @@ from convsim_core.services.turn_timing import (
     TurnClock,
     TurnTimingBuilder,
 )
-from convsim_core.services.utterance_stream import SentenceGate, UtteranceStreamExtractor
+from convsim_core.services.utterance_stream import (
+    SentenceGate,
+    UtteranceStreamExtractor,
+    first_sentence_repeats,
+)
 from convsim_core.storage.repositories.relationship_repo import get_relationship_recap
 
 logger = logging.getLogger(__name__)
@@ -223,6 +254,17 @@ def _safety_policy_config_to_prompt_policy(config: SafetyPolicyConfig) -> Safety
     )
 
 
+def _output_tokens(final: Optional[ChatFinal]) -> Optional[int]:
+    """How many tokens an extra model call wrote, when the engine said (issue #519)."""
+    if final is None:
+        return None
+    if final.timings is not None and final.timings.output_tokens is not None:
+        return final.timings.output_tokens
+    if final.output_tokens > 0:
+        return final.output_tokens
+    return None
+
+
 class _SyncRuntimeBridge:
     """Synchronous RuntimeProtocol bridge over ChatRuntime for repair calls.
 
@@ -242,9 +284,13 @@ class _SyncRuntimeBridge:
         runtime: ChatRuntime,
         timing: Optional[TurnTimingBuilder] = None,
         parse_events: Optional[List[TurnEvent]] = None,
+        sampling: Optional[SamplingDefaults] = None,
     ) -> None:
         self._runtime = runtime
         self._timing = timing
+        # The turn's registry sampling (issue #580): a repair or retry is the
+        # same model answering the same turn, so it samples the same way.
+        self._sampling = sampling or SamplingDefaults()
         # The same list the parser appends its events to, read at call time to
         # tell the two kinds of extra call apart (see _call_kind).
         self._parse_events = parse_events if parse_events is not None else []
@@ -270,6 +316,7 @@ class _SyncRuntimeBridge:
         async def _call() -> str:
             request = ChatRequest(
                 messages=[ChatMessage(role="user", content=prompt)],
+                **self._sampling.request_fields(),
             )
             text, _, final = await _collect_runtime_output_timed(self._runtime, request)
             if final is not None:
@@ -284,14 +331,8 @@ class _SyncRuntimeBridge:
         finally:
             if self._timing is not None:
                 final = final_holder[0] if final_holder else None
-                tokens: Optional[int] = None
-                if final is not None:
-                    if final.timings is not None and final.timings.output_tokens is not None:
-                        tokens = final.timings.output_tokens
-                    elif final.output_tokens > 0:
-                        tokens = final.output_tokens
                 self._timing.record_extra_call(
-                    kind, (time.perf_counter() - started) * 1000.0, tokens
+                    kind, (time.perf_counter() - started) * 1000.0, _output_tokens(final)
                 )
             # Never wait on a hung repair call — the 60s timeout above must be
             # the real ceiling. A context manager would call shutdown(wait=True)
@@ -491,6 +532,41 @@ def _persist_input_safety_stop(
     )
 
 
+def _previous_event_flags(session_id: str, conn: sqlite3.Connection) -> Set[str]:
+    """The event flags the NPC's last reply raised, for this turn's ``flag`` events.
+
+    Events are evaluated before the turn (issue #580), so a ``flag`` condition
+    reads the flags of the reply before it, as a variable condition reads the
+    state that reply left. None before the first reply.
+    """
+    row = conn.execute(
+        "SELECT event_flags_json FROM turn_session_turns "
+        "WHERE session_id = ? AND role = 'npc' ORDER BY turn_number DESC LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        return set()
+    try:
+        flags = json.loads(row["event_flags_json"] or "[]")
+    except (TypeError, ValueError):
+        return set()
+    return {f for f in flags if isinstance(f, str)} if isinstance(flags, list) else set()
+
+
+def _fired_event_instructions(
+    events: List[ScenarioEvent], triggered_ids: List[str]
+) -> List[str]:
+    """The ``npc_instruction`` of each triggered event, once each, in the scenario's order."""
+    wanted = set(triggered_ids)
+    instructions: List[str] = []
+    seen: Set[str] = set()
+    for event in events:
+        if event.id in wanted and event.id not in seen:
+            seen.add(event.id)
+            instructions.append(event.npc_instruction)
+    return instructions
+
+
 def _load_recent_turns(session_id: str, conn: sqlite3.Connection, limit: int = 12) -> List[TranscriptEntry]:
     rows = conn.execute(
         "SELECT role, content, turn_number FROM turn_session_turns "
@@ -582,6 +658,45 @@ async def _collect_runtime_output(
     return raw_text, structured
 
 
+def _parse_input(raw_text: str, structured: Optional[Dict[str, Any]]) -> str:
+    """The text the parser reads for one model reply.
+
+    When the runtime returned a pre-parsed structured dict (native JSON-schema
+    or grammar constraints), it is serialised back to a clean JSON string so
+    the JSON-extraction step always succeeds on the first try. The raw text is
+    what the debug drawer keeps either way.
+    """
+    return json.dumps(structured) if structured is not None else raw_text
+
+
+def _parse_reply(
+    parse_input: str,
+    *,
+    request: ChatRequest,
+    runtime: Optional[Any],
+    hidden_agenda: Optional[List[str]],
+    events: List[TurnEvent],
+) -> TurnOutput:
+    """One model reply as a TurnOutput: the turn's own, and the repetition retry's.
+
+    Every step from the reply's text to a validated turn runs here, so a retry
+    the repetition guard keeps has been through exactly what the turn's own
+    reply went through; a step added to one cannot skip the other. ``request``
+    is the request the reply answers: the retry's is a copy of the turn's with
+    only its messages and temperature changed, so a step that reads the
+    request (its output schema, say) treats both alike. ``runtime`` is what
+    parse_turn_output makes its structural repair and content-safety retry
+    calls on; the repetition retry passes None and gets neither.
+    """
+    return parse_turn_output(
+        parse_input,
+        runtime=runtime,
+        hidden_agenda=hidden_agenda,
+        turn_events=events,
+        output_schema=request.json_schema,
+    )
+
+
 def _repair_is_coming(parse_input: str, hidden_agenda: Optional[List[str]]) -> bool:
     """Whether parse_turn_output will have to call the model again.
 
@@ -598,6 +713,296 @@ def _repair_is_coming(parse_input: str, hidden_agenda: Optional[List[str]]) -> b
         return True
     result = validate_npc_output(utterance=utterance, hidden_agenda=hidden_agenda)
     return (not result.is_safe) and not result.has_hard_violation
+
+
+# ---------------------------------------------------------------------------
+# Repetition guard (issue #580, P2)
+# ---------------------------------------------------------------------------
+#
+# A reply that repeats one of the NPC's last two lines (the authored opening
+# counts) is generated once more, with the line it repeated quoted as "do not
+# repeat this" and the temperature a step higher, and whichever of the two
+# repeats less is kept. What counts as a repeat is convsim_prompt.repetition,
+# which the D-05 pre-check's check (a) shares.
+#
+# Released text is committed text (#538), so the retry may only replace a line
+# nobody has seen. The sentence gate holds back a streamed first sentence that
+# would make the line a repeat: nothing has been released, so the whole line is
+# still the engine's to replace and comes here. Once a sentence is out, the
+# rest of the line streams as usual (only the safety check can hold it back),
+# and a repeat in it is noted, not retried: cutting the line there would leave
+# the player a stub, an answer without its question (see process_turn).
+
+#: How much hotter the retry samples than the turn did.
+REPETITION_RETRY_TEMPERATURE_STEP = 0.1
+#: The highest temperature the retry asks for.
+_MAX_RETRY_TEMPERATURE = 2.0
+#: The retry may take this many times as long as the first reply did, and at
+#: least the floor: a retry that hangs must not hold the turn.
+REPETITION_RETRY_TIMEOUT_FACTOR = 2.0
+REPETITION_RETRY_MIN_TIMEOUT_S = 30.0
+
+#: The engine's own canned lines: never the NPC repeating itself.
+_CANNED_UTTERANCES = frozenset({SAFE_FALLBACK_UTTERANCE, SAFE_REDIRECT_UTTERANCE, SAFE_STOP_UTTERANCE})
+
+
+def _previous_npc_lines(transcript: List[TranscriptEntry]) -> List[str]:
+    """The NPC's last ``GUARD_WINDOW`` lines, newest first; the opening counts."""
+    lines = [e.text for e in reversed(transcript) if e.speaker != "player" and (e.text or "").strip()]
+    return lines[:GUARD_WINDOW]
+
+
+def _is_model_line(output: TurnOutput) -> bool:
+    """Whether the turn's line is the model's own words in an ordinary turn.
+
+    Not a canned engine line (fallback, redirect, stop), and not a line the
+    model itself marked as a safety redirect or stop.
+    """
+    return output.safety.status == "ok" and output.npc_utterance not in _CANNED_UTTERANCES
+
+
+def _repetition_event(event_type: str, reason: str) -> TurnEvent:
+    return TurnEvent(event_type=event_type, category="repetition", reason=reason)
+
+
+@dataclass
+class _RetryKeptEvent(TurnEvent):
+    """``repetition_retry_kept``, with the raw output of the first reply.
+
+    A kept retry is the turn: its raw output is what the NPC row stores, and
+    what the debrief and the debug drawer read. The first reply, which the
+    player never got, is kept here so the drawer can still show it.
+    """
+
+    discarded_raw_output: str = ""
+
+
+@dataclass(frozen=True)
+class _RetryReply:
+    """The repetition retry's reply: the turn parsed from it, and the output it came as.
+
+    ``raw_text`` is the text the turn was parsed from (the runtime's
+    pre-parsed object serialised, when it gave one), and ``structured`` that
+    object, or None. A kept retry replaces the first reply's output with
+    these before the turn is stored.
+    """
+
+    output: TurnOutput
+    raw_text: str
+    structured: Optional[Dict[str, Any]]
+
+
+def _debug_parse_events(events: List[TurnEvent], *, save_transcript: bool) -> List[Dict[str, Any]]:
+    """The turn's parse events as the ``debug`` event stores them.
+
+    A hidden_agenda_leak reason embeds verbatim keywords copied from the NPC's
+    private hidden agenda. It is redacted so private content is never written
+    to the debug log (issue #199: no hidden/private content in logs by
+    default); event_type + category still identify the leak. The first reply
+    a kept repetition retry replaced is a line of the conversation, and the
+    session export carries every event: it is kept only when the transcript
+    is saved, and never from a turn that leaked the hidden agenda.
+    """
+    leaked = any(e.category == "hidden_agenda_leak" for e in events)
+    out: List[Dict[str, Any]] = []
+    for e in events:
+        entry: Dict[str, Any] = {
+            "event_type": e.event_type,
+            "category": e.category,
+            "reason": None if e.category == "hidden_agenda_leak" else e.reason,
+            "is_recoverable": e.is_recoverable,
+        }
+        if isinstance(e, _RetryKeptEvent) and save_transcript and not leaked:
+            entry["discarded_raw_output"] = e.discarded_raw_output
+        out.append(entry)
+    return out
+
+
+#: Why a repeat was kept without a retry, for the debug drawer.
+_ALREADY_RELEASED = "the line had already been released to the player"
+_REPEAT_REQUESTED = "the player asked for the line again"
+#: What repeated, when only a streamed line's first sentence did.
+_FIRST_SENTENCE = "its first sentence "
+_HELD_FIRST_SENTENCE = "its first sentence, held back from the stream, "
+
+
+def _player_asked_for_repeat(player_line: str) -> bool:
+    """Whether the player asked the NPC to say it again (see ``asks_for_repeat``).
+
+    In spanish_coffee that is a repair strategy the rubric rewards; the NPC's
+    answer is meant to repeat its line, and retrying it with "do not repeat
+    this" would contradict the request. A broken check means no exemption.
+    """
+    try:
+        return asks_for_repeat(player_line)
+    except Exception:  # noqa: BLE001 — the guard must never cost the player a turn
+        logger.exception("Repeat-request check failed; guarding the turn as usual")
+        return False
+
+
+def _note_repetition(
+    line: str,
+    previous_lines: List[str],
+    events: List[TurnEvent],
+    why_kept: str,
+) -> None:
+    """Record a line that repeats an earlier one but is kept without a retry.
+
+    A streamed line: the gate judges only the first release, so a repeat later
+    in the line, or one only the whole line's similarity shows, is on screen
+    by the time the line is complete, and committed text. Or a line answering
+    a player who asked for the line again. Either way it is noted for the
+    debug drawer, not retried.
+    """
+    try:
+        report = check_repetition(line, previous_lines) if previous_lines else RepetitionReport()
+    except Exception:  # noqa: BLE001 — a note is never worth a turn
+        logger.exception("Repetition check failed on a kept line")
+        return
+    if report.flagged:
+        events.append(_repetition_event("repetition_detected", report.describe()))
+        events.append(_repetition_event("repetition_retry_skipped", why_kept))
+
+
+async def _retry_repetitive_reply(
+    runtime: ChatRuntime,
+    request: ChatRequest,
+    prompt: PromptBundle,
+    repeated_lines: List[str],
+    hidden_agenda: Optional[List[str]],
+    timing: TurnTimingBuilder,
+    timeout_s: float,
+) -> tuple[Optional[_RetryReply], str]:
+    """Generate the turn once more; return the reply, or None and why not.
+
+    The same request, schema and sampling, with the system prompt untouched so
+    the engine's prompt cache serves all of it, the repeated line(s) quoted in
+    the user turn, and the temperature one step higher. The call is recorded
+    as a ``repetition_retry`` extra call whether or not it succeeds. The reply
+    is accepted only if it parses and passes the output check as written: no
+    repair or safety retry is spent on it, the first reply is there instead.
+    """
+    retry_prompt = compose_repetition_retry_prompt(prompt, repeated_lines)
+    retry_request = request.model_copy(update={
+        "messages": [
+            ChatMessage(role="system", content=retry_prompt.system_prompt),
+            ChatMessage(role="user", content=retry_prompt.user_prompt),
+        ],
+        "temperature": round(
+            min(_MAX_RETRY_TEMPERATURE, request.temperature + REPETITION_RETRY_TEMPERATURE_STEP), 3
+        ),
+    })
+    final: Optional[ChatFinal] = None
+    started = time.perf_counter()
+    try:
+        raw_text, structured, final = await asyncio.wait_for(
+            _collect_runtime_output_timed(runtime, retry_request), timeout=timeout_s
+        )
+    except Exception as exc:  # noqa: BLE001 — the first reply stands
+        logger.warning("Repetition retry failed (%s): keeping the first reply", type(exc).__name__)
+        return None, f"the retry call failed ({type(exc).__name__})"
+    finally:
+        timing.record_extra_call(
+            "repetition_retry", (time.perf_counter() - started) * 1000.0, _output_tokens(final)
+        )
+    retry_events: List[TurnEvent] = []
+    parse_input = _parse_input(raw_text, structured)
+    output = _parse_reply(
+        parse_input,
+        request=retry_request,
+        runtime=None,
+        hidden_agenda=hidden_agenda,
+        events=retry_events,
+    )
+    if not _is_model_line(output) or any(
+        e.event_type == "output_violation_detected" for e in retry_events
+    ):
+        return None, "the retry's reply did not pass the output check as written"
+    return _RetryReply(output=output, raw_text=parse_input, structured=structured), ""
+
+
+async def _guard_repetition(
+    turn_output: TurnOutput,
+    previous_lines: List[str],
+    *,
+    raw_text: str,
+    runtime: ChatRuntime,
+    request: ChatRequest,
+    prompt: PromptBundle,
+    hidden_agenda: Optional[List[str]],
+    timing: TurnTimingBuilder,
+    events: List[TurnEvent],
+    streamer: Optional[TurnStreamer],
+    first_call_s: float,
+    held: Optional[RepetitionReport] = None,
+) -> Optional[_RetryReply]:
+    """The repetition guard on a line nobody has seen yet.
+
+    Returns the retry to keep in place of the first reply, whose raw output
+    is ``raw_text``, or None to keep the first reply. Cheap when the reply is
+    not a repeat: a word comparison with two lines and no model call. On a
+    repeat, one retry (see ``_retry_repetitive_reply``); the retry is kept
+    only if it repeats strictly less. Never raises: on any error the first
+    reply is kept.
+
+    ``held`` is why the sentence gate held the streamed line's first sentence
+    back, when it did. A first sentence that ends with the previous line's
+    closing question is held even when the whole line ends otherwise and is
+    no repeat; nothing but this guard will ever commit a held line, so it
+    counts as one and is retried. The retry is then judged the same way, by
+    its whole line and then by its first sentence as the gate would have.
+    """
+    try:
+        if not previous_lines or not _is_model_line(turn_output):
+            return None
+        report = check_repetition(turn_output.npc_utterance, previous_lines)
+        why = report.describe()
+        if not report.flagged and held is not None:
+            report, why = held, _HELD_FIRST_SENTENCE + held.describe()
+        if not report.flagged:
+            return None
+        events.append(_repetition_event("repetition_detected", why))
+        if streamer is not None:
+            await streamer.progress("checking")
+        retry, why_not = await _retry_repetitive_reply(
+            runtime,
+            request,
+            prompt,
+            [previous_lines[i] for i in report.against],
+            hidden_agenda,
+            timing,
+            max(REPETITION_RETRY_MIN_TIMEOUT_S, REPETITION_RETRY_TIMEOUT_FACTOR * first_call_s),
+        )
+        if retry is None:
+            events.append(_repetition_event("repetition_retry_discarded", why_not))
+            return None
+        retry_report = check_repetition(retry.output.npc_utterance, previous_lines)
+        retry_why = retry_report.describe()
+        if not retry_report.flagged and held is not None:
+            retry_report = first_sentence_repeats(retry.output.npc_utterance, previous_lines)
+            retry_why = _FIRST_SENTENCE + retry_report.describe()
+        if less_repetitive(retry_report, report):
+            events.append(_RetryKeptEvent(
+                event_type="repetition_retry_kept",
+                category="repetition",
+                reason=(
+                    f"the retry repeats less: {retry_why}" if retry_report.flagged
+                    else "the retry does not repeat an earlier line"
+                ),
+                discarded_raw_output=raw_text,
+            ))
+            return retry
+        events.append(_repetition_event(
+            "repetition_retry_discarded",
+            f"the retry repeats as much or more: {retry_why}",
+        ))
+        return None
+    except Exception as exc:  # noqa: BLE001 — the guard must never cost the player a turn
+        logger.exception("Repetition guard failed; keeping the first reply")
+        events.append(_repetition_event(
+            "repetition_retry_discarded", f"the guard failed ({type(exc).__name__})",
+        ))
+        return None
 
 
 async def process_turn(
@@ -617,6 +1022,7 @@ async def process_turn(
     ending_conditions: Optional[Dict[str, Any]] = None,
     timing: Optional[TurnTimingBuilder] = None,
     streamer: Optional[TurnStreamer] = None,
+    config: Any = None,
 ) -> TurnPipelineResult:
     """Execute the full player-turn pipeline and persist results.
 
@@ -635,7 +1041,16 @@ async def process_turn(
     the complete line. Released text is committed text: once a sentence has
     been sent, the turn is never regenerated, and a later sentence that fails
     the check stops generation and the turn is built from what was released.
-    With no streamer the turn behaves exactly as before.
+    A first sentence that would repeat one of the NPC's last two lines is held
+    back too, with generation running on: nothing has been shown, so the
+    repetition guard may still retry the turn (issue #580). A repeat after the
+    first sentence streams and is noted. With no streamer the turn behaves as
+    before.
+
+    ``config`` is the service config. It decides which installed model the
+    turn's registry sampling is read for (``active_model_sampling``): in the
+    demo edition that is the demo model's own install, the file its engine
+    runs. Without it the full edition's rule applies.
 
     Raises TurnInputError if the player text fails validation.
     Never raises for model errors — uses safe fallback instead.
@@ -694,6 +1109,22 @@ async def process_turn(
     if not state_vars:
         state_vars = initialize_state(var_defs)
 
+    # 3b. Scenario events (issue #580), on the state the previous turn left
+    #     and the flags its reply raised. Each event that fires puts its
+    #     npc_instruction into this turn's prompt, once for an event that fires
+    #     once and on every turn its condition holds for a repeating one, and
+    #     is recorded on this turn. Evaluated after the reply, as they were, no
+    #     instruction ever reached a prompt: the session had moved on.
+    events = scenario_events or []
+    triggered_events = evaluate_event_triggers(
+        state_vars,
+        turn_number,
+        events=events,
+        fired_event_ids=fired_event_ids,
+        active_flags=_previous_event_flags(session_id, conn),
+    )
+    event_instructions = _fired_event_instructions(events, triggered_events)
+
     # 4. Get recent transcript.
     recent_transcript = _load_recent_turns(session_id, conn)
 
@@ -726,16 +1157,24 @@ async def process_turn(
         player_utterance=normalized,
         recent_transcript=recent_transcript,
         relationship_recap=relationship_recap,
+        scenario_event_instructions=event_instructions,
     ))
 
-    # 7. Call runtime.
+    # 7. Call runtime. The model's registry entry sets the temperature and
+    #    top_p when it declares them (issue #580); otherwise the request keeps
+    #    ChatRequest's temperature and the adapter's top_p, as before.
+    sampling = active_model_sampling(conn, runtime.id, config)
     messages = [
         ChatMessage(role="system", content=prompt.system_prompt),
         ChatMessage(role="user", content=prompt.user_prompt),
     ]
+    # The session's schema, the one the prompt's OUTPUT_SCHEMA layer quotes:
+    # with a rubric, rubric_id is an enum of its dimension ids (issue #578),
+    # which the engine's schema-to-grammar conversion enforces.
+    output_schema = turn_output_schema_for(scenario_data)
     request = ChatRequest(
         messages=messages,
-        json_schema=NPC_TURN_OUTPUT_SCHEMA,
+        json_schema=output_schema,
         scripted_turn_index=turn_number,
         # Structured turn output (utterance + deltas + rubric observations)
         # regularly lands in the 300-600 token range; the 512 default left no
@@ -744,6 +1183,7 @@ async def process_turn(
         # budget costs nothing when unused. "balanced" keeps the 1024 this was
         # hardcoded to before reply speed became a setting.
         max_tokens=profile_for(reply_speed).max_tokens,
+        **sampling.request_fields(),
     )
     logger.debug(
         "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",
@@ -754,9 +1194,17 @@ async def process_turn(
 
     # Streaming (issue #538): decode the spoken line out of the model's JSON as
     # it arrives, release it sentence by sentence once each sentence has passed
-    # the output check, and tell the client which stage the turn is in.
+    # the output check, and tell the client which stage the turn is in. The
+    # gate also holds back a first sentence that would make the line a repeat
+    # of one of the NPC's last two lines (issue #580), so the repetition
+    # guard's retry only ever replaces a line nobody has seen.
+    # A player who asked for the line again gets it: neither the gate nor the
+    # guard holds a repeat back on that turn, and one is only noted.
+    previous_npc_lines = _previous_npc_lines(recent_transcript)
+    repeat_requested = _player_asked_for_repeat(normalized)
+    guarded_lines = [] if repeat_requested else previous_npc_lines
     extractor = UtteranceStreamExtractor() if streamer is not None else None
-    gate = SentenceGate(hidden_agenda=hidden_agenda)
+    gate = SentenceGate(hidden_agenda=hidden_agenda, previous_lines=guarded_lines)
     stream_state = {"writing_announced": False, "finishing_announced": False}
 
     async def _on_chunk(chunk: Any) -> bool:
@@ -789,6 +1237,11 @@ async def process_turn(
                 # retry path can run on it.
                 return bool(gate.released)
             if extractor.done:
+                if gate.repeated is not None:
+                    # The first sentence would have repeated an earlier line,
+                    # so the whole line is held for the repetition guard: the
+                    # player has seen none of it and the line is not final.
+                    return False
                 timing.reply_done_ms = timing.clock.elapsed_ms()
                 await streamer.final(gate.released_text)
                 if not stream_state["finishing_announced"]:
@@ -825,6 +1278,9 @@ async def process_turn(
             raw_text, native_structured, released_line, force_defaults=blocked
         )
         turn_output = salvage.output
+        turn_output.rubric_observations = filter_rubric_observations(
+            turn_output.rubric_observations, output_schema
+        )
         salvaged = salvage.salvaged
         if blocked:
             violation = gate.blocked.first_violation
@@ -843,14 +1299,20 @@ async def process_turn(
                 event_type="stream_salvaged",
                 reason="; ".join(f"{k}: {v}" for k, v in salvage.defaulted.items()) or "fields defaulted",
             ))
+        # The gate let the first sentence out, so nothing it held back was for
+        # repetition; a repeat later in the line is noted (issue #580).
+        _note_repetition(
+            released_line,
+            previous_npc_lines,
+            turn_parse_events,
+            _REPEAT_REQUESTED if repeat_requested else _ALREADY_RELEASED,
+        )
         used_fallback = False
     else:
         # 8b. Validate / repair / fallback, exactly as before streaming existed.
-        # When the runtime returned a pre-parsed structured dict (via native JSON-schema
-        # or grammar constraints), serialise it back to a clean JSON string for the
-        # parser so the JSON-extraction step always succeeds on the first try.
-        # The original raw_text is preserved in the DB for the debug drawer.
-        parse_input = json.dumps(native_structured) if native_structured is not None else raw_text
+        # The original raw_text is preserved in the DB for the debug drawer,
+        # unless the repetition guard keeps its retry (8c): then the retry's.
+        parse_input = _parse_input(raw_text, native_structured)
 
         if streamer is not None and _repair_is_coming(parse_input, hidden_agenda):
             # The parser's repair runs synchronously, so the stage has to be
@@ -859,16 +1321,54 @@ async def process_turn(
 
         # Wrap the runtime so parse_turn_output can make synchronous repair calls.
         # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
-        runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events)
-        turn_output = parse_turn_output(
+        runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events, sampling)
+        turn_output = _parse_reply(
             parse_input,
+            request=request,
             runtime=runtime_bridge,
             hidden_agenda=hidden_agenda,
-            turn_events=turn_parse_events,
+            events=turn_parse_events,
         )
         used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
         if used_fallback:
             logger.warning("Turn output fell back to safe utterance for session %s turn %d", session_id, turn_number)
+        # 8c. Repetition guard (issue #580): nothing of this line has been
+        # shown, so a reply that repeats one of the NPC's last two lines may
+        # still be replaced by one retry; unless the player asked for it.
+        if repeat_requested and _is_model_line(turn_output):
+            _note_repetition(
+                turn_output.npc_utterance, previous_npc_lines, turn_parse_events, _REPEAT_REQUESTED,
+            )
+        # A first sentence the gate held back makes the line a repeat even
+        # when the whole line, which ends otherwise, does not. The gate judged
+        # the streamed reply; the parser's repair or safety retry may since
+        # have replaced it, so the line being guarded is judged again the same
+        # way, and a replacement that no longer opens with the repeat is not
+        # retried for it.
+        held: Optional[RepetitionReport] = None
+        if gate.repeated is not None and _is_model_line(turn_output):
+            again = first_sentence_repeats(turn_output.npc_utterance, guarded_lines)
+            held = again if again.flagged else None
+        kept_retry = await _guard_repetition(
+            turn_output,
+            guarded_lines,
+            raw_text=raw_text,
+            runtime=runtime,
+            request=request,
+            prompt=prompt,
+            hidden_agenda=hidden_agenda,
+            timing=timing,
+            events=turn_parse_events,
+            streamer=streamer,
+            first_call_s=(observation.final_at or time.perf_counter()) - observation.sent_at,
+            held=held,
+        )
+        if kept_retry is not None:
+            # The retry is the turn: the row stores its output, which the
+            # debrief scores and the debug drawer shows, not the first reply's.
+            turn_output = kept_retry.output
+            raw_text = kept_retry.raw_text
+            native_structured = kept_retry.structured
     timing.fallback = used_fallback
     timing.salvaged = salvaged
     # The repair calls run inside parse_turn_output, so their wall time is
@@ -881,19 +1381,21 @@ async def process_turn(
     # 9. Handle safety status from model output.
     safety_stopped = turn_output.safety.status == "stop"
 
-    # 10. Apply state delta.
-    delta_result = apply_state_delta(state_vars, turn_output.state_delta, var_defs)
+    # 10. Apply state delta. With state of the scenario's own, only the
+    #     variables the session's schema names may move (issue #580): a runtime
+    #     that ignores the schema, or a repair call sent without it, can still
+    #     write a baseline the scenario never reads.
+    played = state_variables_in_schema(output_schema)
+    delta_result = apply_state_delta(
+        state_vars,
+        turn_output.state_delta,
+        var_defs,
+        allowed=played,
+    )
     if delta_result.rejected_keys:
         logger.warning("State delta had unknown keys (rejected): %s", delta_result.rejected_keys)
 
-    # 11. Evaluate scenario event triggers.
-    triggered_events = evaluate_event_triggers(
-        delta_result.new_state,
-        turn_number,
-        events=scenario_events or [],
-        fired_event_ids=fired_event_ids,
-        active_flags=set(turn_output.event_flags),
-    )
+    # 11. Scenario events were evaluated before the prompt (step 3b).
 
     # 12. Evaluate ending condition.
     ending_type = evaluate_ending_condition(
@@ -1031,22 +1533,7 @@ async def process_turn(
                 "salvaged": salvaged,
                 "streamed": bool(released_line),
                 "used_native_structured_output": native_structured is not None,
-                "parse_events": [
-                    {
-                        "event_type": e.event_type,
-                        "category": e.category,
-                        # A hidden_agenda_leak reason embeds verbatim keywords
-                        # copied from the NPC's private hidden agenda. Redact it
-                        # so private content is never written to the debug log
-                        # (issue #199: no hidden/private content in logs by
-                        # default). event_type + category still identify the leak.
-                        "reason": (
-                            None if e.category == "hidden_agenda_leak" else e.reason
-                        ),
-                        "is_recoverable": e.is_recoverable,
-                    }
-                    for e in turn_parse_events
-                ],
+                "parse_events": _debug_parse_events(turn_parse_events, save_transcript=save_transcript),
             }), now,
         ))
         conn.executemany(
@@ -1082,7 +1569,9 @@ async def process_turn(
 
     timing.persist_ms = (time.perf_counter() - persist_started) * 1000.0
 
-    visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs)
+    # The meters: the visible variables, and with state of the scenario's own
+    # only those it plays, the ones that can move (issue #580).
+    visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs, played)
 
     logger.debug(
         "Turn %d complete for session %s: state=%s ending=%s",

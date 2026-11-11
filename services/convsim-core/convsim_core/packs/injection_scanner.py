@@ -347,6 +347,32 @@ def _scenario_texts(data: dict) -> list[tuple[str, str, bool]]:
                 for i, item in enumerate(items):
                     if isinstance(item, str):
                         results.append((item, f"/goals/{section}/{i}", False))
+    # Each difficulty preset's description is quoted in the NPC's scenario
+    # brief (issue #580), so it is prompt text like the fields above.
+    difficulty = data.get("difficulty")
+    options = difficulty.get("options") if isinstance(difficulty, dict) else None
+    if isinstance(options, dict):
+        for preset, knobs in options.items():
+            val = knobs.get("description") if isinstance(knobs, dict) else None
+            if isinstance(val, str):
+                results.append((val, f"/difficulty/options/{preset}/description", False))
+    # Since issue #580 the turn prompt also carries each state variable's
+    # description (STATE_VARIABLES) and the npc_instruction of every event
+    # that fires (SCENARIO_EVENTS), the first sentence of which it quotes for
+    # a variable with no description.
+    state = data.get("state")
+    variables = state.get("variables") if isinstance(state, dict) else None
+    if isinstance(variables, dict):
+        for name, spec in variables.items():
+            val = spec.get("description") if isinstance(spec, dict) else None
+            if isinstance(val, str):
+                results.append((val, f"/state/variables/{name}/description", False))
+    events = data.get("events")
+    if isinstance(events, list):
+        for i, event in enumerate(events):
+            val = event.get("npc_instruction") if isinstance(event, dict) else None
+            if isinstance(val, str):
+                results.append((val, f"/events/{i}/npc_instruction", False))
     return results
 
 
@@ -484,8 +510,10 @@ def scan_pack_dir(pack_dir: Path) -> list[InjectionFinding]:
     """Scan all natural-language text fields in a pack directory.
 
     Scans the following locations:
-    - ``scenarios/*.yaml`` — scenario titles, summaries, player role briefs,
-      opening NPC lines, and player/hidden goal strings.
+    - ``scenarios/*.yaml`` — scenario titles, summaries, player role labels
+      and briefs, opening NPC lines, player/hidden goal strings, each
+      difficulty preset's description, each state variable's description and
+      each event's npc_instruction.
     - ``npcs/*.yaml`` — NPC display names, public persona descriptions, and all
       private persona string fields.
     - ``rubrics/*.yaml`` — rubric titles, dimension names/descriptions, and

@@ -183,6 +183,34 @@ class TestHiddenAgendaLeak:
         assert v.category == "hidden_agenda_leak"
         assert v.is_recoverable is True
 
+    # The private persona is headed "Private goals" (issue #580): a leak may
+    # use that wording.
+    @pytest.mark.parametrize("utterance", [
+        "My private goal here is to protect the floor price.",
+        "One of my private goals is to see how you handle pressure.",
+        "Honestly, my own private agenda is to close this today.",
+        "My hidden goals don't matter right now.",
+        "I'd rather not say what my private objectives are.",
+        "Private goals: protect the $13,800 floor price.",
+        "According to the private goals I was given, I can't go lower.",
+    ])
+    def test_private_goals_wording_is_flagged(self, utterance):
+        v = _first(utterance)
+        assert v.category == "hidden_agenda_leak"
+        assert v.is_recoverable is True
+
+    @pytest.mark.parametrize("utterance", [
+        "I'd rather keep my goals private for now.",
+        "Your private goals are your own business.",
+        "We have a private room in the back if you'd like.",
+        "My private life is separate from work.",
+        "Our private sale ends on Friday.",
+        "My goal is to find a fair price for both of us.",
+        "Is this a private matter, or can I share it with the team?",
+    ])
+    def test_ordinary_private_speech_is_clean(self, utterance):
+        assert _validate(utterance).is_safe, utterance
+
 
 # ---------------------------------------------------------------------------
 # Hidden agenda keyword leak from private persona

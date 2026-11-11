@@ -10,7 +10,8 @@ description: >-
   decision Diane can take upward causes case_clarity to exceed the success
   threshold. Also verifies that vague_claim_probe fires when evidence is thin,
   strong_case_acknowledged fires when evidence is strong, and that no_number_anchor
-  fires before a figure is on the table.
+  fires when the ask blurs before a figure is on the table — and that neither
+  probe is already true at the scenario defaults (#580).
 
 seed: 42
 input_mode: text
@@ -92,33 +93,41 @@ static_assertions:
     path: events
     check: min_length_1
 
-  - description: vague_claim_probe fires when evidence_strength is below 30
+  - description: vague_claim_probe fires when evidence_strength is below 10
     path: events[id=vague_claim_probe].when
-    check: "type=variable_below AND variable=evidence_strength AND threshold=30"
+    check: "type=variable_below AND variable=evidence_strength AND threshold=10"
 
   - description: vague_claim_probe can repeat
     path: events[id=vague_claim_probe].repeat
     check: "equals true"
 
-  - description: no_number_anchor fires when case_clarity is below 25
+  - description: no_number_anchor fires when case_clarity is below 10
     path: events[id=no_number_anchor].when
-    check: "type=variable_below AND variable=case_clarity AND threshold=25"
+    check: "type=variable_below AND variable=case_clarity AND threshold=10"
 
   - description: no_number_anchor fires only once
     path: events[id=no_number_anchor].repeat
     check: "equals false"
 
-  - description: strong_case_acknowledged fires when evidence_strength exceeds 70
+  - description: evidence_strength starts at or above vague_claim_probe's threshold, so the probe is not true at the defaults
+    path: state.variables.evidence_strength.default
+    check: "gte 10"
+
+  - description: case_clarity starts at or above no_number_anchor's threshold, so the probe is not true at the defaults
+    path: state.variables.case_clarity.default
+    check: "gte 10"
+
+  - description: strong_case_acknowledged fires when evidence_strength exceeds 80
     path: events[id=strong_case_acknowledged].when
-    check: "type=variable_above AND variable=evidence_strength AND threshold=70"
+    check: "type=variable_above AND variable=evidence_strength AND threshold=80"
 
   - description: strong_case_acknowledged fires only once
     path: events[id=strong_case_acknowledged].repeat
     check: "equals false"
 
-  - description: deflation_signal fires when impression falls below 25
+  - description: deflation_signal fires when impression falls below 27
     path: events[id=deflation_signal].when
-    check: "type=variable_below AND variable=impression AND threshold=25"
+    check: "type=variable_below AND variable=impression AND threshold=27"
 
   - description: Success ending condition targets case_clarity above 65
     path: ending_conditions.success

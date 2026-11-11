@@ -3,18 +3,32 @@
 
 Processing steps:
   1. Load all turns + raw LLM output for the session from the database.
-  2. Compute per-rubric-dimension scores from accumulated rubric_observations.
-  3. Compute overall weighted score.
-  4. Identify key turning points from state changes, event flags, safety events.
-  5. Build a debrief prompt with scenario context, transcript, and observed scores.
-  6. Call the ChatRuntime and parse/repair/fallback the debrief narrative JSON.
+  2. Tally the per-turn rubric_observations by dimension.
+  3. Identify key turning points from state changes, event flags, safety events.
+  4. Build a debrief prompt with scenario context, the rubric, and the transcript.
+  5. Call the ChatRuntime and parse/repair/fallback the debrief narrative JSON.
+  6. Score each dimension, and the overall weighted score (see below).
   7. Assemble and persist the full debrief document.
   8. Transition session flow_state to DebriefReady (or Error on failure).
+
+Scoring (issue #578). A scenario with a rubric is scored on the rubric's
+dimensions only, labelled with their names, and its overall score weights them
+by the rubric's weights. The debrief model places each dimension in one of the
+rubric's bands; a band sets the dimension's score (BAND_SCORES: low 25, medium
+55, high 85, one in each colour zone of the scorecard), and the turn-by-turn
+notes move it by their net score_delta, at most BAND_ADJUST_MAX either way, so
+a band always decides the zone. A dimension with no band (the template
+fallback, a model that gave none, or "not_observed") is scored as before, 50
+plus the net of its notes; one with neither is left off the scorecard. Before
+this, every score was 50 plus deltas of 1-3 per note, so a short session could
+not leave roughly 44-56 and a good run read like a weak one. A scenario with no
+rubric (the hardcoded catalog) keeps the old scoring and a plain mean.
 
 Language rules (enforced via DEBRIEF_SYSTEM_PREAMBLE):
   - No therapy, clinical assessment, or mental-health advice.
   - No real-world performance guarantees.
-  - Evidence cited by turn number only — no invented quotes.
+  - Evidence cited by turn number and short quotes — no invented quotes, and
+    nothing the NPC said credited to the player.
 """
 from __future__ import annotations
 
@@ -24,20 +38,24 @@ import re
 import sqlite3
 from dataclasses import dataclass, field, fields as dataclass_fields
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, List, Optional, Set
 
 from convsim_prompt import (
-    DEBRIEF_NARRATIVE_SCHEMA,
     DebriefNarrative,
     DebriefTurnRecord,
+    RubricIdMatcher,
+    build_debrief_narrative_schema,
     compose_debrief_prompt,
+    normalize_dimension_id,
     parse_debrief_narrative,
 )
 from convsim_prompt.debrief_composer import DebriefComposerInput
-from convsim_prompt.types import ScenarioData
+from convsim_prompt.types import ScenarioData, ScenarioRubric
 
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
+from convsim_core.scenario_state import build_variable_defs, hidden_variable_names
+from convsim_core.services.model_registry_service import active_model_sampling
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +63,28 @@ logger = logging.getLogger(__name__)
 _SCORE_BASELINE = 50.0
 _SCORE_MIN = 0.0
 _SCORE_MAX = 100.0
+
+# A note's score_delta, as the turn schema bounds it. The debrief reads the
+# raw model text, which a runtime that ignores the schema can put anything in.
+_NOTE_DELTA_MIN = -3
+_NOTE_DELTA_MAX = 3
+
+#: The score each rubric band sets (issue #578): one in each colour zone of
+#: the scorecard (red below 40, orange to 69, green from 70; Debrief.tsx).
+BAND_SCORES: Dict[str, float] = {"low": 25.0, "medium": 55.0, "high": 85.0}
+#: How far the turn-by-turn notes can move a banded dimension, either way.
+#: Twelve keeps every band inside its zone (25±12, 55±12, 85-12).
+BAND_ADJUST_MAX = 12.0
+
+# The debrief's output budget. A reply cut off at it is invalid JSON, and the
+# debrief falls back to the template. The 512 ChatRequest default left almost
+# no headroom over the narrative alone; 1024 did not fit a reply that fills
+# the narrative schema's lists (``maxItems``) with the missed opportunities
+# and slips the debrief now lists (issue #580): every list full, at the
+# longest each ran in the D-05 replay's debriefs, came to ~1270 tokens on the
+# starter model. The longest session's prompt leaves 1536 room in its 8192
+# context (tests/test_debrief_budget.py).
+_DEBRIEF_MAX_TOKENS = 1536
 
 # Single-token filler / disfluency markers detected in voice-mode transcripts
 # (STT tokens).  Deliberately excludes ordinary content words such as "i",
@@ -95,6 +135,11 @@ class DebriefResult:
     generated_at: str
     used_fallback: bool = False
     metrics: Dict[str, Any] = field(default_factory=dict)
+    # Rubric dimension id → the rubric's name for it, for every dimension of
+    # the scenario's rubric (issue #578); empty for a scenario with none.
+    dimension_names: Dict[str, str] = field(default_factory=dict)
+    # Rubric dimension id → the band the debrief placed it in.
+    dimension_bands: Dict[str, str] = field(default_factory=dict)
 
 
 def _count_words(text: str) -> int:
@@ -116,11 +161,18 @@ def compute_metrics(
     source_mode: str = "text-only",
     final_state: Optional[Dict[str, int]] = None,
     interruption_count: int = 0,
+    hidden_variables: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """Compute session telemetry metrics from stored transcript rows.
 
     Pure function — deterministic given the same rows.  Does not read from the
     database or call any external service.
+
+    ``hidden_variables`` are left out of the state arc: the debrief's
+    telemetry panel draws one meter per variable in it, and a variable the
+    scenario marks ``visibility: hidden`` is never shown during play. It sat
+    in the panel next to the scorecard's same-named dimension (issue #580,
+    P6: "case clarity 48" beside a hidden ``case_clarity`` of 10).
 
     Args:
         all_turns: Ordered rows from turn_session_turns for one session.
@@ -242,6 +294,7 @@ def compute_metrics(
         for var_name, final_val in final_state.items():
             running_state[var_name] = int(final_val) - total_deltas.get(var_name, 0)
 
+    hidden = hidden_variables or set()
     state_arc: List[Dict[str, Any]] = []
     for turn, delta_clean in zip(all_turns, parsed_deltas):
         for var_name, var_delta in delta_clean.items():
@@ -251,7 +304,7 @@ def compute_metrics(
             # debrief carries a single turn numbering (issue #501 §4).
             state_arc.append({
                 "turn_number": whole_turn_of(turn["turn_number"]),
-                "state": dict(running_state),
+                "state": {k: v for k, v in running_state.items() if k not in hidden},
             })
 
     return {
@@ -283,63 +336,153 @@ def _parse_rubric_observations(raw_output_json: Optional[str]) -> List[Dict[str,
     return []
 
 
-_DIMENSION_ID_SEPARATORS = re.compile(r"[^a-z0-9]+")
+@dataclass
+class _DimensionTally:
+    """The turn-by-turn notes on one dimension: how many, and their net score_delta."""
+    notes: int = 0
+    net: int = 0
 
 
-def normalize_dimension_id(rubric_id: str) -> str:
-    """Fold a model-written rubric id onto one spelling.
+def _tally_observations(
+    npc_turns: List[sqlite3.Row],
+    rubric: Optional[ScenarioRubric] = None,
+) -> Dict[str, _DimensionTally]:
+    """Group the NPC turns' rubric_observations by dimension.
 
-    The turn prompt does not hand the model the scenario rubric's dimension ids,
-    so it writes them itself, and not consistently: one session scored
-    ``self-awareness`` and ``self_awareness`` as two dimensions, and the debrief
-    listed both as "Self-Awareness" and "Self Awareness". Lowercase, with every
-    run of other characters as one underscore, matches the ids rubric files
-    declare (``self_awareness``, ``learning_velocity``).
+    Spellings of one id are counted together (normalize_dimension_id). With a
+    rubric, an observation counts only under the rubric dimension its id (or
+    the dimension's name) stands for, and every other observation is dropped:
+    the turn schema's enum keeps a schema-enforcing runtime to the rubric's
+    ids, and this keeps the rest to them. Each score_delta is clamped to the
+    schema's [-3, 3]: the stored output is the model's raw text.
     """
-    return _DIMENSION_ID_SEPARATORS.sub("_", rubric_id.strip().lower()).strip("_")
+    matcher = RubricIdMatcher.for_rubric(rubric) if rubric is not None else None
+    tallies: Dict[str, _DimensionTally] = {}
+    for turn in npc_turns:
+        for obs in _parse_rubric_observations(turn["raw_output_json"]):
+            if not isinstance(obs, dict):
+                continue
+            written = obs.get("rubric_id")
+            if not isinstance(written, str) or not written:
+                continue
+            dim_id = matcher.match(written) if matcher is not None else normalize_dimension_id(written)
+            if not dim_id:
+                continue
+            tally = tallies.setdefault(dim_id, _DimensionTally())
+            tally.notes += 1
+            score_delta = obs.get("score_delta")
+            if isinstance(score_delta, int) and not isinstance(score_delta, bool):
+                tally.net += max(_NOTE_DELTA_MIN, min(_NOTE_DELTA_MAX, score_delta))
+    return tallies
+
+
+def _clamp_score(score: float) -> float:
+    return max(_SCORE_MIN, min(_SCORE_MAX, score))
 
 
 def _compute_scores(
     npc_turns: List[sqlite3.Row],
+    rubric: Optional[ScenarioRubric] = None,
+    bands: Optional[Dict[str, str]] = None,
 ) -> Dict[str, float]:
-    """Accumulate rubric dimension scores from per-turn rubric_observations.
+    """Score each dimension from the turns' notes and, with a rubric, its band.
 
-    Each NPC turn may contain rubric observations with optional score_deltas
-    in the range [-3, 3]. Starting from a baseline of 50, deltas are summed and
-    the final value is clamped to [0, 100].
+    Without a rubric, as before: every dimension that has a note scores 50
+    plus the net score_delta of its notes, clamped to [0, 100].
 
-    Only dimensions that appear in at least one observation are scored, and
-    spellings of one dimension id are scored together (normalize_dimension_id).
+    With a rubric, only its dimensions, in its order. A dimension the debrief
+    placed in a band (``bands``, id → low / medium / high) scores
+    BAND_SCORES[band] plus its notes' net, the net capped at ±BAND_ADJUST_MAX.
+    A dimension with no band (none given, or "not_observed") falls back to 50
+    plus its net when it has notes, and is left out when it has none: a
+    dimension nothing was said about is absent, not a 50.
     """
-    accumulators: Dict[str, float] = {}
+    tallies = _tally_observations(npc_turns, rubric)
+    if rubric is None:
+        return {
+            dim_id: _clamp_score(_SCORE_BASELINE + tally.net)
+            for dim_id, tally in tallies.items()
+        }
+    bands = bands or {}
+    scores: Dict[str, float] = {}
+    for dimension in rubric.dimensions:
+        tally = tallies.get(dimension.id)
+        band_score = BAND_SCORES.get(bands.get(dimension.id, ""))
+        if band_score is not None:
+            net = tally.net if tally is not None else 0
+            adjust = max(-BAND_ADJUST_MAX, min(BAND_ADJUST_MAX, float(net)))
+            scores[dimension.id] = _clamp_score(band_score + adjust)
+        elif tally is not None:
+            scores[dimension.id] = _clamp_score(_SCORE_BASELINE + tally.net)
+    return scores
 
-    for turn in npc_turns:
-        observations = _parse_rubric_observations(turn["raw_output_json"])
-        for obs in observations:
-            rubric_id = obs.get("rubric_id")
-            score_delta = obs.get("score_delta")
-            if not isinstance(rubric_id, str) or not rubric_id:
-                continue
-            rubric_id = normalize_dimension_id(rubric_id)
-            if not rubric_id:
-                continue
-            if rubric_id not in accumulators:
-                accumulators[rubric_id] = _SCORE_BASELINE
-            if isinstance(score_delta, int) and not isinstance(score_delta, bool):
-                # score_delta already validated/clamped by the turn pipeline
-                accumulators[rubric_id] += score_delta
 
+def _dimension_weights(rubric: ScenarioRubric) -> Dict[str, float]:
+    """Each dimension's weight: the authored one, or an equal share when it has none."""
+    share = 1.0 / len(rubric.dimensions) if rubric.dimensions else 0.0
     return {
-        dim_id: max(_SCORE_MIN, min(_SCORE_MAX, score))
-        for dim_id, score in accumulators.items()
+        d.id: (d.weight if d.weight is not None else share)
+        for d in rubric.dimensions
     }
 
 
-def _compute_overall_score(scores: Dict[str, float]) -> Optional[float]:
-    """Compute overall score as simple average (or None if no dimensions scored)."""
+def _compute_overall_score(
+    scores: Dict[str, float],
+    rubric: Optional[ScenarioRubric] = None,
+) -> Optional[float]:
+    """The overall score, or None if no dimension was scored.
+
+    With a rubric, the mean of the scored dimensions weighted by the rubric's
+    weights, renormalised over the dimensions that were scored (a dimension
+    left off the scorecard does not count as a zero). Without a rubric, or
+    when the scored dimensions' weights sum to zero, the plain mean.
+    """
     if not scores:
         return None
+    if rubric is not None:
+        weights = _dimension_weights(rubric)
+        total = sum(weights.get(dim_id, 0.0) for dim_id in scores)
+        if total > 0:
+            weighted = sum(score * weights.get(dim_id, 0.0) for dim_id, score in scores.items())
+            return round(weighted / total, 1)
     return round(sum(scores.values()) / len(scores), 1)
+
+
+def _rubric_bands(
+    narrative: DebriefNarrative,
+    rubric: Optional[ScenarioRubric],
+) -> Dict[str, str]:
+    """The debrief's bands for the rubric's dimensions, keyed by the rubric's ids.
+
+    The template fallback has none. A key that is a spelling of a dimension's
+    id or name counts for that dimension; any other key is dropped.
+    """
+    if rubric is None or narrative.used_fallback:
+        return {}
+    matcher = RubricIdMatcher.for_rubric(rubric)
+    bands: Dict[str, str] = {}
+    for written, band in narrative.dimension_bands.items():
+        dim_id = matcher.match(written)
+        if dim_id is not None:
+            bands.setdefault(dim_id, band)
+    return {d.id: bands[d.id] for d in rubric.dimensions if d.id in bands}
+
+
+def _hidden_variables(
+    state_variable_overrides: Optional[Dict[str, Any]],
+    played_variables: Optional[Collection[str]] = None,
+) -> Set[str]:
+    """The state variables the scenario hides from the player.
+
+    Those it marks hidden and, when ``played_variables`` names any, every
+    variable outside them (issue #580): the meters during play leave those
+    out, because the turns cannot move them.
+    """
+    try:
+        defs = build_variable_defs(state_variable_overrides)
+    except (TypeError, ValueError, AttributeError):
+        return set()
+    return hidden_variable_names(defs, played_variables)
 
 
 def whole_turn_of(row_turn_number: int) -> int:
@@ -473,11 +616,24 @@ async def generate_debrief(
     conn: sqlite3.Connection,
     runtime: ChatRuntime,
     scenario_data: ScenarioData,
+    *,
+    state_variable_overrides: Optional[Dict[str, Any]] = None,
+    played_variables: Optional[Collection[str]] = None,
+    config: Any = None,
 ) -> DebriefResult:
     """Generate, persist, and return a debrief for a completed session.
 
     Transitions the session through DebriefGenerating → DebriefReady/Error.
     Always returns a DebriefResult (falls back to template narrative on LLM error).
+
+    ``scenario_data.rubric``, when the scenario has one, decides what is
+    scored (see the module docstring). ``state_variable_overrides`` is the
+    scenario's ``state.variables`` and ``played_variables`` the variables it
+    plays (``ScenarioInfo.played_variables``): the telemetry's state arc
+    leaves out the ones it hides and, when it plays any, every other one,
+    the same set the meters left out during play. ``config`` is the service
+    config, which picks the model the debrief is sampled for, as for the
+    session's turns (see ``process_turn``).
     """
     session_id: str = session_row["session_id"]
     scenario_id: str = session_row["scenario_id"]
@@ -548,9 +704,12 @@ async def generate_debrief(
             if r["role"] == "player" and r["barged_in"]
         )
 
-        # Compute scores.
-        scores = _compute_scores(npc_turn_rows)
-        overall_score = _compute_overall_score(scores)
+        # Scores from the turns' notes alone: the prompt's scores for a
+        # scenario with no rubric, and the template fallback's. A rubric's
+        # bands, once the model has placed them, are added below.
+        rubric = scenario_data.rubric
+        dimension_names = {d.id: d.name for d in rubric.dimensions} if rubric else {}
+        turn_scores = _compute_scores(npc_turn_rows, rubric)
 
         # Compute telemetry metrics (pure, deterministic over this transcript).
         source_mode = setup.get("input_mode", "text-only")
@@ -559,6 +718,7 @@ async def generate_debrief(
             source_mode=source_mode,
             final_state=final_state,
             interruption_count=barge_in_count,
+            hidden_variables=_hidden_variables(state_variable_overrides, played_variables),
         )
 
         # Identify key turning points for fallback and for the LLM.
@@ -574,10 +734,14 @@ async def generate_debrief(
             outcome=outcome,
             total_turns=total_turns,
             final_state=final_state,
-            scores=scores,
+            scores=turn_scores,
             turns=turn_records,
+            rubric_dimension_names=dimension_names,
             pack_id=pack_id,
             difficulty_preset=difficulty_preset,
+            rubric_dimensions=list(rubric.dimensions) if rubric else [],
+            player_visible_goals=list(scenario_data.player_visible_goals),
+            npc_name=scenario_data.npc.display_name,
         )
         prompt = compose_debrief_prompt(composer_input)
 
@@ -586,9 +750,17 @@ async def generate_debrief(
             ChatMessage(role="system", content=prompt.system_prompt),
             ChatMessage(role="user", content=prompt.user_prompt),
         ]
+        # Same model, same sampling as the session's turns: the registry's
+        # temperature and top_p when its entry declares them (issue #580).
+        # The schema asks for a band per rubric dimension when there is a
+        # rubric (issue #578); the prompt quotes the same schema.
         request = ChatRequest(
             messages=messages,
-            json_schema=DEBRIEF_NARRATIVE_SCHEMA,
+            json_schema=build_debrief_narrative_schema(
+                rubric_ids=rubric.dimension_ids if rubric else None,
+            ),
+            max_tokens=_DEBRIEF_MAX_TOKENS,
+            **active_model_sampling(conn, runtime.id, config).request_fields(),
         )
         logger.debug(
             "Calling runtime %s for debrief of session %s (~%d tokens)",
@@ -608,9 +780,18 @@ async def generate_debrief(
         narrative: DebriefNarrative = parse_debrief_narrative(
             raw_text,
             fallback_outcome=outcome,
-            fallback_scores=scores,
+            fallback_scores=turn_scores,
             fallback_key_turns=key_turns,
+            fallback_dimension_names=dimension_names,
+            fallback_overall_score=_compute_overall_score(turn_scores, rubric),
         )
+
+        # The final scores: the rubric's bands, as the model placed them, plus
+        # the turns' notes (see _compute_scores). With no rubric, or with the
+        # template fallback, there are no bands and these are the turn scores.
+        dimension_bands = _rubric_bands(narrative, rubric)
+        scores = _compute_scores(npc_turn_rows, rubric, dimension_bands)
+        overall_score = _compute_overall_score(scores, rubric)
 
         # Drop any turning points that reference turn numbers not in the transcript.
         # This prevents invented evidence regardless of whether we got LLM or fallback output.
@@ -655,6 +836,8 @@ async def generate_debrief(
             "generated_at": now,
             "used_fallback": narrative.used_fallback,
             "metrics": metrics,
+            "dimension_names": dimension_names,
+            "dimension_bands": dimension_bands,
         }
         if pack_id:
             debrief_doc["pack_id"] = pack_id
@@ -702,6 +885,8 @@ async def generate_debrief(
             generated_at=now,
             used_fallback=narrative.used_fallback,
             metrics=metrics,
+            dimension_names=dimension_names,
+            dimension_bands=dimension_bands,
         )
 
     except Exception as exc:

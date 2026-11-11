@@ -2,7 +2,7 @@
 schema_version: "0.1"
 pack_id: official.difficult_conversations
 name: Difficult Conversations
-version: 0.1.0
+version: 0.1.1
 description: >-
   Practice real-life conversations that most people avoid or handle poorly.
   Build confidence giving feedback, setting boundaries, and owning mistakes

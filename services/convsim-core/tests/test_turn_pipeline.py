@@ -45,6 +45,7 @@ from convsim_core.services.turn_pipeline import (
 )
 from convsim_core.storage.migrations import run_migrations
 from convsim_prompt import LAYER_ORDER, SafetyPolicy, TurnEvent
+from convsim_prompt.layers import PREVIOUS_NPC_LINE_BEGIN, PREVIOUS_NPC_LINE_END
 from convsim_prompt.turn_output import SafetyStatus, SessionControl, TurnOutput
 
 
@@ -1007,7 +1008,7 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             captured["hidden_agenda"] = hidden_agenda
             return _valid_turn_output()
 
@@ -1034,7 +1035,7 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             captured["runtime"] = runtime
             return _valid_turn_output()
 
@@ -1059,7 +1060,7 @@ class TestPromptComposerWiring:
         conn = _make_unit_db()
         row = _insert_unit_session(conn)
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="structural_validation_failure",
@@ -1095,7 +1096,7 @@ class TestPromptComposerWiring:
 
         secret_keywords = "candidate leadership competency"
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="output_violation_detected",
@@ -1870,10 +1871,15 @@ class TestScenarioStateIntegration:
 
     @pytest.mark.asyncio
     async def test_scenario_event_fires_and_returned(self):
-        """An event whose condition is met appears in triggered_scenario_events."""
+        """An event whose condition is met appears in triggered_scenario_events.
+
+        Events are evaluated on the state the previous turn left (issue #580),
+        so the turn that pushes rapport over 70 does not fire it; the next one
+        does, with the event's instruction in its prompt.
+        """
         from convsim_core.scenario_state import ScenarioEvent
         conn = _make_unit_db()
-        # rapport starts at 60; delta +15 pushes to 75 which is > 70 — event fires.
+        # rapport starts at 60; delta +15 pushes to 75 which is > 70.
         row = _insert_unit_session_with_state(
             conn, state_vars={"trust": 50, "patience": 75, "pressure": 25,
                               "rapport": 60, "openness": 50, "objective_progress": 0}
@@ -1884,18 +1890,36 @@ class TestScenarioStateIntegration:
             when={"type": "variable_above", "variable": "rapport", "threshold": 70},
             npc_instruction="Acknowledge the improved atmosphere.",
         )
+        runtime = _SpecificDeltaRuntime(state_delta={"rapport": 15})
+        prompts: list = []
+        original = runtime._stream
 
-        result = await process_turn(
-            session_row=row,
-            player_text="I appreciate your perspective.",
-            scenario_data=get_scenario_data("behavioral_interview", "standard"),
-            max_turns=20,
-            runtime=_SpecificDeltaRuntime(state_delta={"rapport": 15}),
-            conn=conn,
-            scenario_events=[evt],
-        )
+        def _recording_stream(request):
+            prompts.append(request.messages[0].content)
+            return original(request)
 
-        assert "rapport_high" in result.triggered_scenario_events
+        runtime._stream = _recording_stream
+
+        async def _turn(session_row):
+            return await process_turn(
+                session_row=session_row,
+                player_text="I appreciate your perspective.",
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
+                max_turns=20,
+                runtime=runtime,
+                conn=conn,
+                scenario_events=[evt],
+            )
+
+        first = await _turn(row)
+        assert first.new_state_vars["rapport"] == 75
+        assert first.triggered_scenario_events == []
+        assert "Acknowledge the improved atmosphere." not in prompts[0]
+
+        row = conn.execute("SELECT * FROM turn_sessions WHERE session_id = 'sess-unit'").fetchone()
+        second = await _turn(row)
+        assert "rapport_high" in second.triggered_scenario_events
+        assert "  - Acknowledge the improved atmosphere." in prompts[1]
 
     @pytest.mark.asyncio
     async def test_scenario_event_does_not_fire_when_condition_not_met(self):
@@ -2249,3 +2273,81 @@ class TestTurnAfterSessionFinished:
         from convsim_core.services.turn_pipeline import FINISHED_FLOW_STATES
 
         assert set(FINISHED_FLOW_STATES) == set(ENDED_FLOW_STATES)
+
+
+# ---------------------------------------------------------------------------
+# What the model is sent for a turn (issue #580)
+# ---------------------------------------------------------------------------
+
+
+class _RecordingRuntime(FakeChatRuntime):
+    """The fake runtime, keeping every request it is sent."""
+
+    def __init__(self) -> None:
+        self.requests: list = []
+
+    def chat_stream(self, request: ChatRequest):
+        self.requests.append(request)
+        return super().chat_stream(request)
+
+
+class TestNpcCoherencePromptLayers:
+    @pytest.mark.asyncio
+    async def test_runtime_gets_named_speakers_and_the_previous_npc_line(self):
+        """The transcript names both sides; the NPC's last line rides in the user turn.
+
+        Turn 1 quotes the opening line, turn 2 the NPC's turn-1 reply. The
+        quote and its rule never enter the system message, whose stable layers
+        a prompt cache reuses (issue #524), and the player's words stay last.
+        """
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+        opening = "Good morning! Tell me about a project you led."
+        conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, flow_state_after, created_at) "
+            "VALUES ('sess-unit', 0, 'npc_opening', ?, 'PlayerTurnListening', "
+            "'2026-01-01T00:00:00+00:00')",
+            (opening,),
+        )
+        conn.commit()
+        scenario = get_scenario_data("behavioral_interview", "standard")
+        npc = scenario.npc.display_name
+        player = scenario.player_role_label
+        runtime = _RecordingRuntime()
+
+        await process_turn(
+            session_row=row,
+            player_text="I led our checkout rewrite.",
+            scenario_data=scenario,
+            max_turns=10,
+            runtime=runtime,
+            conn=conn,
+        )
+        system, user = runtime.requests[0].messages
+        assert (system.role, user.role) == ("system", "user")
+        assert f"{npc} (you): {opening}" in system.content
+        assert f'{PREVIOUS_NPC_LINE_BEGIN}\n"{opening}"\n{PREVIOUS_NPC_LINE_END}' in user.content
+        assert PREVIOUS_NPC_LINE_BEGIN not in system.content
+        assert "That was your previous line" not in system.content
+        assert user.content.index("LAYER:PREVIOUS_NPC_LINE") < user.content.index(
+            "I led our checkout rewrite."
+        )
+        assert user.content.endswith("=== END PLAYER INPUT ===")
+
+        row = conn.execute(
+            "SELECT * FROM turn_sessions WHERE session_id = 'sess-unit'"
+        ).fetchone()
+        await process_turn(
+            session_row=row,
+            player_text="We cut latency in half.",
+            scenario_data=scenario,
+            max_turns=10,
+            runtime=runtime,
+            conn=conn,
+        )
+        system, user = runtime.requests[1].messages
+        assert f"{player} (the player): I led our checkout rewrite." in system.content
+        assert f"{npc} (you): Hello there. I am a simulated NPC." in system.content
+        assert '\n"Hello there. I am a simulated NPC."\n' in user.content
+        assert opening not in user.content

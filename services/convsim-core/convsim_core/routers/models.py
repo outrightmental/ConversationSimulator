@@ -424,7 +424,8 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
                     "Use “Set me up” on the Welcome screen to install it."
                 )
             elif (
-                find_ready_model_path(db.connection()) is None and not body.model_id
+                find_ready_model_path(db.connection(), request.app.state.service_config) is None
+                and not body.model_id
             ):
                 friendly = (
                     "No AI model is installed yet. "

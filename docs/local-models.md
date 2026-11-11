@@ -14,7 +14,7 @@ shows the recommended model's size and license, and the download starts when
 you click, unless the preflight check finds something to fix first, such as too
 little free disk space (a **Getting things ready** screen then says what it
 is). The recommended model is the registry's `role: starter` entry
-(Qwen3 4B Instruct Q4_K_M) on every machine; it is not chosen by hardware.
+(Qwen3 4B Instruct 2507 Q4_K_M) on every machine; it is not chosen by hardware.
 
 After first-run setup you can switch model in the **AI engine** section of
 **Settings** (Provider and Model, then **Apply**). Its llama.cpp model list
@@ -62,7 +62,7 @@ reads **File name** and shows the file name alone.
 
 | Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
 |---|---|---|---|---|---|
-| Starter | Qwen3 4B Instruct Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
+| Starter | Qwen3 4B Instruct 2507 Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
 | Standard | Qwen3 8B Instruct Q4_K_M | 5.0 GB | ~13 min | 6 GB | Yes (very slow) |
 | High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~24 min | 10 GB | Not practical |
 | High-quality | Mistral Small 3.1 24B Instruct Q4_K_M | 14.3 GB | ~38 min | 16 GB | Not practical |
@@ -80,15 +80,15 @@ The engine the app starts runs with one slot, the context size from the model's 
 
 ## Recommended models
 
-The app's screens install only the starter model. The other three are in the registry, but to use one at this release you download its file yourself (the registry lists the pinned URL and SHA-256) and select it as a [custom GGUF model](#using-a-custom-gguf-model). A file selected that way is not matched to its registry entry, so the engine starts it with the default 8 192-token context, not the context length listed below. If the engine is already running, as it is after **Set me up**, the new file is used after you quit and reopen the app (see [How the model manager works](#how-the-model-manager-works)).
+The app's screens install only the starter model. The other three are in the registry, but to use one at this release you download its file yourself (the registry lists the pinned URL and SHA-256) and select it as a [custom GGUF model](#using-a-custom-gguf-model). A file selected that way is not matched to its registry entry, so the engine starts it with the default 8 192-token context, not the context length listed below, and its conversations are sent at temperature 0.8 and top-p 0.95 instead of the entry's `temperature_default` and `top_p_default`, which a model the app installed is sent at. If the engine is already running, as it is after **Set me up**, the new file is used after you quit and reopen the app (see [How the model manager works](#how-the-model-manager-works)).
 
-### Qwen3 4B Instruct Q4_K_M — starter
+### Qwen3 4B Instruct 2507 Q4_K_M — starter
 
 - **License:** Apache-2.0
 - **Size:** 2.5 GB — about 7 minutes on a 50 Mbps connection
 - **Best for:** machines with 4–6 GB VRAM, or CPU-only installs
 - **Context length:** 8 192 tokens
-- **Notes:** Fastest model in the registry. Suitable for all text-only scenarios. NPC responses may be shorter and less contextually rich than larger models.
+- **Notes:** Fastest model in the registry. Suitable for all text-only scenarios. NPC responses may be shorter and less contextually rich than larger models. This is the non-thinking instruct release of Qwen3 4B; it replaced the hybrid Qwen3 4B as the starter in v0.4, after the demo-gate replays found it more coherent in all five demo conversations (issue #580). An install of the earlier starter keeps working.
 
 ### Qwen3 8B Instruct Q4_K_M — standard
 
@@ -177,12 +177,12 @@ folder that **Settings → Local folders** shows. On Linux, for example:
 
 ```bash
 # macOS / Linux
-shasum -a 256 ~/.local/share/com.outrightmental.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf
+shasum -a 256 ~/.local/share/com.outrightmental.convsim/models/llm/qwen3-4b-instruct-2507-q4_k_m.gguf
 ```
 
 ```powershell
 # Windows PowerShell
-Get-FileHash "$env:LOCALAPPDATA\com.outrightmental.convsim\models\llm\qwen3-4b-instruct-q4_k_m.gguf" -Algorithm SHA256
+Get-FileHash "$env:LOCALAPPDATA\com.outrightmental.convsim\models\llm\qwen3-4b-instruct-2507-q4_k_m.gguf" -Algorithm SHA256
 ```
 
 On macOS the folder is `~/Library/Application Support/com.outrightmental.convsim/models/llm/`.

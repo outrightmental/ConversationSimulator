@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.requests import HTTPConnection
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -39,6 +40,7 @@ from convsim_core.errors import ConvsimError
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.active import (
     MODEL_FREE_RUNTIME_IDS,
+    find_ready_model_path,
     unpinned_session_runtime_is_model_free,
 )
 from convsim_core.runtime.base import ChatRuntime
@@ -72,12 +74,13 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 _VALID_STATES_FOR_TURN = {"PlayerTurnListening"}
 
 
-def _resolve_scenario(request: Request, scenario_id: str):
+def _resolve_scenario(request: HTTPConnection, scenario_id: str):
     """Resolve a scenario the way this edition plays it.
 
     The demo edition (issue #495) plays the official packs' curated
     conversations, so it resolves pack-first and pinned to the curated pack;
-    the full app keeps the historical catalog-first order.
+    the full app keeps the historical catalog-first order. ``request`` may be
+    a WebSocket: only its app is read.
     """
     conn = request.app.state.db.connection()
     if is_demo(request.app.state.service_config):
@@ -341,6 +344,12 @@ class DebriefResponse(BaseModel):
     generated_at: str
     used_fallback: bool
     metrics: Optional[Dict[str, Any]] = None
+    # Rubric dimension id -> the rubric's name for it (issue #578), so the
+    # scorecard labels rows with the rubric's names; empty for a scenario
+    # with no rubric, whose rows the client names from their ids.
+    dimension_names: Dict[str, str] = {}
+    # Rubric dimension id -> the band the debrief placed it in.
+    dimension_bands: Dict[str, str] = {}
 
 
 class BranchSessionRequest(BaseModel):
@@ -515,7 +524,9 @@ def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
     return runtime_id if runtime_id in _SESSION_PINNED_RUNTIME_IDS else None
 
 
-def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) -> str | None:
+def _recorded_model_for(
+    conn: Any, runtime: ChatRuntime, setup: Dict[str, Any], config: Any = None
+) -> str | None:
     """The model identity to stamp on this turn's timing record, or None (issue #519).
 
     Only a selection that served the turn is recorded. A session pinned to a
@@ -525,13 +536,70 @@ def _recorded_model_for(conn: Any, runtime: ChatRuntime, setup: Dict[str, Any]) 
     names what the runtime itself reported, and the registry id stays None
     rather than attributing the turn to a model that never ran. A file path
     is never recorded (see ``recorded_model_id``).
+
+    In the demo edition the saved selection is the full app's on the shared
+    data root (D-06), so it does not say what served the turn. The demo's
+    engine runs the demo model's install, the file ``find_ready_model_path``
+    picks for it and the turn's sampling is read for, so a llama.cpp turn is
+    recorded as that file's model.
     """
     if setup.get("runtime_id") in _SESSION_PINNED_RUNTIME_IDS:
         return None
+    if is_demo(config):
+        if runtime.id != "llama_cpp":
+            return None
+        return recorded_model_id(conn, find_ready_model_path(conn, config))
     active = get_active_config(conn)
     if active.get("runtime_id") != runtime.id:
         return None
     return recorded_model_id(conn, active.get("model_id"))
+
+
+def _require_demo_engine(request: Request) -> None:
+    """Refuse an unpinned demo session whose live runtime is not llama.cpp.
+
+    The demo edition plays only its own model, on the managed llama.cpp
+    engine: startup boots it whatever the shared data root's saved selection
+    names (``resolve_startup_runtime_id``) and ``/api/models/use`` refuses any
+    other runtime. This is the backstop for a live runtime that got past both,
+    such as Ollama, which would play the full app's model instead. A no-op in
+    the full edition and for sessions pinned to a model-free runtime, which
+    never use the live runtime.
+    """
+    config = request.app.state.service_config
+    if not is_demo(config):
+        return
+    runtime = getattr(request.app.state, "runtime", None)
+    if getattr(runtime, "id", None) == "llama_cpp":
+        # The engine is the demo's, but its model may not be installed yet: on
+        # a data root the full app set up, startup boots llama.cpp whatever
+        # the full app selected. Without the demo model's install the first
+        # turn would fail with 503, so refuse the way a fresh profile is
+        # refused (#473). A demo pointed at an external llama-server on an
+        # empty data root is refused the same way; it is a developer setup.
+        conn = request.app.state.db.connection()
+        if find_ready_model_path(conn, config) is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The demo's AI model is not installed yet, so a conversation "
+                    "cannot be started. Finish setup (install the demo's model) "
+                    "and try again."
+                ),
+            )
+        return
+    name = getattr(runtime, "display_name", None) or getattr(runtime, "id", None) or "another engine"
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "message": (
+                f"The demo plays only its own AI model, but the app is set to use {name}. "
+                "Restart the demo to play its model. The full version of "
+                "Conversation Simulator adds Ollama and your own GGUF files."
+            ),
+            "code": EDITION_RESTRICTED,
+        },
+    )
 
 
 def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
@@ -616,6 +684,7 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
     # mid-conversation.
     pinned_runtime_id = _pinned_runtime_id(body.runtime_id, conn)
     if pinned_runtime_id is None:
+        _require_demo_engine(request)
         # Leave no key at all rather than a null one, so _resolve_runtime's
         # membership test reads the same for old and new sessions.
         setup_dict.pop("runtime_id", None)
@@ -702,14 +771,22 @@ async def get_session(session_id: str, request: Request) -> SessionResponse:
     # who stepped out to Settings came back to a conversation with no meters at
     # all — the one thing the tutorial tells them to watch — until they sent
     # another message.
-    response.visible_state = _visible_state_for(request, row)
+    response.visible_state = session_visible_state(request, row)
     return response
 
 
-def _visible_state_for(request: Request, row: Any) -> Dict[str, int]:
-    """The session's meter values, minus the variables it keeps hidden."""
+def session_visible_state(connection: HTTPConnection, row: Any) -> Dict[str, int]:
+    """The session's meter values, minus the variables it keeps hidden.
+
+    Hidden are the variables the scenario marks hidden and, for a scenario
+    with state of its own, every variable it does not play (issue #580): its
+    turns cannot move them. The turn results, the opening event, this
+    session's detail and export, and the session socket's resync all report
+    the same set. ``row`` needs the session's ``scenario_id``, ``flow_state``
+    and ``state_vars_json``.
+    """
     state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
-    info = _resolve_scenario(request, row["scenario_id"])
+    info = _resolve_scenario(connection, row["scenario_id"])
     overrides = info.state_variable_overrides if info is not None else None
     defs = build_variable_defs(overrides)
     if not state_vars and row["flow_state"] != "NotStarted":
@@ -720,7 +797,8 @@ def _visible_state_for(request: Request, row: Any) -> Dict[str, int]:
         # "go to Settings, then Resume" path lands on (issue #501). Report the
         # same values the opening event did, computed the same way.
         state_vars = initialize_state(defs)
-    visible, _ = partition_state_by_visibility(state_vars, defs)
+    played = info.played_variables() if info is not None else None
+    visible, _ = partition_state_by_visibility(state_vars, defs, played)
     return visible
 
 
@@ -782,7 +860,7 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
 
             defs = build_variable_defs(info.state_variable_overrides)
             initial_visible, _ = partition_state_by_visibility(
-                initialize_state(defs), defs
+                initialize_state(defs), defs, info.played_variables()
             )
         except Exception:  # pragma: no cover - meters are best-effort
             initial_visible = {}
@@ -917,10 +995,11 @@ async def _run_turn(
     runtime = _resolve_runtime(request, setup)
     save_transcript = setup.get("save_transcript", True)
     source_mode = setup.get("input_mode", "text-only")
+    config = request.app.state.service_config
     timing = TurnTimingBuilder(
         clock=clock,
         runtime_id=runtime.id,
-        registry_model_id=_recorded_model_for(conn, runtime, setup),
+        registry_model_id=_recorded_model_for(conn, runtime, setup, config),
     )
     # Stream the turn to whoever is listening on the session socket (#538).
     # With no socket connected the pipeline runs exactly as before.
@@ -947,6 +1026,7 @@ async def _run_turn(
             ending_conditions=info.ending_conditions,
             timing=timing,
             streamer=streamer,
+            config=config,
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1221,6 +1301,8 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
                 generated_at=doc.get("generated_at", _now_iso()),
                 used_fallback=doc.get("used_fallback", False),
                 metrics=doc.get("metrics"),
+                dimension_names=doc.get("dimension_names") or {},
+                dimension_bands=doc.get("dimension_bands") or {},
             )
         # DebriefReady state with no persisted row — data inconsistency.
         raise HTTPException(
@@ -1252,6 +1334,9 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
             conn=conn,
             runtime=runtime,
             scenario_data=scenario_data,
+            state_variable_overrides=info.state_variable_overrides,
+            played_variables=info.played_variables(),
+            config=request.app.state.service_config,
         )
     except Exception as exc:
         logger.error("Debrief generation failed for session %s: %s", session_id, exc)
@@ -1291,6 +1376,8 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
         generated_at=result.generated_at,
         used_fallback=result.used_fallback,
         metrics=result.metrics if result.metrics else None,
+        dimension_names=result.dimension_names,
+        dimension_bands=result.dimension_bands,
     )
 
 
@@ -1607,9 +1694,9 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
         "name": info.scenario_data.title if info else scenario_id,
     }
 
-    state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
-    var_defs = build_variable_defs()
-    visible_state, _ = partition_state_by_visibility(state_vars, var_defs)
+    # The scenario's own meters, as the conversation showed them: the
+    # baselines alone left a scenario's hidden variables in the export.
+    visible_state = session_visible_state(request, row)
 
     turn_rows = (
         conn.execute(

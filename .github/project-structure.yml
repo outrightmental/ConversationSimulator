@@ -190,15 +190,18 @@ backfill:
   # milestone and labels were set on the issue directly; Priority is a board
   # field, so `apply` writes it on its next run): 551 is the demo app's missing
   # Steam artwork, 552 the NPC escalation feature, 575 the Intel macOS build
-  # deferred by #563.
+  # deferred by #563, 580 the D-05 conversation-quality blocker found by the
+  # demo gate's pre-check, 582 the full app's catalog-first scenarios that
+  # miss #580's rubric and characters, 583 the repetition guard's blind spot
+  # for Japanese.
   milestones:
-    v0.4 — Demo: [487, 488, 494, 495, 499, 500, 501, 508, 551]
-    v1.0 — Paid launch: [315, 316, 361, 362, 364, 366, 456, 457]
+    v0.4 — Demo: [487, 488, 494, 495, 499, 500, 501, 508, 551, 580]
+    v1.0 — Paid launch: [315, 316, 361, 362, 364, 366, 456, 457, 582, 583]
     v1.1 — Post-launch: [454, 461, 462, 463, 464, 465, 466, 552, 575]
   priorities:
-    P0 — blocker: [495, 501, 508, 551]
-    P1 — next: [487, 499, 500]
-    P2 — later: [488, 491, 494, 552, 575]
+    P0 — blocker: [495, 501, 508, 551, 580]
+    P1 — next: [487, 499, 500, 582]
+    P2 — later: [488, 491, 494, 552, 575, 583]
   labels:
     # CI, packaging, and repo plumbing that carried only the retired `chore`
     # label and would otherwise leave the pie chart with a blank slice.

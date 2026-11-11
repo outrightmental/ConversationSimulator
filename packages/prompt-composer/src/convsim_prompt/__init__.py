@@ -1,13 +1,24 @@
 """convsim_prompt — Layered prompt composer for Conversation Simulator NPC turns."""
 
-from .composer import LAYER_ORDER, SYSTEM_LAYER_ORDER, compose_turn_prompt
+from .composer import (
+    LAYER_ORDER,
+    EVENTS_BUDGET_ALLOWANCE,
+    OPTIONAL_SYSTEM_LAYERS,
+    RETRY_USER_LAYER_ORDER,
+    SYSTEM_LAYER_ORDER,
+    USER_LAYER_ORDER,
+    compose_repetition_retry_prompt,
+    compose_turn_prompt,
+)
 from .debrief_composer import DebriefComposerInput, DebriefTurnRecord, compose_debrief_prompt
 from .debrief_output import (
     DEBRIEF_NARRATIVE_SCHEMA,
     DEBRIEF_SYSTEM_PREAMBLE,
+    DIMENSION_BANDS,
     DebriefNarrative,
     DebriefValidationError,
     TurningPoint,
+    build_debrief_narrative_schema,
     parse_debrief_narrative,
 )
 from .inspection import PromptInspector
@@ -16,6 +27,14 @@ from .output_validator import (
     OutputValidationResult,
     OutputViolation,
     validate_npc_output,
+)
+from .rubric import RubricIdMatcher, normalize_dimension_id
+from .repetition import (
+    RepetitionMatch,
+    RepetitionReport,
+    asks_for_repeat,
+    check_repetition,
+    less_repetitive,
 )
 from .turn_output import (
     RubricObservation,
@@ -28,6 +47,7 @@ from .turn_output import (
     TurnEvent,
     TurnOutput,
     ValidationError,
+    filter_rubric_observations,
     parse_turn_output,
 )
 from .types import (
@@ -39,16 +59,29 @@ from .types import (
     PromptBundle,
     PromptComposerInput,
     ResponseStyleOverrides,
+    RubricDimension,
     SafetyPolicy,
     ScenarioData,
+    ScenarioRubric,
     SessionState,
+    StateVariable,
+    StateVariableCue,
     TranscriptEntry,
+    build_npc_turn_output_schema,
+    rubric_ids_in_schema,
+    state_variables_in_schema,
+    turn_output_schema_for,
 )
 
 __all__ = [
     "compose_turn_prompt",
+    "compose_repetition_retry_prompt",
     "LAYER_ORDER",
+    "EVENTS_BUDGET_ALLOWANCE",
+    "OPTIONAL_SYSTEM_LAYERS",
+    "RETRY_USER_LAYER_ORDER",
     "SYSTEM_LAYER_ORDER",
+    "USER_LAYER_ORDER",
     "UNTRUSTED_CONTENT_BEGIN",
     "UNTRUSTED_CONTENT_END",
     "PromptInspector",
@@ -60,10 +93,23 @@ __all__ = [
     "PromptBundle",
     "PromptComposerInput",
     "ResponseStyleOverrides",
+    "RubricDimension",
     "SafetyPolicy",
     "ScenarioData",
+    "ScenarioRubric",
     "SessionState",
+    "StateVariable",
+    "StateVariableCue",
     "TranscriptEntry",
+    # Per-session output schemas and rubric id matching (issue #578)
+    "build_npc_turn_output_schema",
+    "turn_output_schema_for",
+    "rubric_ids_in_schema",
+    # The scenario's state variables in the turn schema (issue #580)
+    "state_variables_in_schema",
+    "RubricIdMatcher",
+    "normalize_dimension_id",
+    "filter_rubric_observations",
     # Turn output parser
     "parse_turn_output",
     "TurnOutput",
@@ -80,12 +126,20 @@ __all__ = [
     "validate_npc_output",
     "OutputValidationResult",
     "OutputViolation",
+    # Repetition guard (issue #580)
+    "asks_for_repeat",
+    "check_repetition",
+    "less_repetitive",
+    "RepetitionMatch",
+    "RepetitionReport",
     # Debrief prompt composer and output parser
     "compose_debrief_prompt",
     "DebriefComposerInput",
     "DebriefTurnRecord",
     "DEBRIEF_NARRATIVE_SCHEMA",
     "DEBRIEF_SYSTEM_PREAMBLE",
+    "DIMENSION_BANDS",
+    "build_debrief_narrative_schema",
     "DebriefNarrative",
     "DebriefValidationError",
     "TurningPoint",

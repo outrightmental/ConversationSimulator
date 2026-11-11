@@ -91,9 +91,9 @@ static_assertions:
     path: events[id=natural_ask_window].repeat
     check: "equals false"
 
-  - description: comfort_warning fires when jordan_comfort falls below 30
+  - description: comfort_warning fires when jordan_comfort falls below 42
     path: events[id=comfort_warning].when
-    check: "type=variable_below AND variable=jordan_comfort AND threshold=30"
+    check: "type=variable_below AND variable=jordan_comfort AND threshold=42"
 
   - description: comfort_warning fires only once
     path: events[id=comfort_warning].repeat
@@ -103,9 +103,9 @@ static_assertions:
     path: events[id=disengagement].when
     check: "type=variable_below AND variable=jordan_interest AND threshold=20"
 
-  - description: disengagement fires only once
+  - description: disengagement holds on every turn jordan_interest stays below 20
     path: events[id=disengagement].repeat
-    check: "equals false"
+    check: "equals true"
 
   - description: Success ending condition targets jordan_interest above 68
     path: ending_conditions.success

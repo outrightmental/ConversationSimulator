@@ -159,6 +159,9 @@ def _start_core(data_dir: Path, port: int, llama_port: int, llama_timeout_s: flo
     env = os.environ.copy()
     env.update({
         # Select the real llama.cpp runtime (default is the deterministic fake).
+        # The fresh data dir holds no install record of the model file, so
+        # turns go out at temperature 0.8 and the adapter's top-p, not the registry
+        # entry's values (docs/runtime-adapters.md, "Sampling").
         "CONVSIM_RUNTIME_ID": "llama_cpp",
         # Point the adapter at the llama-server started above.
         "CONVSIM_LLAMA_CPP_BASE_URL": f"http://127.0.0.1:{llama_port}",

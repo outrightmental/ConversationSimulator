@@ -1,4 +1,109 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.1 — Release Notes
+
+> **Patch release (2026-11-11).** The demo's five conversations hold
+> together: the characters answer what was said, stay in their role and their
+> story, and repeat themselves far less; each debrief is scored on its
+> scenario's own rubric; and the starter model is Qwen3 4B Instruct 2507. The
+> free demo edition should be built from this release: v0.4.0's demo build
+> predates this work.
+
+## What's new in v0.4.1
+
+### The characters hold a conversation (#580, #578)
+
+A pre-check of demo gate D-05 played the five demo conversations to the
+debrief and found four of them failing on the character. Ray, the car
+dealer, asked the buyer for the buyer's lowest price; Rosa offered back the
+coffee just ordered; Diane asked the same question four turns running;
+Jordan adopted the player's slip as their own research. Every debrief scored
+dimensions the model made up, around 50. Most of it was engine wiring that
+no model would fix, and it is now wired:
+
+- The turn prompt names who is speaking in the transcript, tells the
+  character to answer what was just said, never to ask for what it was just
+  told, never to speak from the player's side and not to greet again, and
+  quotes its previous line as one not to reuse. The difficulty preset's own
+  description reaches the prompt.
+- The five demo characters are rewritten as do and never rules: Ray's
+  counter ladder, Diane's market-rate probe and her answer about the
+  process, Jordan's fixed research topic, Rosa's confirmations, prices and
+  pastry case, and Dana's concrete answers about the role.
+- **Each scenario is scored on its own rubric.** The rubric is loaded with
+  the scenario, its dimensions are in the turn prompt, and the turn's
+  output schema allows only their ids. The debrief places each dimension in
+  a low, medium or high band, moves it by the turn notes, applies the
+  rubric's weights, and labels the scorecard with the rubric's own names.
+  It lists the questions the player left unanswered and the player's slips
+  first, keeps a dimension out of the high band when any line falls short of
+  it, and credits the player only with the player's own words. Hidden
+  variables stay out of its telemetry.
+- **The scenario's own state and events drive the turn.** Each variable the
+  scenario plays is listed with what it means, the state change is limited
+  to them, meters the scenario does not play are hidden, and an event that
+  fires injects its instruction into the next turn, so Ray counters, Diane
+  probes and the endings can be reached.
+- A reply that repeats one of the character's last two lines is generated
+  once more, unless the player asked to hear it again. On the conversation
+  screen, which streams the reply, that applies to its first sentence. The
+  check compares words, so it does not yet catch a repeat in Japanese, which
+  is written without spaces (#583).
+- The registry's sampling defaults (temperature 0.75, top-p 0.9) reach the
+  runtime; turns went out at 0.8 and 0.95 before.
+- **The starter model is Qwen3 4B Instruct 2507** (2.5 GB, Apache-2.0), the
+  non-thinking instruct release of Qwen3 4B. Played on the same code, it was
+  more coherent than the hybrid Qwen3 4B in all five conversations. The
+  demo's one-click set-up installs it.
+
+`scripts/demo-gate-replay.py` replays the five against a running engine with
+scripted player turns and checks each turn for repetition, the hidden agenda
+said aloud, state that never moves, debriefs off the rubric or on the
+template, and canned fallback lines. It is a pre-check: the manual D-05 run
+on reference hardware still judges each conversation.
+
+### Also in v0.4.1
+
+- On a computer where the full app is set up with another model, the demo
+  plays only its own: it leaves the full app's model selection as it is,
+  starts the managed engine whatever the full app chose, sends its turns with
+  the demo model's sampling, times them under it, and asks the player to
+  finish setup, instead of failing on the first turn, while its model is not
+  installed.
+- A demo build started from a branch now fails with "Start the demo build
+  from the v0.4.1 tag", where the run started, the three Run workflow steps
+  and the `gh` command (#584). A demo for a tag that does not exist yet says
+  to publish the full release first.
+
+## Upgrade notes
+
+- The starter model is now Qwen3 4B Instruct 2507
+  (`qwen3-4b-instruct-2507-q4_k_m`). An install of the earlier starter,
+  Qwen3 4B Instruct Q4_K_M (`qwen3-4b-instruct-q4_k_m`), keeps working under
+  its own name; to switch, install the new starter from the model manager.
+- The five demo packs' versions go up (Dating, Difficult Conversations,
+  Everyday Negotiation, Job Interview, Language Café), so an installed copy
+  is replaced by the bundled one at the next start.
+- The debrief may now write up to 1536 tokens (1024 before), so on a
+  processor-only machine it can take a little longer. No database migration.
+
+## Known gaps
+
+- The starter model still slips at times: a selling point repeated across
+  turns, a detail it invents about the player, an odd turn of phrase, and
+  debriefs that can be generous. The demo gate's manual run on reference
+  hardware (D-05) judges whether the five are ready to go live.
+- A scenario's ending can fire on the turn the character asks a question, so
+  the session closes on a line the player cannot answer (#586).
+- In the full app, three of the five demo conversations (The Behavioral
+  Interview, The Used Car Deal, Coffee at Café Sol) and three other scenarios
+  still play their built-in catalog versions, which have neither the rubric
+  nor the rewritten characters. The demo plays the pack versions (#582).
+- The repetition check compares words, so it does not yet catch a repeat in
+  Japanese, which is written without spaces (#583).
+- The macOS build runs on Apple Silicon only (#575).
+
+---
+
 # Conversation Simulator v0.4.0 — Release Notes
 
 > **Minor release (2026-11-10).** This is the release the free demo edition
