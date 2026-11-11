@@ -27,7 +27,8 @@ rubric (the hardcoded catalog) keeps the old scoring and a plain mean.
 Language rules (enforced via DEBRIEF_SYSTEM_PREAMBLE):
   - No therapy, clinical assessment, or mental-health advice.
   - No real-world performance guarantees.
-  - Evidence cited by turn number only — no invented quotes.
+  - Evidence cited by turn number and short quotes — no invented quotes, and
+    nothing the NPC said credited to the player.
 """
 from __future__ import annotations
 
@@ -75,11 +76,15 @@ BAND_SCORES: Dict[str, float] = {"low": 25.0, "medium": 55.0, "high": 85.0}
 #: Twelve keeps every band inside its zone (25±12, 55±12, 85-12).
 BAND_ADJUST_MAX = 12.0
 
-# The debrief's output budget. With a rubric it also writes a band per
-# dimension (~10 tokens each); the 512 ChatRequest default left almost no
-# headroom over the narrative alone, and a reply cut off at the budget is
-# invalid JSON, so the debrief would fall back to the template.
-_DEBRIEF_MAX_TOKENS = 1024
+# The debrief's output budget. A reply cut off at it is invalid JSON, and the
+# debrief falls back to the template. The 512 ChatRequest default left almost
+# no headroom over the narrative alone; 1024 did not fit a reply that fills
+# the narrative schema's lists (``maxItems``) with the missed opportunities
+# and slips the debrief now lists (issue #580): every list full, at the
+# longest each ran in the D-05 replay's debriefs, came to ~1270 tokens on the
+# starter model. The longest session's prompt leaves 1536 room in its 8192
+# context (tests/test_debrief_budget.py).
+_DEBRIEF_MAX_TOKENS = 1536
 
 # Single-token filler / disfluency markers detected in voice-mode transcripts
 # (STT tokens).  Deliberately excludes ordinary content words such as "i",

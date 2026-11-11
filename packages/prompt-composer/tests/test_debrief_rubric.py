@@ -5,11 +5,15 @@ put each at 50 give or take a few points, and blamed the NPC's skepticism on
 the player. These tests pin the prompt-composer half of the fix:
 
   - the debrief schema asks for a band per rubric dimension, right after the
-    summary, as a grammar-friendly object of enums;
+    missed opportunities, as a grammar-friendly object of enums;
   - the parser keeps well-formed bands and never fails a narrative over one;
   - the prompt lists the rubric by name, with weights and bands, labels every
-    transcript line and note with whose it is, and keeps notes to the rubric;
-  - with no rubric, the prompt and schema are as before.
+    transcript line with whose it is, and leaves the turn notes out (#580);
+  - with no rubric, the prompt is as before, its notes labelled as the
+    player's, and the schema the canonical one.
+
+The judging rules (#580, the D-05 replay's debriefs) are pinned in
+test_debrief_judging.py.
 """
 import json
 
@@ -27,6 +31,7 @@ from convsim_prompt import (
 from _helpers import make_interview_rubric
 
 _NARRATIVE = {
+    "missed_opportunities": [],
     "summary": "You gave one concrete example and owned a miss.",
     "strengths": ["You named the latency figure at turn 1."],
     "improvements": ["Say what you would do differently."],
@@ -79,10 +84,11 @@ class TestDebriefSchema:
             assert schema == DEBRIEF_NARRATIVE_SCHEMA
             assert schema is not DEBRIEF_NARRATIVE_SCHEMA
 
-    def test_bands_are_required_right_after_the_summary(self):
+    def test_bands_are_required_right_after_the_missed_opportunities(self):
         schema = build_debrief_narrative_schema(rubric_ids=["specificity", "self_awareness"])
-        assert list(schema["properties"])[:2] == ["summary", "dimension_bands"]
-        assert schema["required"][:2] == ["summary", "dimension_bands"]
+        order = ["missed_opportunities", "dimension_bands", "summary"]
+        assert list(schema["properties"])[:3] == order
+        assert schema["required"][:3] == order
         assert schema["properties"]["dimension_bands"] == {
             "type": "object",
             "description": "Each rubric dimension's band, judged only on what the player said.",
@@ -180,7 +186,7 @@ class TestDebriefPromptWithRubric:
             "- self_awareness: Self-awareness, weight 40%\n"
             "    low: Blames others or avoids weakness.\n"
         ) in block
-        assert "put its band in dimension_bands" in block
+        assert "Band each one in dimension_bands by comparing the player's own lines" in block
         assert "Use not_observed only for a dimension the conversation gave the player no chance" in block
 
     def test_the_turn_scores_are_not_shown_with_a_rubric(self):
@@ -208,24 +214,26 @@ class TestDebriefPromptWithRubric:
         # No bare, ownerless lines.
         assert "[Rubric '" not in up and "[Flags]" not in up and "Npc" not in up
 
-    def test_notes_are_on_the_players_line_and_kept_to_the_rubric(self):
-        up = compose_debrief_prompt(_input()).user_prompt
-        assert "  Note on the player's line, Specificity (+2): Named a figure." in up
-        # A spelling of a rubric id is the dimension, named as the rubric names it.
-        assert "  Note on the player's line, Self-awareness: No reflection yet." in up
-        assert "experience_gap" not in up and "Invented id." not in up
+    def test_the_turn_notes_are_left_out(self):
+        """The bands are judged from the player's own lines (#580). In the D-05
+        replay the turn model's notes credited the player with the NPC's words
+        and praised a grammar slip, and the debrief copied them; the engine
+        still adds their net to each banded score."""
+        bundle = compose_debrief_prompt(_input())
+        up, sp = bundle.user_prompt, bundle.system_prompt
+        assert "Note on the player's line" not in up
+        for text in ("Named a figure.", "No reflection yet.", "Invented id.", "experience_gap"):
+            assert text not in up
+        assert up.startswith("SESSION TRANSCRIPT:\n\n[Turn 0]")
+        assert "RUBRIC OBSERVATIONS" not in up
+        assert "Notes on the player's line" not in sp
+        # The NPC's signals are still there, as the character's.
+        assert "  NPC signal: npc_skeptical" in up
 
     def test_the_npcs_reactions_are_framed_as_the_characters(self):
         sp = compose_debrief_prompt(_input()).system_prompt
         assert "Its doubts, objections and moods are the character's, not mistakes by the player" in sp
-        assert "lines marked NPC signal are the character's reactions" in sp
-
-    def test_notes_on_the_opening_are_left_out(self):
-        turns = [DebriefTurnRecord(turn_number=0, role="npc_opening", content="Hi.", rubric_observations=[
-            {"rubric_id": "specificity", "observation": "Nothing to judge yet."},
-        ])]
-        up = compose_debrief_prompt(_input(turns=turns)).user_prompt
-        assert "Nothing to judge yet." not in up
+        assert "lines marked NPC signal are the character's reactions." in sp
 
 
 class TestDebriefPromptWithoutRubric:
@@ -238,9 +246,24 @@ class TestDebriefPromptWithoutRubric:
         assert quoted == DEBRIEF_NARRATIVE_SCHEMA
 
     def test_every_note_is_kept_under_its_written_id(self):
-        up = compose_debrief_prompt(_input(rubric=False)).user_prompt
+        """The scores the prompt shows come from the notes, which are their evidence."""
+        bundle = compose_debrief_prompt(_input(rubric=False))
+        up = bundle.user_prompt
+        assert up.startswith("SESSION TRANSCRIPT WITH RUBRIC OBSERVATIONS:\n\n")
+        assert "  Note on the player's line, specificity (+2): Named a figure." in up
         assert "  Note on the player's line, experience_gap (-2): Invented id." in up
         assert "  Note on the player's line, Self Awareness: No reflection yet." in up
+        assert (
+            "Notes on the player's line were written during the conversation and may be "
+            "wrong: check them against the transcript."
+        ) in bundle.system_prompt
+
+    def test_notes_on_the_opening_are_left_out(self):
+        turns = [DebriefTurnRecord(turn_number=0, role="npc_opening", content="Hi.", rubric_observations=[
+            {"rubric_id": "specificity", "observation": "Nothing to judge yet."},
+        ])]
+        up = compose_debrief_prompt(_input(rubric=False, turns=turns)).user_prompt
+        assert "Nothing to judge yet." not in up
 
     def test_no_npc_name_reads_npc(self):
         up = compose_debrief_prompt(_input(rubric=False, npc_name=None)).user_prompt
