@@ -5,11 +5,14 @@ put each at 50 give or take a few points, and blamed the NPC's skepticism on
 the player. These tests pin the prompt-composer half of the fix:
 
   - the debrief schema asks for a band per rubric dimension, right after the
-    summary, as a grammar-friendly object of enums;
+    missed opportunities, as a grammar-friendly object of enums;
   - the parser keeps well-formed bands and never fails a narrative over one;
   - the prompt lists the rubric by name, with weights and bands, labels every
     transcript line and note with whose it is, and keeps notes to the rubric;
-  - with no rubric, the prompt and schema are as before.
+  - with no rubric, the prompt is as before and the schema the canonical one.
+
+The judging rules (#580, the D-05 replay's debriefs) are pinned in
+test_debrief_judging.py.
 """
 import json
 
@@ -27,6 +30,7 @@ from convsim_prompt import (
 from _helpers import make_interview_rubric
 
 _NARRATIVE = {
+    "missed_opportunities": [],
     "summary": "You gave one concrete example and owned a miss.",
     "strengths": ["You named the latency figure at turn 1."],
     "improvements": ["Say what you would do differently."],
@@ -79,10 +83,11 @@ class TestDebriefSchema:
             assert schema == DEBRIEF_NARRATIVE_SCHEMA
             assert schema is not DEBRIEF_NARRATIVE_SCHEMA
 
-    def test_bands_are_required_right_after_the_summary(self):
+    def test_bands_are_required_right_after_the_missed_opportunities(self):
         schema = build_debrief_narrative_schema(rubric_ids=["specificity", "self_awareness"])
-        assert list(schema["properties"])[:2] == ["summary", "dimension_bands"]
-        assert schema["required"][:2] == ["summary", "dimension_bands"]
+        order = ["missed_opportunities", "dimension_bands", "summary"]
+        assert list(schema["properties"])[:3] == order
+        assert schema["required"][:3] == order
         assert schema["properties"]["dimension_bands"] == {
             "type": "object",
             "description": "Each rubric dimension's band, judged only on what the player said.",
@@ -180,7 +185,7 @@ class TestDebriefPromptWithRubric:
             "- self_awareness: Self-awareness, weight 40%\n"
             "    low: Blames others or avoids weakness.\n"
         ) in block
-        assert "put its band in dimension_bands" in block
+        assert "Band each one in dimension_bands by comparing the player's own lines" in block
         assert "Use not_observed only for a dimension the conversation gave the player no chance" in block
 
     def test_the_turn_scores_are_not_shown_with_a_rubric(self):

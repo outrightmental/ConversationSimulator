@@ -2,7 +2,8 @@
 """Debrief narrative output parser, validator, repair, and fallback.
 
 The LLM is asked to produce only the narrative portions of the debrief
-(summary, strengths, improvements, turning_points, replay_suggestions).
+(missed_opportunities, summary, strengths, improvements, turning_points,
+replay_suggestions) and, with a rubric, each dimension's band.
 Quantitative scores are computed separately from rubric_observations stored
 per-turn and are never invented by the LLM.
 
@@ -22,31 +23,61 @@ from typing import Any, Dict, List, Optional, Protocol, Sequence
 logger = logging.getLogger(__name__)
 
 # JSON schema passed to the runtime so it can use native JSON-mode if available.
+#
+# Property order is generation order: llama.cpp's schema-to-grammar writes the
+# required properties in the order given, then the optional ones (issue #580).
+# The missed opportunities come first and are required, so the model goes
+# through the NPC's questions and the player's slips before it judges
+# anything; optional, and so written last, they were empty in every debrief
+# on the starter model although every player had left a question unanswered.
+# The ``maxItems`` keep the reply inside the debrief's output budget
+# (debrief_engine._DEBRIEF_MAX_TOKENS): a reply cut off there is invalid JSON,
+# and the debrief falls back to the template.
 DEBRIEF_NARRATIVE_SCHEMA: Dict[str, Any] = {
     "type": "object",
-    "required": ["summary", "strengths", "improvements", "turning_points", "replay_suggestions"],
+    "required": [
+        "missed_opportunities",
+        "summary",
+        "strengths",
+        "improvements",
+        "turning_points",
+        "replay_suggestions",
+    ],
     "additionalProperties": False,
     "properties": {
+        "missed_opportunities": {
+            "type": "array",
+            "description": (
+                "Each NPC question the player's next line left unanswered, and each slip in "
+                "the player's own words (a wrong fact, a grammar mistake): its turn, what "
+                "happened, what to say instead. Empty only if there were none."
+            ),
+            "items": {"type": "string"},
+            "maxItems": 4,
+        },
         "summary": {
             "type": "string",
             "description": "2-3 sentence overview of how the practice session went.",
         },
         "strengths": {
             "type": "array",
-            "description": "Specific things the player did well, with transcript evidence.",
+            "description": (
+                "Things the player did well, each citing a turn and quoting the player's "
+                "own words from it."
+            ),
             "items": {"type": "string"},
             "minItems": 1,
+            "maxItems": 3,
         },
         "improvements": {
             "type": "array",
-            "description": "Concrete areas to work on in the next attempt.",
+            "description": (
+                "Concrete areas to work on next time, each citing a turn and quoting the "
+                "player's own words from it; never something the player already did."
+            ),
             "items": {"type": "string"},
             "minItems": 1,
-        },
-        "missed_opportunities": {
-            "type": "array",
-            "description": "Specific moments where a different response could have improved the outcome.",
-            "items": {"type": "string"},
+            "maxItems": 3,
         },
         "turning_points": {
             "type": "array",
@@ -64,11 +95,13 @@ DEBRIEF_NARRATIVE_SCHEMA: Dict[str, Any] = {
                     },
                 },
             },
+            "maxItems": 3,
         },
         "replay_suggestions": {
             "type": "array",
             "description": "Actionable strategies worth trying in a replay.",
             "items": {"type": "string"},
+            "maxItems": 2,
         },
     },
 }
@@ -78,6 +111,9 @@ DEBRIEF_NARRATIVE_SCHEMA: Dict[str, Any] = {
 # "not_observed" is for a dimension the conversation gave the player no chance
 # to show, which is left off the scorecard rather than scored at a guess.
 DIMENSION_BANDS = ("low", "medium", "high", "not_observed")
+
+# The property ``dimension_bands`` follows (see build_debrief_narrative_schema).
+_BANDS_AFTER = "missed_opportunities"
 
 
 def build_debrief_narrative_schema(
@@ -90,10 +126,12 @@ def build_debrief_narrative_schema(
     object with one property per rubric dimension, each an ``enum`` of
     DIMENSION_BANDS. The keys are fixed and required, so a grammar built from
     the schema leaves the model only the band to choose. It is placed right
-    after ``summary``: llama.cpp's schema-to-grammar writes required
-    properties in the order given, so the bands are judged against the rubric
-    before the strengths and improvements are written, and those follow from
-    them. Without ids the result equals DEBRIEF_NARRATIVE_SCHEMA.
+    after ``missed_opportunities``: llama.cpp's schema-to-grammar writes
+    required properties in the order given, so the bands are judged against
+    the rubric once the model has listed the questions the player left
+    unanswered and the slips they made (issue #580), and before the summary,
+    strengths and improvements, which follow from them. Without ids the
+    result equals DEBRIEF_NARRATIVE_SCHEMA.
     """
     schema = copy.deepcopy(DEBRIEF_NARRATIVE_SCHEMA)
     ids = list(dict.fromkeys(i for i in (rubric_ids or ()) if isinstance(i, str) and i))
@@ -109,11 +147,11 @@ def build_debrief_narrative_schema(
     properties: Dict[str, Any] = {}
     for key, value in schema["properties"].items():
         properties[key] = value
-        if key == "summary":
+        if key == _BANDS_AFTER:
             properties["dimension_bands"] = bands
     schema["properties"] = properties
     required = list(schema["required"])
-    required.insert(required.index("summary") + 1, "dimension_bands")
+    required.insert(required.index(_BANDS_AFTER) + 1, "dimension_bands")
     schema["required"] = required
     return schema
 
@@ -129,7 +167,9 @@ HARD RULES — never violate:
 - Do not claim that performance in this simulation predicts real-world outcomes.
 - Do not reference the player by their real name; use second-person ("you").
 - Cite transcript evidence using turn numbers or short quoted snippets only — \
-  do not invent content that does not appear in the transcript.
+do not invent content that does not appear in the transcript.
+- Credit the player only with the player's own lines: what the NPC said is the \
+NPC's, never the player's.
 - Keep language constructive, specific, and grounded in what happened in this session.
 """
 

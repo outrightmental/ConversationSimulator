@@ -27,7 +27,8 @@ rubric (the hardcoded catalog) keeps the old scoring and a plain mean.
 Language rules (enforced via DEBRIEF_SYSTEM_PREAMBLE):
   - No therapy, clinical assessment, or mental-health advice.
   - No real-world performance guarantees.
-  - Evidence cited by turn number only — no invented quotes.
+  - Evidence cited by turn number and short quotes — no invented quotes, and
+    nothing the NPC said credited to the player.
 """
 from __future__ import annotations
 
@@ -78,7 +79,8 @@ BAND_ADJUST_MAX = 12.0
 # The debrief's output budget. With a rubric it also writes a band per
 # dimension (~10 tokens each); the 512 ChatRequest default left almost no
 # headroom over the narrative alone, and a reply cut off at the budget is
-# invalid JSON, so the debrief would fall back to the template.
+# invalid JSON, so the debrief would fall back to the template. The narrative
+# schema caps its lists (``maxItems``) so the reply fits (issue #580).
 _DEBRIEF_MAX_TOKENS = 1024
 
 # Single-token filler / disfluency markers detected in voice-mode transcripts

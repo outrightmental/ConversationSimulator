@@ -496,9 +496,16 @@ After a session ends, `POST /api/sessions/{id}/debrief` calls
 3. Identify turning points: significant state changes, event flags, safety events.
 4. Build a debrief prompt: scenario context, the rubric's dimensions with
    their names, weights and low / medium / high bands, and the transcript,
-   with every line and note labelled with whose it is.
-5. Call `ChatRuntime.chat_stream` with the debrief JSON schema. With a rubric
-   the schema also asks for each dimension's band (`dimension_bands`).
+   with every line and note labelled with whose it is and each NPC line that
+   ends with a question marked with it and the turn of the player's next
+   line. The rules keep a dimension out of high when any player line matches
+   its low or medium description, list each NPC question the player left
+   unanswered and each slip they made as a missed opportunity, and have every
+   strength and improvement quote the player's own words from a turn.
+5. Call `ChatRuntime.chat_stream` with the debrief JSON schema. Its missed
+   opportunities come first, and with a rubric the schema then asks for each
+   dimension's band (`dimension_bands`), before the summary, strengths and
+   improvements: the grammar writes the properties in that order.
 6. Score each dimension (0–100). A band sets the score (low 25, medium 55,
    high 85) and the turn deltas move it at most 12 points either way; a
    dimension with no band scores 50 plus its deltas, and one with neither is
@@ -513,7 +520,8 @@ output schema the runtime is sent makes `rubric_observations[].rubric_id` an
 enum of their ids, so the engine's grammar cannot write any other.
 
 Language guardrails in the prompt prohibit clinical advice, performance
-guarantees, and invented quotes. Evidence is cited by turn number only.
+guarantees, and invented quotes. Evidence is cited by turn number and the
+player's own words; what the NPC said is never credited to the player.
 
 ---
 

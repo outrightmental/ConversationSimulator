@@ -19,6 +19,14 @@ In the transcript every line says whose it is (issue #580, P6). The debrief
 on the starter model blamed the NPC's skepticism on the player: per-turn
 notes and event flags were rendered as bare ``[Rubric 'id' (Δ)]`` and
 ``[Flags]`` lines under the NPC's reply, with nothing to say whose they were.
+
+The debrief judges the player by the transcript (issue #580): a dimension is
+high only if no player line matches its low or medium description, the
+missed opportunities list each NPC question the player's next line left
+unanswered and each slip the player made, and every strength and
+improvement quotes the player's own words from a turn. An NPC line that ends
+with a question is marked with it, and with the turn of the player's next
+line, so the question and its answer are easy to pair.
 """
 from __future__ import annotations
 
@@ -67,6 +75,37 @@ def _one_line(text: Optional[str]) -> str:
     return " ".join((text or "").split())
 
 
+# What ends a question, and a sentence, in the languages the packs play; the
+# CJK marks end a sentence with no space after them.
+_QUESTION_MARKS = "?？؟"
+_SENTENCE_ENDS = ".!?…。！？؟"
+_UNSPACED_ENDS = "。！？"
+# Quotes and brackets around a question.
+_CLOSERS = "\"'”’»)]）」』"
+_OPENERS = "\"'“‘«([（「『"
+
+
+def _closing_question(text: Optional[str]) -> Optional[str]:
+    """The question a line ends with: its last sentence, if that ends in a question mark.
+
+    None when the line ends any other way. A question earlier in the line is
+    not one the player is left to answer: the line has gone on past it.
+    """
+    line = _one_line(text).rstrip(_CLOSERS + " ")
+    if not line or line[-1] not in _QUESTION_MARKS:
+        return None
+    start = 0
+    for i in range(len(line) - 2, -1, -1):
+        ch = line[i]
+        if ch in _UNSPACED_ENDS or (ch in _SENTENCE_ENDS and line[i + 1] == " "):
+            start = i + 1
+            break
+    return line[start:].strip().lstrip(_OPENERS) or None
+
+
+_NPC_ROLES = ("npc", "npc_opening")
+
+
 def _speaker(role: str, npc_label: str) -> str:
     if role == "player":
         return "Player"
@@ -85,6 +124,12 @@ def _format_transcript(
 ) -> str:
     """The transcript, each line and note labelled with whose it is.
 
+    An NPC line that ends with a question is followed by that question and
+    the turn of the player's next line (issue #580), so a small model can
+    pair each question with the line that should answer it. Whether it did
+    is for the model to judge: nothing here decides it. The last NPC line
+    has no such marker when no player line follows it.
+
     A per-turn note sits under the NPC reply it came with but is about the
     player's line before it, and says so. With ``matcher`` (a rubric), notes
     under an id the rubric does not have are left out, and the rest are named
@@ -93,9 +138,22 @@ def _format_transcript(
     npc = _one_line(npc_name)
     npc_label = f"{npc} (NPC)" if npc else "NPC"
     names = dim_names or {}
+    # The turn of the first player line after each record, if any.
+    next_player: List[Optional[int]] = [None] * len(turns)
+    upcoming: Optional[int] = None
+    for i in range(len(turns) - 1, -1, -1):
+        next_player[i] = upcoming
+        if turns[i].role == "player":
+            upcoming = turns[i].turn_number
     lines: List[str] = []
-    for t in turns:
+    for i, t in enumerate(turns):
         lines.append(f"[Turn {t.turn_number}] {_speaker(t.role, npc_label)}: {t.content}")
+        question = _closing_question(t.content) if t.role in _NPC_ROLES else None
+        if question and next_player[i] is not None:
+            lines.append(
+                f"  Question to the player (their next line is Turn {next_player[i]}): "
+                f"\"{question}\""
+            )
         # Only a reply has a player's line before it to be a note on; the
         # engine scores the replies' notes alone, too.
         for obs in (t.rubric_observations or []) if t.role == "npc" else []:
@@ -158,6 +216,26 @@ def _format_rubric(dimensions: List[RubricDimension]) -> str:
     return "\n".join(lines)
 
 
+# How the debrief judges the player (issue #580). On the starter model every
+# dimension came out high although each player had weak moments the rubric's
+# own low and medium descriptions name, the missed opportunities were always
+# empty, and strengths credited the player with what the NPC had said.
+_HIGH_BAND_RULE = (
+    "Give high only if the high description holds across the whole conversation; if any "
+    "player line matches the low or medium description, choose medium or low."
+)
+_JUDGING_RULES = "\n".join([
+    "HOW TO JUDGE:",
+    "- List in missed_opportunities each \"Question to the player\" that the player's next "
+    "line left unanswered, and each slip in the player's own words (a wrong fact, a grammar "
+    "mistake), with its turn. Leave it empty only if there were none.",
+    "- Each strength and improvement cites a turn and quotes the player's own words from that "
+    "turn. Words in an NPC line are the NPC's, never the player's.",
+    "- Do not suggest what the player already did, and name no weakness the transcript does "
+    "not show.",
+])
+
+
 def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
     """Build a debrief prompt bundle for narrative generation.
 
@@ -189,9 +267,9 @@ def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
     ]
     if dimensions:
         scoring_parts: List[str] = [
-            "RUBRIC — the dimensions this scenario practises. For each one, compare what "
-            "the player said with its low, medium and high descriptions and put its band in "
-            "dimension_bands. Judge only the player's own lines. Use not_observed only for a "
+            "RUBRIC — the dimensions this scenario practises. Band each one in "
+            "dimension_bands by comparing the player's own lines with its low, medium and "
+            "high descriptions. " + _HIGH_BAND_RULE + " Use not_observed only for a "
             "dimension the conversation gave the player no chance to show.",
             _format_rubric(dimensions),
         ]
@@ -217,6 +295,8 @@ def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
             "conversation and may be wrong: check them against the transcript."
         ),
         "---",
+        _JUDGING_RULES,
+        "---",
         (
             "OUTPUT SCHEMA — respond with ONLY this JSON object, no markdown fences "
             "or extra text:\n" + json.dumps(schema, indent=2)
@@ -238,8 +318,9 @@ def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
         state_text,
         "---",
         (
-            "Generate a coaching debrief in the JSON format specified above. "
-            "Reference specific turn numbers when citing transcript evidence. "
+            "Generate a coaching debrief in the JSON format specified above, following "
+            "HOW TO JUDGE. Reference specific turn numbers when citing transcript evidence, "
+            "and quote only the player's own words as theirs. "
             "Keep language educational and constructive. "
             "This is a simulated practice session — do not make claims about "
             "real-world performance or outcomes."
