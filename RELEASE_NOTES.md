@@ -40,7 +40,10 @@ no model would fix, and it is now wired:
   output schema allows only their ids. The debrief places each dimension in
   a low, medium or high band, moves it by the turn notes, applies the
   rubric's weights, and labels the scorecard with the rubric's own names.
-  Hidden variables stay out of its telemetry.
+  It lists the questions the player left unanswered and the player's slips
+  first, keeps a dimension out of the high band when any line falls short of
+  it, and credits the player only with the player's own words. Hidden
+  variables stay out of its telemetry.
 - **The scenario's own state and events drive the turn.** Each variable the
   scenario plays is listed with what it means, the state change is limited
   to them, meters the scenario does not play are hidden, and an event that
