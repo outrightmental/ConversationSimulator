@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 # on the starter model although every player had left a question unanswered.
 # The ``maxItems`` keep the reply inside the debrief's output budget
 # (debrief_engine._DEBRIEF_MAX_TOKENS): a reply cut off there is invalid JSON,
-# and the debrief falls back to the template.
+# and the debrief falls back to the template. Raising one needs the budget
+# checked again (services/convsim-core/tests/test_debrief_budget.py).
 DEBRIEF_NARRATIVE_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "required": [

@@ -566,7 +566,7 @@ class TestAScenarioWithARubric:
         [request] = runtime.debrief_requests()
         bands = request.json_schema["properties"]["dimension_bands"]
         assert bands["required"] == _RAISE_IDS
-        assert request.max_tokens == 1024
+        assert request.max_tokens == 1536
         system, user = request.messages[0].content, request.messages[1].content
         assert "- business_case: Business Case, weight 35%" in system
         assert "DIMENSION SCORES" not in system

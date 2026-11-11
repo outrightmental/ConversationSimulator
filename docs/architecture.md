@@ -507,7 +507,10 @@ After a session ends, `POST /api/sessions/{id}/debrief` calls
 5. Call `ChatRuntime.chat_stream` with the debrief JSON schema. Its missed
    opportunities come first, and with a rubric the schema then asks for each
    dimension's band (`dimension_bands`), before the summary, strengths and
-   improvements: the grammar writes the properties in that order.
+   improvements: the grammar writes the properties in that order. The
+   schema caps each list, and the reply has a 1536-token budget, which a
+   reply filled to every cap fits; a reply cut off at the budget is invalid
+   JSON, and the debrief falls back to the template.
 6. Score each dimension (0–100). A band sets the score (low 25, medium 55,
    high 85) and the turn deltas move it at most 12 points either way; a
    dimension with no band scores 50 plus its deltas, and one with neither is
