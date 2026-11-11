@@ -570,8 +570,10 @@ class TestAScenarioWithARubric:
         system, user = request.messages[0].content, request.messages[1].content
         assert "- business_case: Business Case, weight 35%" in system
         assert "DIMENSION SCORES" not in system
-        assert "  Note on the player's line, Business Case (+3): Cited outcomes." in user
-        assert "  Note on the player's line, Specificity (+2): Named a figure." in user
+        # The bands are judged from the player's lines (#580): the turn notes
+        # are left out of the prompt, though they still move the scores.
+        assert "Note on the player's line" not in user
+        assert "Cited outcomes." not in user and "Named a figure." not in user
         assert "Invented id." not in user
         assert "  NPC signal: skeptical_of_claim" in user
         assert "[Rubric '" not in user and "[Flags]" not in user

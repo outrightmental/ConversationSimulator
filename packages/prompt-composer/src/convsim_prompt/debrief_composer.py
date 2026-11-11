@@ -4,7 +4,8 @@
 The prompt is structured so that:
 - The system message contains guardrails, scenario context, rubric definitions,
   and the JSON output schema.
-- The user message contains the scored transcript and per-turn rubric observations.
+- The user message contains the transcript and, for a scenario with no
+  rubric, the per-turn rubric observations the scores came from.
 
 This separation ensures the LLM cannot override the schema or guardrails via
 user-turn injection.
@@ -26,7 +27,10 @@ missed opportunities list each NPC question the player's next line left
 unanswered and each slip the player made, and every strength and
 improvement quotes the player's own words from a turn. An NPC line that ends
 with a question is marked with it, and with the turn of the player's next
-line, so the question and its answer are easy to pair.
+line, so the question and its answer are easy to pair. With a rubric the
+turn-time notes are left out of the transcript: they credited the player
+with the NPC's words and were nearly all positive, and the debrief copied
+them (see compose_debrief_prompt).
 """
 from __future__ import annotations
 
@@ -35,7 +39,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from .debrief_output import DEBRIEF_SYSTEM_PREAMBLE, build_debrief_narrative_schema
-from .rubric import RubricIdMatcher
 from .types import PromptBundle, RubricDimension
 
 
@@ -120,7 +123,7 @@ def _format_transcript(
     turns: List[DebriefTurnRecord],
     npc_name: Optional[str] = None,
     dim_names: Optional[Dict[str, str]] = None,
-    matcher: Optional[RubricIdMatcher] = None,
+    with_notes: bool = True,
 ) -> str:
     """The transcript, each line and note labelled with whose it is.
 
@@ -130,10 +133,10 @@ def _format_transcript(
     is for the model to judge: nothing here decides it. The last NPC line
     has no such marker when no player line follows it.
 
-    A per-turn note sits under the NPC reply it came with but is about the
-    player's line before it, and says so. With ``matcher`` (a rubric), notes
-    under an id the rubric does not have are left out, and the rest are named
-    by the rubric's dimension names. Event flags are the NPC's own signals.
+    With ``with_notes``, a per-turn note sits under the NPC reply it came
+    with but is about the player's line before it, and says so; it is named
+    by ``dim_names`` where they have its id. Event flags are the NPC's own
+    signals.
     """
     npc = _one_line(npc_name)
     npc_label = f"{npc} (NPC)" if npc else "NPC"
@@ -156,7 +159,7 @@ def _format_transcript(
             )
         # Only a reply has a player's line before it to be a note on; the
         # engine scores the replies' notes alone, too.
-        for obs in (t.rubric_observations or []) if t.role == "npc" else []:
+        for obs in (t.rubric_observations or []) if with_notes and t.role == "npc" else []:
             if not isinstance(obs, dict):
                 continue
             rubric_id = obs.get("rubric_id")
@@ -165,11 +168,6 @@ def _format_transcript(
                 continue
             if not observation.strip():
                 continue
-            if matcher is not None:
-                declared = matcher.match(rubric_id)
-                if declared is None:
-                    continue
-                rubric_id = declared
             label = names.get(rubric_id, rubric_id)
             delta = obs.get("score_delta")
             delta_str = (
@@ -248,10 +246,16 @@ def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
     names: Dict[str, str] = dict(inp.rubric_dimension_names)
     for d in dimensions:
         names.setdefault(d.id, _one_line(d.name) or d.id)
-    matcher = (
-        RubricIdMatcher(rubric_ids, {d.id: d.name for d in dimensions}) if dimensions else None
-    )
     schema = build_debrief_narrative_schema(rubric_ids=rubric_ids)
+    # With a rubric the model bands each dimension from the player's own
+    # lines, and the transcript leaves the turn-time notes out (issue #580).
+    # The turn model wrote them, nearly all positive, and in the D-05 replay
+    # they credited the player with the NPC's words ("asked about a specific
+    # detail in Jordan's research (goldfinches nesting)") and praised a
+    # grammar slip, and the debrief copied them. The engine still adds their
+    # net to each banded score. Without a rubric the scores the prompt shows
+    # come from the notes, and the notes stay as their evidence.
+    with_notes = not dimensions
 
     goals = [g for g in (_one_line(g) for g in inp.player_visible_goals) if g]
     context: List[str] = [
@@ -291,8 +295,13 @@ def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
         (
             "The NPC is a character the simulator plays. Its doubts, objections and moods are "
             "the character's, not mistakes by the player; lines marked NPC signal are the "
-            "character's reactions. Notes on the player's line were written during the "
-            "conversation and may be wrong: check them against the transcript."
+            "character's reactions."
+            + (
+                " Notes on the player's line were written during the conversation and may be "
+                "wrong: check them against the transcript."
+                if with_notes
+                else ""
+            )
         ),
         "---",
         _JUDGING_RULES,
@@ -304,14 +313,14 @@ def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
     ]
     system_prompt = "\n\n".join(system_parts)
 
-    transcript_text = _format_transcript(inp.turns, inp.npc_name, names, matcher)
+    transcript_text = _format_transcript(inp.turns, inp.npc_name, names, with_notes)
     state_text = (
         "\n".join(f"  {k}: {v}" for k, v in inp.final_state.items())
         if inp.final_state
         else "  (no tracked state)"
     )
     user_parts: List[str] = [
-        "SESSION TRANSCRIPT WITH RUBRIC OBSERVATIONS:",
+        "SESSION TRANSCRIPT WITH RUBRIC OBSERVATIONS:" if with_notes else "SESSION TRANSCRIPT:",
         transcript_text if transcript_text else "(empty transcript)",
         "---",
         "FINAL NPC STATE:",

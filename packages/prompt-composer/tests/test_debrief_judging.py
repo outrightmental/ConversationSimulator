@@ -252,11 +252,17 @@ class TestQuestionMarkers:
             event_flags=["npc_skeptical"],
         ))
         turns += _turns((2, "player", "With p95 latency."))
-        up = compose_debrief_prompt(_input(turns=turns)).user_prompt
+        # Notes are in a debrief's transcript only without a rubric.
+        up = compose_debrief_prompt(_input(rubric=False, turns=turns)).user_prompt
         assert (
             "[Turn 1] Maya Chen (NPC): How did you measure it?\n"
             "  Question to the player (their next line is Turn 2): \"How did you measure it?\"\n"
-            "  Note on the player's line, Specificity (+2): A figure.\n"
+            "  Note on the player's line, specificity (+2): A figure.\n"
+            "  NPC signal: npc_skeptical\n"
+        ) in up
+        up = compose_debrief_prompt(_input(turns=turns)).user_prompt
+        assert (
+            "  Question to the player (their next line is Turn 2): \"How did you measure it?\"\n"
             "  NPC signal: npc_skeptical\n"
         ) in up
 
