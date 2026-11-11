@@ -1,20 +1,14 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# Conversation Simulator v0.4.0 — Release Notes
+# Conversation Simulator v0.4.1 — Release Notes
 
-> **Minor release (2026-11-10).** This is the release the free demo edition
-> is built from. The characters hold a conversation: they answer what was
-> said, stay in their role and their story, stop repeating themselves, and
-> are scored on each scenario's own rubric, on a new starter model. The
-> character's reply reaches the screen a sentence at a time
-> while the model writes it. The wait says what the turn is doing and, once
-> turns have been measured on this machine, when the reply will start. The
-> first session explains itself, the Conversation Brief leads with the
-> mission, and the engine launches sized for one conversation. This is the
-> first tag since v0.2.9, so everything merged since then ships here. The
-> v0.3.0 notes further down were written in July and never tagged; that work
-> reached players through the v0.2.x patch releases.
+> **Patch release (2026-11-11).** The demo's five conversations hold
+> together: the characters answer what was said, stay in their role and their
+> story, and repeat themselves far less; each debrief is scored on its
+> scenario's own rubric; and the starter model is Qwen3 4B Instruct 2507. The
+> free demo edition should be built from this release: v0.4.0's demo build
+> predates this work.
 
-## What's new in v0.4.0
+## What's new in v0.4.1
 
 ### The characters hold a conversation (#580, #578)
 
@@ -66,6 +60,63 @@ scripted player turns and checks each turn for repetition, the hidden agenda
 said aloud, state that never moves, debriefs off the rubric or on the
 template, and canned fallback lines. It is a pre-check: the manual D-05 run
 on reference hardware still judges each conversation.
+
+### Also in v0.4.1
+
+- On a computer where the full app is set up with another model, the demo
+  plays only its own: it leaves the full app's model selection as it is,
+  starts the managed engine whatever the full app chose, sends its turns with
+  the demo model's sampling, times them under it, and asks the player to
+  finish setup, instead of failing on the first turn, while its model is not
+  installed.
+- A demo build started from a branch now fails with "Start the demo build
+  from the v0.4.1 tag", where the run started, the three Run workflow steps
+  and the `gh` command (#584). A demo for a tag that does not exist yet says
+  to publish the full release first.
+
+## Upgrade notes
+
+- The starter model is now Qwen3 4B Instruct 2507
+  (`qwen3-4b-instruct-2507-q4_k_m`). An install of the earlier starter,
+  Qwen3 4B Instruct Q4_K_M (`qwen3-4b-instruct-q4_k_m`), keeps working under
+  its own name; to switch, install the new starter from the model manager.
+- The five demo packs' versions go up (Dating, Difficult Conversations,
+  Everyday Negotiation, Job Interview, Language Café), so an installed copy
+  is replaced by the bundled one at the next start.
+- The debrief may now write up to 1536 tokens (1024 before), so on a
+  processor-only machine it can take a little longer. No database migration.
+
+## Known gaps
+
+- The starter model still slips at times: a selling point repeated across
+  turns, a detail it invents about the player, an odd turn of phrase, and
+  debriefs that can be generous. The demo gate's manual run on reference
+  hardware (D-05) judges whether the five are ready to go live.
+- A scenario's ending can fire on the turn the character asks a question, so
+  the session closes on a line the player cannot answer (#586).
+- In the full app, three of the five demo conversations (The Behavioral
+  Interview, The Used Car Deal, Coffee at Café Sol) and three other scenarios
+  still play their built-in catalog versions, which have neither the rubric
+  nor the rewritten characters. The demo plays the pack versions (#582).
+- The repetition check compares words, so it does not yet catch a repeat in
+  Japanese, which is written without spaces (#583).
+- The macOS build runs on Apple Silicon only (#575).
+
+---
+
+# Conversation Simulator v0.4.0 — Release Notes
+
+> **Minor release (2026-11-10).** This is the release the free demo edition
+> is built from. The character's reply reaches the screen a sentence at a time
+> while the model writes it. The wait says what the turn is doing and, once
+> turns have been measured on this machine, when the reply will start. The
+> first session explains itself, the Conversation Brief leads with the
+> mission, and the engine launches sized for one conversation. This is the
+> first tag since v0.2.9, so everything merged since then ships here. The
+> v0.3.0 notes further down were written in July and never tagged; that work
+> reached players through the v0.2.x patch releases.
+
+## What's new in v0.4.0
 
 ### The reply arrives as it is written (#538)
 
@@ -267,8 +318,8 @@ install and returned by the install status API, and a `NETWORK` failure shows
   session, and the debrief read the export in a shape convsim-core does not
   produce; both are fixed, so *Export session JSON* works too.
 - A debrief scores one rubric dimension once however the model spells its id
-  (`self-awareness`, `Self Awareness`), and the turn schema now allows only
-  the rubric's own ids (#578, above).
+  (`self-awareness`, `Self Awareness`); the turn prompt does not yet give the
+  model the rubric's own ids (#578).
 - The README, website and docs no longer state an official-pack count (it had
   drifted to four, five and six in different places), no longer call the Steam
   edition Steam Deck Verified, name the files the build actually produces, and
@@ -284,13 +335,6 @@ install and returned by the install status API, and a `NETWORK` failure shows
 
 ## Upgrade notes
 
-- The starter model is now Qwen3 4B Instruct 2507
-  (`qwen3-4b-instruct-2507-q4_k_m`). An install of the earlier starter,
-  Qwen3 4B Instruct Q4_K_M (`qwen3-4b-instruct-q4_k_m`), keeps working under
-  its own name; to switch, install the new starter from the model manager.
-- The five demo packs' versions go up (Dating, Difficult Conversations,
-  Everyday Negotiation, Job Interview, Language Café), so an installed copy
-  is replaced by the bundled one at the next start.
 - One database migration, `0019_install_error_code`, runs when convsim-core
   starts. It adds a nullable `error_code` column to `installed_models` and
   `setup_install_jobs`. Rows written before it keep no code, and the
@@ -320,11 +364,7 @@ install and returned by the install status API, and a `NETWORK` failure shows
   from Steam (#575). A source build at a release tag still runs on an Intel
   Mac.
 - Model names are shown as the registry writes them, for example "Qwen3 4B
-  Instruct 2507 Q4_K_M" (#555).
-- In the full app, three of the five demo conversations (The Behavioral
-  Interview, The Used Car Deal, Coffee at Café Sol) and three other scenarios
-  still play their built-in catalog versions, which have neither the rubric
-  nor the rewritten characters. The demo plays the pack versions (#582).
+  Instruct Q4_K_M" (#555).
 - The reply-start estimate needs turns measured on this machine with the same
   engine and model before it can appear. The first turn on a fresh machine, or
   on a newly chosen model, shows the stages and the clock without one.
