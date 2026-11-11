@@ -386,14 +386,13 @@ class TestAgendaLeak:
         # Item 3's "14,200" does not excuse the rest of the item said with it.
         agenda = checks.hidden_agenda(_npc_doc("everyday-negotiation/npcs/car_dealer.yaml"))
         line = (
-            "Past 14,200 you make at most one more move, and only for a buyer "
-            "who has cited comps or is ready to walk."
+            "At 14,200, when the buyer cites comps, threatens to walk or offers "
+            "13,900 or more, I close right then."
         )
         found = checks.find_agenda_leaks(_lines(line), agenda)
-        assert [f.message for f in found] == ["says a 24-word run of hidden agenda item 3 aloud"]
+        assert [f.message for f in found] == ["says a 17-word run of hidden agenda item 3 aloud"]
         assert found[0].evidence == (
-            "past 14 200 you make at most one more move and only for a buyer "
-            "who has cited comps or is ready to walk"
+            "at 14 200 when the buyer cites comps threatens to walk or offers 13 900 or more"
         )
 
     def test_what_is_left_beside_the_offer_counts_from_five_words(self) -> None:

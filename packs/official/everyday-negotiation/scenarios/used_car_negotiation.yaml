@@ -153,9 +153,9 @@ events:
     npc_instruction: >-
       A deal is within reach. If the buyer's last offer is at or above your
       next counter, take their number and close the deal. Otherwise name one
-      specific number: your next counter, or, once you are holding at 14,200,
-      your one final move (four new tires at 14,200, or a final 13,900). Ask
-      directly whether that works for them.
+      specific number: your next counter, or, once you are at 14,200, your
+      last offer of 13,900 out the door with four new tires. Ask directly
+      whether that works for them.
     repeat: false
 ending_conditions:
   success:
