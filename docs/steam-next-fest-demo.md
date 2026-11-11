@@ -182,10 +182,34 @@ one from before v0.4 has the earlier starter (`qwen3-4b-instruct-q4_k_m`)
 installed and selected. In the demo only the demo model's own files count: the
 engine autostart (`runtime/active.py`) starts the engine only on the demo
 model's install, never on the full app's selection or its other installs, and
-the setup status and the Home screen count only that install. A player who
-does not have it is offered the demo's one download, as a new player is. The
-full app's selection and files are left as they are, and the full app keeps
-playing them.
+the setup status, the Home screen and Support's AI-model check count only that
+install. Every turn and the debrief are sent with the demo model's registry
+sampling (its `temperature_default` and `top_p_default`), and the turn timing
+records name the demo model, whatever the full app has selected. A player who
+does not have it is offered the demo's one download, as a new player is.
+
+The demo also runs only on the managed engine (llama.cpp). Whatever runtime
+the full app's saved selection names, Ollama included, the demo boots
+llama.cpp (`resolve_startup_runtime_id` in `runtime/active.py`), and its
+autostart loads the demo model's install. With nothing saved it boots
+llama.cpp too when `CONVSIM_RUNTIME_ID` names another model runtime, and the
+configured default only when that is model-free (the `fake` runtime packaged
+builds start with), so a new player gets the no-model message instead of a
+conversation. A session that would follow a live runtime other than
+llama.cpp is refused with `EDITION_RESTRICTED`; sessions pinned to a
+model-free runtime (tests, the replay's self-test) do not use the live
+runtime and are not affected.
+
+The full app's selection is left as it is. When the demo's one-click install
+finishes (`routers/setup_install.py`), it saves the demo model as the
+selection only when nothing is selected yet, only a model-free runtime
+(`fake`, `scripted`) is, or the selection already names one of the demo
+model's files. A selection that names Ollama, or llama.cpp with any other
+file or none (the earlier starter, the player's own GGUF, or no file, which
+plays the newest ready install), is kept, so the full app keeps playing it;
+the demo finds its own install without it. A player who installs the demo
+model on a fresh profile and then the full app gets the model selected there,
+and no download. The demo never deletes the full app's files.
 
 ### Store assets
 

@@ -86,13 +86,24 @@ async def activate_runtime(app: Any, runtime_id: str) -> None:
         await _close_runtime(old)
 
 
-def resolve_startup_runtime_id(conn: sqlite3.Connection, config_runtime_id: str) -> str:
+def resolve_startup_runtime_id(
+    conn: sqlite3.Connection, config_runtime_id: str, config: Any = None
+) -> str:
     """Return the runtime id the app should boot with.
 
     The persisted active selection (written by /api/models/use and the setup
     pipeline) wins over the static config default, so restarting the app keeps
     the user's model choice. Unknown/corrupt persisted ids fall back to the
     config default rather than failing startup.
+
+    The demo edition (*config* says so) plays only its own model, on the
+    managed llama.cpp engine; ``/api/models/use`` refuses any other runtime
+    there. A saved selection is the full app's on the shared data root
+    (D-06), so whatever runtime it names, Ollama included, the demo boots
+    ``llama_cpp``, whose autostart loads the demo model's own install. With
+    nothing saved, a model-free config default (``fake``) still applies, so a
+    fresh profile keeps the no-model backstop (issue #473); any other default
+    boots ``llama_cpp`` too.
     """
     try:
         from convsim_core.services.model_manager_service import get_active_config
@@ -100,6 +111,10 @@ def resolve_startup_runtime_id(conn: sqlite3.Connection, config_runtime_id: str)
         persisted = (get_active_config(conn) or {}).get("runtime_id")
     except Exception:  # pragma: no cover - a fresh DB has no config yet
         persisted = None
+    if is_demo(config):
+        if persisted or config_runtime_id not in MODEL_FREE_RUNTIME_IDS:
+            return "llama_cpp"
+        return config_runtime_id
     if persisted and persisted in list_runtime_ids():
         return str(persisted)
     return config_runtime_id

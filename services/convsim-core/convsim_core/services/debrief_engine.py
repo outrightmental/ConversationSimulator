@@ -614,6 +614,7 @@ async def generate_debrief(
     *,
     state_variable_overrides: Optional[Dict[str, Any]] = None,
     played_variables: Optional[Collection[str]] = None,
+    config: Any = None,
 ) -> DebriefResult:
     """Generate, persist, and return a debrief for a completed session.
 
@@ -625,7 +626,9 @@ async def generate_debrief(
     scenario's ``state.variables`` and ``played_variables`` the variables it
     plays (``ScenarioInfo.played_variables``): the telemetry's state arc
     leaves out the ones it hides and, when it plays any, every other one,
-    the same set the meters left out during play.
+    the same set the meters left out during play. ``config`` is the service
+    config, which picks the model the debrief is sampled for, as for the
+    session's turns (see ``process_turn``).
     """
     session_id: str = session_row["session_id"]
     scenario_id: str = session_row["scenario_id"]
@@ -752,7 +755,7 @@ async def generate_debrief(
                 rubric_ids=rubric.dimension_ids if rubric else None,
             ),
             max_tokens=_DEBRIEF_MAX_TOKENS,
-            **active_model_sampling(conn, runtime.id).request_fields(),
+            **active_model_sampling(conn, runtime.id, config).request_fields(),
         )
         logger.debug(
             "Calling runtime %s for debrief of session %s (~%d tokens)",

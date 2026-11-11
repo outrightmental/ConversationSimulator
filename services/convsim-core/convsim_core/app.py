@@ -106,7 +106,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         )
 
         app.state.runtime = build_runtime(
-            resolve_startup_runtime_id(db.connection(), config.runtime_id)
+            resolve_startup_runtime_id(db.connection(), config.runtime_id, config)
         )
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         app.state.tts_worker = build_tts_worker(config.tts_worker_id)

@@ -336,7 +336,7 @@ class TestRetryRequest:
     async def test_the_registry_temperature_is_raised_one_step(self, monkeypatch):
         monkeypatch.setattr(
             turn_pipeline, "active_model_sampling",
-            lambda conn, runtime_id: SamplingDefaults(temperature=0.7, top_p=0.8),
+            lambda conn, runtime_id, config=None: SamplingDefaults(temperature=0.7, top_p=0.8),
         )
         runtime = _Replies(_REPEAT_AT_END, _FRESH)
         await _play(runtime, *_ONE_EXCHANGE)

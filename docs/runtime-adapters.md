@@ -199,7 +199,9 @@ not matter whether the model was selected in setup or Settings or the core
 was started with `CONVSIM_RUNTIME_ID=llama_cpp` and nothing saved. A file
 selected while the engine is running is the one whose values are sent from
 then on, although the engine keeps the earlier file until the app is
-reopened.
+reopened. The demo edition starts its engine only on the demo model's own
+install, so its requests carry that model's values whatever the full app,
+which shares its data directory, has selected.
 
 Where there is no registry value to use, a request is sent at temperature
 0.8, the request default, and the top-p above. That covers a GGUF the player
