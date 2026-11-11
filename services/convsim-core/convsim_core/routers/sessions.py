@@ -566,10 +566,27 @@ def _require_demo_engine(request: Request) -> None:
     the full edition and for sessions pinned to a model-free runtime, which
     never use the live runtime.
     """
-    if not is_demo(request.app.state.service_config):
+    config = request.app.state.service_config
+    if not is_demo(config):
         return
     runtime = getattr(request.app.state, "runtime", None)
     if getattr(runtime, "id", None) == "llama_cpp":
+        # The engine is the demo's, but its model may not be installed yet: on
+        # a data root the full app set up, startup boots llama.cpp whatever
+        # the full app selected. Without the demo model's install the first
+        # turn would fail with 503, so refuse the way a fresh profile is
+        # refused (#473). A demo pointed at an external llama-server on an
+        # empty data root is refused the same way; it is a developer setup.
+        conn = request.app.state.db.connection()
+        if find_ready_model_path(conn, config) is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The demo's AI model is not installed yet, so a conversation "
+                    "cannot be started. Finish setup (install the demo's model) "
+                    "and try again."
+                ),
+            )
         return
     name = getattr(runtime, "display_name", None) or getattr(runtime, "id", None) or "another engine"
     raise HTTPException(

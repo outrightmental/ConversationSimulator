@@ -705,8 +705,27 @@ _DEMO_METERS = {
 }
 
 
+def _install_demo_model(conn, models_dir: Path) -> str:
+    """A ready install of the demo's model, which a demo session needs (#580)."""
+    from convsim_core.edition import resolve_demo_model_id
+    from convsim_core.services.model_manager_service import (
+        create_install_record,
+        mark_install_ready,
+    )
+
+    registry_id = resolve_demo_model_id(conn, None)
+    models_dir.mkdir(parents=True, exist_ok=True)
+    path = models_dir / f"{registry_id}.gguf"
+    path.write_bytes(b"GGUF")
+    install_id = create_install_record(
+        conn, registry_id=registry_id, filename=path.name, file_path=str(path)
+    )
+    mark_install_ready(conn, install_id, size_bytes=4, verified_sha256="0" * 64, file_path=str(path))
+    return str(path)
+
+
 @pytest.mark.parametrize("demo", DEMO_SCENARIOS, ids=lambda d: d.scenario_id)
-def test_a_demo_scenario_reports_only_the_meters_it_plays(demo_app, demo) -> None:
+def test_a_demo_scenario_reports_only_the_meters_it_plays(demo_app, demo, tmp_path) -> None:
     """Every path that reports meters reports the same visible played variables.
 
     The opening event, the session detail before and after a turn, the turn
@@ -725,7 +744,9 @@ def test_a_demo_scenario_reports_only_the_meters_it_plays(demo_app, demo) -> Non
     assert expected == _DEMO_METERS[demo.scenario_id]
 
     with TestClient(demo_app) as client:
-        set_active_config(demo_app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf")
+        conn = demo_app.state.db.connection()
+        model_path = _install_demo_model(conn, tmp_path / "models" / "llm")
+        set_active_config(conn, runtime_id="llama_cpp", model_id=model_path)
         demo_app.state.runtime = _EveryVariableRuntime()
         res = client.post("/api/sessions", json={
             "scenario_id": demo.scenario_id, "difficulty": "standard", "player_role_name": "Alex",

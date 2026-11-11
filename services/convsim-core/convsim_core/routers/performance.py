@@ -16,6 +16,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Query, Request
 
+from convsim_core.edition import is_demo
+from convsim_core.runtime.active import find_ready_model_path
 from convsim_core.services.model_manager_service import get_active_config, recorded_model_id
 from convsim_core.services.turn_timing import RollingSpeeds, rolling_speeds
 
@@ -36,8 +38,19 @@ async def get_rolling_speeds(
     or file name, never a file path; see ``recorded_model_id``). Returns
     ``samples: 0`` and null figures when nothing matching has been recorded
     yet.
+
+    In the demo edition the saved selection is the full app's on the shared
+    data root (D-06), so the demo's own model is used instead: the turns it
+    plays are recorded under it (``sessions._recorded_model_for``).
     """
     conn = request.app.state.db.connection()
+    config = request.app.state.service_config
+    if runtime_id is None and model_id is None and is_demo(config):
+        return rolling_speeds(
+            conn,
+            runtime_id="llama_cpp",
+            model_id=recorded_model_id(conn, find_ready_model_path(conn, config)),
+        )
     if runtime_id is None and model_id is None:
         active = get_active_config(conn)
         runtime_id = active.get("runtime_id") or getattr(request.app.state.runtime, "id", None)

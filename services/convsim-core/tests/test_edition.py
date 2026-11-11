@@ -1147,3 +1147,46 @@ def test_demo_refuses_a_session_on_a_live_runtime_other_than_llama_cpp(shared_ro
         assert full.state.runtime.id == "ollama"
         created = client.post("/api/sessions", json=_unpinned_session_body())
         assert created.status_code == 201, created.text
+
+
+@pytest.mark.parametrize(
+    "select",
+    [_select_earlier_starter, _select_own_gguf, _select_ollama],
+    ids=["earlier-starter", "own-gguf", "ollama"],
+)
+def test_demo_without_its_model_refuses_a_session_like_a_fresh_profile(shared_root, select):
+    """On a root the full app set up with another model, the demo boots its
+    managed engine, but its model is not installed: an unpinned session is
+    refused with the finish-setup 409 (#473), not started to fail with a 503
+    on its first turn. The full app on the same root still plays its own."""
+    root = shared_root(select)
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        _settle_autostart(client, demo)
+        assert demo.state.runtime.id == "llama_cpp"
+        resp = client.post("/api/sessions", json=_unpinned_session_body())
+        assert resp.status_code == 409, resp.text
+        assert "demo's AI model is not installed" in resp.json()["detail"]
+        # Once the demo's model is installed the same request is accepted.
+        _install_demo_model_file(demo.state.db.connection(), root.models_dir)
+        created = client.post("/api/sessions", json=_unpinned_session_body())
+        assert created.status_code == 201, created.text
+
+
+def test_demo_rolling_speeds_follow_the_demo_model_not_the_full_apps_selection(shared_root):
+    """The reply-start estimate reads /api/performance/rolling with no
+    parameters. In the demo it counts the turns the demo model played, which
+    are recorded under it, not the full app's selection."""
+    root = shared_root(_select_own_gguf)
+    demo = create_app(_config(root.tmp_path, edition="demo"))
+    with TestClient(demo) as client:
+        _install_demo_model_file(demo.state.db.connection(), root.models_dir)
+        demo.state.runtime = _RecordingLlamaRuntime()
+        assert client.get("/api/performance/rolling").json()["samples"] == 0
+        _play_turn_and_debrief(client)
+        assert client.get("/api/performance/rolling").json()["samples"] == 1
+
+    full = create_app(_config(root.tmp_path))
+    with TestClient(full) as client:
+        # The full app's selection (the player's own GGUF) has no turns yet.
+        assert client.get("/api/performance/rolling").json()["samples"] == 0

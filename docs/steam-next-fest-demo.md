@@ -205,9 +205,10 @@ finishes (`routers/setup_install.py`), it saves the demo model as the
 selection only when nothing is selected yet, only a model-free runtime
 (`fake`, `scripted`) is, or the selection already names one of the demo
 model's files. A selection that names Ollama, or llama.cpp with any other
-file or none (the earlier starter, the player's own GGUF, or no file, which
-plays the newest ready install), is kept, so the full app keeps playing it;
-the demo finds its own install without it. A player who installs the demo
+file (the earlier starter, the player's own GGUF), is kept, so the full app
+keeps playing it; the demo finds its own install without it. A llama.cpp
+selection with no file is kept too, but it means "the newest ready install",
+so once the demo has downloaded its model the full app plays that one. A player who installs the demo
 model on a fresh profile and then the full app gets the model selected there,
 and no download. The demo never deletes the full app's files.
 
