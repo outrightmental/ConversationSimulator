@@ -25,18 +25,19 @@ The debrief judges the player by the transcript (issue #580): a dimension is
 high only if no player line matches its low or medium description, the
 missed opportunities list each NPC question the player's next line left
 unanswered and each slip the player made, and every strength and
-improvement quotes the player's own words from a turn. An NPC line that ends
-with a question is marked with it, and with the turn of the player's next
-line, so the question and its answer are easy to pair. With a rubric the
-turn-time notes are left out of the transcript: they credited the player
-with the NPC's words and were nearly all positive, and the debrief copied
-them (see compose_debrief_prompt).
+improvement quotes the player's own words from a turn. An NPC line that
+closes on a question (its last sentence, or the one before) is marked with
+it, and with the turn of the player's next line, so the question and its
+answer are easy to pair. With a rubric the turn-time notes are left out of
+the transcript: they credited the player with the NPC's words and were
+nearly all positive, and the debrief copied them (see
+compose_debrief_prompt).
 """
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .debrief_output import DEBRIEF_SYSTEM_PREAMBLE, build_debrief_narrative_schema
 from .types import PromptBundle, RubricDimension
@@ -88,22 +89,53 @@ _CLOSERS = "\"'”’»)]）」』"
 _OPENERS = "\"'“‘«([（「『"
 
 
-def _closing_question(text: Optional[str]) -> Optional[str]:
-    """The question a line ends with: its last sentence, if that ends in a question mark.
+def _ends_sentence(line: str, i: int) -> bool:
+    """Whether the mark at ``line[i]`` ends its sentence.
 
-    None when the line ends any other way. A question earlier in the line is
-    not one the player is left to answer: the line has gone on past it.
+    It does at the end of the line, and before a space and a word that does
+    not start in lower case; a CJK mark also does right before the next
+    character. Quotes and brackets right after the mark are skipped. A mark
+    the sentence goes on past (``He asked "why?" and left.``) does not.
     """
-    line = _one_line(text).rstrip(_CLOSERS + " ")
-    if not line or line[-1] not in _QUESTION_MARKS:
-        return None
+    j = i + 1
+    while j < len(line) and line[j] in _CLOSERS:
+        j += 1
+    if j == len(line):
+        return True
+    if line[j] == " ":
+        rest = line[j:].lstrip()
+        return not rest or not rest[0].islower()
+    return j == i + 1 and line[i] in _UNSPACED_ENDS
+
+
+def _closing_question(text: Optional[str]) -> Optional[str]:
+    """The question a line closes on: its last sentence, or the one before, if it asks.
+
+    None when neither of the line's last two sentences ends in a question
+    mark. A question followed by one more sentence still closes the line
+    (issue #580): after "What's your favourite part of the problem set? Maybe
+    we could swap notes." the player is the one to answer it. A line that goes
+    on for two sentences or more after its question has moved past it ("...
+    you're in the Tuesday stats lecture? That's a common one. I've seen
+    people skip to the end of the slides."). A question the NPC answers
+    itself in the one sentence after it ("Want it again? Here it is: ...") is
+    marked too; the transcript shows the whole line above the marker, and the
+    debrief model judges whether the player was left to answer it.
+    """
+    line = _one_line(text)
+    # The line's sentences, as spans; text after its last mark is one too.
+    spans: List[Tuple[int, int]] = []
     start = 0
-    for i in range(len(line) - 2, -1, -1):
-        ch = line[i]
-        if ch in _UNSPACED_ENDS or (ch in _SENTENCE_ENDS and line[i + 1] == " "):
+    for i, ch in enumerate(line):
+        if ch in _SENTENCE_ENDS and _ends_sentence(line, i):
+            spans.append((start, i + 1))
             start = i + 1
-            break
-    return line[start:].strip().lstrip(_OPENERS) or None
+    if line[start:].strip(_CLOSERS + " "):
+        spans.append((start, len(line)))
+    for begin, stop in reversed(spans[-2:]):
+        if line[stop - 1] in _QUESTION_MARKS:
+            return line[begin:stop].lstrip(_CLOSERS + _OPENERS + " ") or None
+    return None
 
 
 _NPC_ROLES = ("npc", "npc_opening")
@@ -127,11 +159,11 @@ def _format_transcript(
 ) -> str:
     """The transcript, each line and note labelled with whose it is.
 
-    An NPC line that ends with a question is followed by that question and
-    the turn of the player's next line (issue #580), so a small model can
-    pair each question with the line that should answer it. Whether it did
-    is for the model to judge: nothing here decides it. The last NPC line
-    has no such marker when no player line follows it.
+    An NPC line that closes on a question is followed by the question (see
+    _closing_question) and the turn of the player's next line (issue #580), so
+    a small model can pair each question with the line that should answer
+    it. Whether it did is for the model to judge: nothing here decides it.
+    The last NPC line has no such marker when no player line follows it.
 
     With ``with_notes``, a per-turn note sits under the NPC reply it came
     with but is about the player's line before it, and says so; it is named

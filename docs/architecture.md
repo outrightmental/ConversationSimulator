@@ -496,14 +496,16 @@ After a session ends, `POST /api/sessions/{id}/debrief` calls
 3. Identify turning points: significant state changes, event flags, safety events.
 4. Build a debrief prompt: scenario context, the rubric's dimensions with
    their names, weights and low / medium / high bands, and the transcript,
-   with every line labelled with whose it is and each NPC line that ends
-   with a question marked with it and the turn of the player's next line.
-   With a rubric the turns' rubric observations stay out of the prompt (they
-   still move the scores, step 6); without one they are the evidence for the
-   scores it shows, each labelled as a note on the player's line. The rules keep a dimension out of high when any player line matches
-   its low or medium description, list each NPC question the player left
-   unanswered and each slip they made as a missed opportunity, and have every
-   strength and improvement quote the player's own words from a turn.
+   with every line labelled with whose it is and each NPC line that closes
+   on a question (its last sentence, or the one before) marked with it and
+   the turn of the player's next line. With a rubric the turns' rubric
+   observations stay out of the prompt (they still move the scores, step 6);
+   without one they are the evidence for the scores it shows, each labelled
+   as a note on the player's line. The rules keep a dimension out of high
+   when any player line matches its low or medium description, list each NPC
+   question the player left unanswered and each slip they made as a missed
+   opportunity, and have every strength and improvement quote the player's
+   own words from a turn.
 5. Call `ChatRuntime.chat_stream` with the debrief JSON schema. Its missed
    opportunities come first, and with a rubric the schema then asks for each
    dimension's band (`dimension_bands`), before the summary, strengths and

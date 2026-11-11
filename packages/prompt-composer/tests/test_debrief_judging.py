@@ -14,8 +14,9 @@ of the fix:
   - HOW TO JUDGE lists the missed questions and slips, has every strength and
     improvement quote the player's own words from a turn, and forbids
     suggesting what the player already did or inventing a weakness;
-  - an NPC line that ends with a question is marked with it and the turn of
-    the player's next line; nothing decides whether the player answered.
+  - an NPC line that closes on a question (its last sentence, or the one
+    before) is marked with it and the turn of the player's next line;
+    nothing decides whether the player answered.
 """
 import json
 
@@ -62,7 +63,7 @@ def _input(rubric: bool = True, **overrides) -> DebriefComposerInput:
             (1, "player", "I cut checkout latency in half. Want the numbers?"),
             (1, "npc", "I'm not convinced yet. How did you measure it?"),
             (2, "player", "Honestly, I just really care about quality."),
-            (2, "npc", "Is that so? Let's move on."),
+            (2, "npc", "Which part was yours? Take your time."),
             (3, "player", "Sure."),
             (3, "npc", "What would your last manager say about you?"),
         ),
@@ -229,16 +230,35 @@ class TestQuestionMarkers:
             "  Question to the player (their next line is Turn 1): \"Tell me about a project?\""
         ) in up
 
-    def test_a_line_that_goes_on_past_its_question_is_not_marked(self):
+    def test_a_question_the_line_goes_on_past_is_marked(self):
         up = compose_debrief_prompt(_input()).user_prompt
-        assert "[Turn 2] Maya Chen (NPC): Is that so? Let's move on.\n[Turn 3] Player: Sure." in up
-        assert "Is that so?\"" not in up
+        assert (
+            "[Turn 2] Maya Chen (NPC): Which part was yours? Take your time.\n"
+            "  Question to the player (their next line is Turn 3): \"Which part was yours?\"\n"
+            "[Turn 3] Player: Sure."
+        ) in up
+
+    def test_the_d05_question_before_a_short_follow_on(self):
+        """the_ask-run2: Jordan's question, then a sentence; the player asks their own instead."""
+        turns = _turns(
+            (2, "player", "What's the paper you're reading?"),
+            (2, "npc", "I'm writing about green corridors and songbirds. What's your favorite "
+                       "part of the problem set? Maybe we could swap notes."),
+            (3, "player", "Wait, that's really cool. How did you end up researching that?"),
+        )
+        up = compose_debrief_prompt(_input(turns=turns, npc_name="Jordan Chen")).user_prompt
+        assert (
+            "Maybe we could swap notes.\n"
+            "  Question to the player (their next line is Turn 3): "
+            "\"What's your favorite part of the problem set?\"\n"
+            "[Turn 3] Player: Wait, that's really cool."
+        ) in up
 
     def test_the_last_line_has_no_marker_when_no_player_line_follows(self):
         up = compose_debrief_prompt(_input()).user_prompt
         assert "[Turn 3] Maya Chen (NPC): What would your last manager say about you?" in up
         assert "What would your last manager say about you?\"" not in up
-        assert up.count("Question to the player") == 2
+        assert up.count("Question to the player") == 3
 
     def test_player_questions_are_not_marked(self):
         up = compose_debrief_prompt(_input()).user_prompt
@@ -272,7 +292,7 @@ class TestQuestionMarkers:
             "[Turn 1] NPC: I'm not convinced yet. How did you measure it?\n"
             "  Question to the player (their next line is Turn 2): \"How did you measure it?\""
         ) in up
-        assert up.count("Question to the player") == 2
+        assert up.count("Question to the player") == 3
 
     def test_a_spanish_question(self):
         turns = _turns(
@@ -292,7 +312,9 @@ class TestClosingQuestion:
         ("Haha, that's the one. I counted goldfinches last week. How'd your problem set go?",
          "How'd your problem set go?"),
         ("Oh, really? I study birds. What do you think about that?", "What do you think about that?"),
-        ("Fair enough... so what now?", "so what now?"),
+        # Lower case after the dots: the same sentence goes on.
+        ("Fair enough... so what now?", "Fair enough... so what now?"),
+        ("Fair enough... So what now?", "So what now?"),
         ("It costs 1.80 euros, okay?", "It costs 1.80 euros, okay?"),
         ("You're citing market data — where did you get that figure?",
          "You're citing market data — where did you get that figure?"),
@@ -303,13 +325,43 @@ class TestClosingQuestion:
         ("わかりました。コーヒーはいかがですか？", "コーヒーはいかがですか？"),
         ("هل تريد قهوة؟", "هل تريد قهوة؟"),
         ("  Two  spaces.   And  then?  ", "And then?"),
+        ('She said "Hi." Are you ok?', "Are you ok?"),
     ])
     def test_the_last_sentence_when_it_asks(self, line, question):
         assert _closing_question(line) == question
 
-    @pytest.mark.parametrize("line", [
-        "", None, "Fine.", "Is that so? Let's move on.", "¿Quieres que te lo repita? Aquí va: un cruasán.",
-        "Great!", "\"\"", "Done? No.",
+    @pytest.mark.parametrize("line, question", [
+        # Lines of the D-05 replay (issue #580) that the end-of-line rule
+        # left unmarked, although the player had the question to answer.
+        ("The one near me has seen a real increase this spring. What's your favorite part of "
+         "the problem set? Maybe we could swap notes.",
+         "What's your favorite part of the problem set?"),
+        ("Great, cash today — that makes it easier. Since you're not looking at a warranty, how "
+         "about this: I'll take 14,200 out the door? That's still under your comps and keeps "
+         "the tires in good shape for you.",
+         "Since you're not looking at a warranty, how about this: I'll take 14,200 out the door?"),
+        # The NPC answers it itself: marked all the same, and the model judges.
+        ("¡Claro! Vamos a hablar más despacio. ¿Quieres que te lo repita otra vez? Aquí va: un "
+         "cruasán, 1,80 €.", "¿Quieres que te lo repita otra vez?"),
+        ("Is that so? Let's move on.", "Is that so?"),
+        ("Coffee? Tea? Water.", "Tea?"),
+        ("What's that? I see", "What's that?"),
+        ("元気ですか？私は元気です。", "元気ですか？"),
+        ("Bueno… ¿y ahora? Dime.", "¿y ahora?"),
     ])
-    def test_none_when_the_line_does_not_end_with_a_question(self, line):
+    def test_a_question_one_sentence_before_the_end(self, line, question):
+        assert _closing_question(line) == question
+
+    @pytest.mark.parametrize("line", [
+        "", None, "Fine.", "Great!", "\"\"", "Really?!",
+        # A question mark the sentence goes on past ends no question.
+        'He asked "why?" and left.', "「元気ですか？」と聞いた。",
+        # Two sentences or more after the question: the line has moved past
+        # it (the D-05 replay's the_ask: Jordan echoes the lecture the player
+        # named, then goes on to their own paper).
+        "Oh, wait — you're in the Tuesday stats lecture? That's a common one. I've seen people "
+        "skip to the end of the slides just to get that coffee.",
+        "Is it? Yes. Fine.",
+    ])
+    def test_none_when_neither_of_the_last_two_sentences_asks(self, line):
         assert _closing_question(line) is None
