@@ -106,8 +106,9 @@ Then trigger the deploy workflow (push to `main` touching `website/` or
 
 ## Notes
 
-- **State** is local (`terraform.tfstate`, gitignored). For team use, move to
-  the S3 backend stub in `versions.tf`.
+- **State** is the key `conversationsimulator` in `outrightmental-terraform-state`,
+  the studio's one state bucket, with S3-native locking (`versions.tf`). Never
+  create another state bucket, and never keep state locally.
 - **OIDC provider**: an AWS account can hold only one provider for
   `token.actions.githubusercontent.com`. If this account already has one, set
   `create_oidc_provider = false`.
