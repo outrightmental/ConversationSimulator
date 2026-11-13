@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {
@@ -14,13 +14,14 @@ terraform {
     }
   }
 
-  # State is local by default (terraform.tfstate in this directory, gitignored).
-  # For shared/team state, provision a state bucket once and uncomment:
-  #
-  # backend "s3" {
-  #   bucket       = "convsim-terraform-state"
-  #   key          = "website/terraform.tfstate"
-  #   region       = "us-east-1"
-  #   use_lockfile = true
-  # }
+  # The studio's one state bucket, shared by every Outright Mental Terraform
+  # root, each under a key of its own. This key is this project's and nobody
+  # else's: never pass -migrate-state, never accept init's offer to copy state
+  # into it. `use_lockfile` is S3-native locking (Terraform 1.10+).
+  backend "s3" {
+    bucket       = "outrightmental-terraform-state"
+    key          = "conversationsimulator"
+    region       = "us-east-1"
+    use_lockfile = true
+  }
 }
