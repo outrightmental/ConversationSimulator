@@ -16,6 +16,7 @@ function voice(overrides: Partial<UseVoiceInstall> = {}): UseVoiceInstall {
     error: null,
     install: vi.fn().mockResolvedValue(undefined),
     cancel: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(true),
     ...overrides,
   }
 }

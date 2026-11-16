@@ -1,4 +1,28 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.8 — Release Notes
+
+> **Patch release (2026-11-16).** Voice can be removed from inside the app.
+
+## What's new in v0.4.8
+
+### Remove voice from Settings
+
+The one-click voice install took about 560 MB, and the only way to get the
+space back was to find and delete a folder by hand. **Settings → Voice
+output** now shows **Built-in voice** with its size on disk and a **Remove
+voice** button. It asks first, removes the speech engine and both models,
+and says how much space was freed. Conversations carry on in text, and voice
+can be installed again from any conversation brief.
+
+A voice set up by hand (a whisper.cpp program or a Kokoro server of your
+own) is not touched.
+
+## Upgrade notes
+
+- No database migration.
+
+---
+
 # Conversation Simulator v0.4.7 — Release Notes
 
 > **Patch release (2026-11-16).** The full game plays the official pack
@@ -283,7 +307,7 @@ decision and adds demo gate D-11 for it.
   on the brief to hear the replies.
 - The built-in voices are English voices. They speak the other supported
   languages with an accent.
-- The app has no button to remove voice.
+- The app has no button to remove voice. Fixed in v0.4.8.
 - The gaps listed for v0.4.1 below still apply.
 
 ---

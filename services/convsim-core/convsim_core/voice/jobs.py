@@ -169,6 +169,44 @@ class VoiceInstallManager:
         task.add_done_callback(self._tasks.discard)
         return job
 
+    def remove(self) -> int:
+        """Delete the installed voice: engine, models, staged downloads.
+
+        Returns the bytes freed. Raises :class:`VoiceInstallError` while an
+        install is running, or when a file is in use (a sentence being spoken
+        or transcribed right now holds the engine open on Windows). Whatever
+        could be deleted is gone either way, and the workers fall back to the
+        set-it-up-yourself defaults.
+        """
+        import shutil
+
+        if self.active_job() is not None:
+            raise VoiceInstallError(
+                "VOICE_BUSY", "Voice is being installed. Cancel the install first."
+            )
+        before = self.layout.installed_bytes()
+        failed: list[str] = []
+        for name in ("engine", "stt", "tts", ".staging", "tmp"):
+            target = self.layout.root / name
+            if not target.exists():
+                continue
+            try:
+                shutil.rmtree(target)
+            except OSError:
+                failed.append(name)
+        freed = before - self.layout.installed_bytes()
+        # The last job described an install that is gone.
+        self._jobs.clear()
+        if self._on_installed is not None:
+            self._on_installed()
+        if failed:
+            raise VoiceInstallError(
+                "VOICE_BUSY",
+                "Part of voice could not be removed because it is in use. Finish or "
+                "leave the conversation that is speaking, then try again.",
+            )
+        return freed
+
     def cancel(self, job_id: int) -> bool:
         """Ask a running job to stop. False when it is not running."""
         job = self._jobs.get(job_id)

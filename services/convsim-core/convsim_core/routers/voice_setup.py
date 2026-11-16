@@ -24,6 +24,7 @@ from convsim_core.errors import ConvsimError
 from convsim_core.runtime.types import RuntimeStatus
 from convsim_core.voice import catalog
 from convsim_core.voice.catalog import VoiceAsset
+from convsim_core.voice.installer import VoiceInstallError
 from convsim_core.voice.jobs import VoiceInstallManager, VoiceJob
 from convsim_core.voice.layout import VoiceLayout
 
@@ -101,6 +102,8 @@ class VoiceSetupResponse(BaseModel):
     install_dir: str
     # What installing every component that is not ready would download.
     download_bytes: int
+    # What the in-app install takes on disk now; 0 when nothing is installed.
+    installed_bytes: int = 0
     components: list[VoiceComponentInfo]
     assets: list[VoiceAssetInfo]
     # The running job, or the most recent one, so a screen opened mid-install
@@ -200,10 +203,30 @@ async def get_voice_setup(request: Request) -> VoiceSetupResponse:
         unsupported_reason=None if supported else _UNSUPPORTED,
         install_dir=str(layout.root),
         download_bytes=sum(a.download_bytes for a in to_download),
+        installed_bytes=layout.installed_bytes(),
         components=components,
         assets=[_asset_info(a, layout) for a in assets],
         job=_job_response(job) if job is not None else None,
     )
+
+
+class RemoveVoiceResponse(BaseModel):
+    freed_bytes: int
+
+
+@router.delete("/api/voice/setup", response_model=RemoveVoiceResponse)
+async def remove_voice(request: Request) -> RemoveVoiceResponse:
+    """Delete the in-app voice install and free its disk space.
+
+    Text keeps working; voice can be installed again at any time. A voice
+    set up by hand (a whisper-cli on the PATH, a Kokoro server) is not
+    touched. 409 while an install runs or a file is in use.
+    """
+    try:
+        freed = _manager(request).remove()
+    except VoiceInstallError as exc:
+        raise ConvsimError(exc.code, exc.message, status_code=409) from exc
+    return RemoveVoiceResponse(freed_bytes=max(0, freed))
 
 
 @router.post("/api/voice/setup/install", response_model=VoiceInstallJobResponse)

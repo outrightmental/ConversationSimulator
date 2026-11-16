@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
 import { VoiceInstallCard } from './VoiceInstallCard'
+import VoiceRemoveRow from './VoiceRemoveRow'
 import { voiceInstallCardVisible } from '../lib/voiceInstall'
 import { useVoiceInstall } from '../hooks/useVoiceInstall'
 
@@ -315,6 +316,9 @@ export default function VoiceSettingsPanel() {
           />
         </div>
       </div>
+
+      {/* The in-app install, and the way to remove it. */}
+      <VoiceRemoveRow voice={voice} />
 
       {/* Voice selection */}
       <div style={{ marginBottom: '1.25rem' }}>
