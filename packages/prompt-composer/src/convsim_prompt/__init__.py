@@ -4,9 +4,11 @@ from .composer import (
     LAYER_ORDER,
     EVENTS_BUDGET_ALLOWANCE,
     OPTIONAL_SYSTEM_LAYERS,
+    CLOSING_USER_LAYER_ORDER,
     RETRY_USER_LAYER_ORDER,
     SYSTEM_LAYER_ORDER,
     USER_LAYER_ORDER,
+    compose_closing_prompt,
     compose_repetition_retry_prompt,
     compose_turn_prompt,
 )
@@ -75,10 +77,12 @@ from .types import (
 
 __all__ = [
     "compose_turn_prompt",
+    "compose_closing_prompt",
     "compose_repetition_retry_prompt",
     "LAYER_ORDER",
     "EVENTS_BUDGET_ALLOWANCE",
     "OPTIONAL_SYSTEM_LAYERS",
+    "CLOSING_USER_LAYER_ORDER",
     "RETRY_USER_LAYER_ORDER",
     "SYSTEM_LAYER_ORDER",
     "USER_LAYER_ORDER",

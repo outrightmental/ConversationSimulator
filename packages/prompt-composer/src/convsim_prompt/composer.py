@@ -15,6 +15,7 @@ from .layers import (
     build_previous_npc_line_layer,
     build_recent_transcript_layer,
     build_relationship_memory_layer,
+    build_closing_layer,
     build_repetition_retry_layer,
     build_response_style_layer,
     build_rubric_layer,
@@ -108,6 +109,10 @@ def _insert_before(order: List[str], layer: str, before: str) -> List[str]:
 RETRY_USER_LAYER_ORDER: List[str] = _insert_before(
     USER_LAYER_ORDER, "REPETITION_RETRY", "PLAYER_UTTERANCE"
 )
+
+# The closing call (issue #586): the turn's user layers, then the closing
+# instruction last, because the closing line is what this call is for.
+CLOSING_USER_LAYER_ORDER: List[str] = USER_LAYER_ORDER + ["CLOSING"]
 
 
 def _estimate_tokens(text: str) -> int:
@@ -212,6 +217,34 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
         layer_map=layers,
         estimated_token_count=estimated_tokens,
         was_truncated=was_truncated,
+    )
+
+
+def compose_closing_prompt(
+    bundle: PromptBundle,
+    npc_line: str,
+    ending_type: str,
+) -> PromptBundle:
+    """The turn's prompt for the one closing line of a conversation (issue #586).
+
+    ``bundle`` is the prompt the NPC's last reply was generated from, and
+    ``npc_line`` that reply. The system prompt is reused as it is, so a prompt
+    cache keeps all of it; the user turn gains the CLOSING layer, last.
+
+    Returns ``bundle`` itself when there is no line to close after.
+    """
+    closing_layer = build_closing_layer(npc_line, ending_type)
+    if not closing_layer:
+        return bundle
+    layers = dict(bundle.layer_map)
+    layers["CLOSING"] = closing_layer
+    user_prompt = _join(layers, CLOSING_USER_LAYER_ORDER)
+    return PromptBundle(
+        system_prompt=bundle.system_prompt,
+        user_prompt=user_prompt,
+        layer_map=layers,
+        estimated_token_count=_estimate_tokens(bundle.system_prompt + user_prompt),
+        was_truncated=bundle.was_truncated,
     )
 
 

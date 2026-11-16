@@ -1,4 +1,44 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.5 — Release Notes
+
+> **Patch release (2026-11-16).** A conversation no longer ends on a question
+> the player has no turn to answer. The free demo edition should be built from
+> this release.
+
+## What's new in v0.4.5
+
+### The character closes the conversation (#586)
+
+A conversation ends when the scenario's goal is reached or lost, and that is
+decided after the character has already replied. The character never knew its
+line was the last one, so the conversation often ended on a question: Dana
+asking how you would approach a cross-region dependency, then "Session ended"
+before you could answer.
+
+Now, when a conversation ends on a line that asks the player something, the
+character adds a short closing line in its own voice: a warm wrap-up when it
+went well, a polite close when it did not, a time-is-up close when the turns
+ran out. It never asks a question. When the reply already ends without a
+question, nothing is added and nothing extra is generated.
+
+If the closing line cannot be written (it fails the output check, comes back
+as only a question, or takes too long), the conversation ends on the reply as
+before.
+
+## Upgrade notes
+
+- No database migration.
+- A turn that ends this way makes one extra short call to the model, recorded
+  in that turn's timing as `closing_line`.
+
+## Known gaps
+
+- The ending itself can still disagree with what the character said: in The
+  Ask, a "not yet" can be counted as a success (#586).
+- The gaps listed for v0.4.4 and earlier below still apply.
+
+---
+
 # Conversation Simulator v0.4.4 — Release Notes
 
 > **Patch release (2026-11-16).** The characters have their own voices, and

@@ -52,7 +52,8 @@ STOPPING_FINISH_REASONS: frozenset[str] = frozenset({"length", "cancelled"})
 #: Why the turn called the model again: the parser's structural ``repair``, its
 #: content-``safety_retry``, or the repetition guard's ``repetition_retry`` of a
 #: reply that repeated one of the NPC's last two lines (issue #580).
-ExtraCallKind = Literal["repair", "safety_retry", "repetition_retry"]
+# closing_line: the line added when an ending fired on a question (#586).
+ExtraCallKind = Literal["repair", "safety_retry", "repetition_retry", "closing_line"]
 
 
 class ExtraCall(BaseModel):

@@ -1229,6 +1229,24 @@ export default function Conversation() {
             { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta, rejectedDelta },
           ])
         }
+      } else {
+        // The line was shown from the socket as it was written. When the
+        // conversation ended on it with a question, the engine added a closing
+        // line after it (issue #586), which only this response carries.
+        const closing = payload['closing_line']
+        if (typeof closing === 'string' && closing.trim() !== '') {
+          const turnNum = gameTurnRef.current
+          setTurns((prev) => {
+            let at = -1
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].role === 'npc' && prev[i].turnNum === turnNum) { at = i; break }
+            }
+            if (at < 0 || prev[at].content.endsWith(closing)) return prev
+            const next = prev.slice()
+            next[at] = { ...prev[at], content: `${prev[at].content.trimEnd()} ${closing}` }
+            return next
+          })
+        }
       }
 
       _applyTurnCommit({
