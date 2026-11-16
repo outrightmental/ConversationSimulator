@@ -215,10 +215,16 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
       setVoices(voiceList)
       setRuntime(rt)
       setForm((prev) => {
-        // Pick a default voice: honour stored preference if valid, else first available.
+        // Pick the voice: the character's own when the pack casts one (Dana
+        // sounds like Dana in every session), else the player's default from
+        // Settings, else the first approved voice. The player can still
+        // change it here.
+        const castVoiceId = scenarioData.npc_voice_id
         const storedVoiceId = localStorage.getItem('convsim.voice.preferredVoiceId')
         const defaultVoiceId =
-          storedVoiceId && voiceList.some((v) => v.voice_id === storedVoiceId)
+          castVoiceId && voiceList.some((v) => v.voice_id === castVoiceId)
+            ? castVoiceId
+            : storedVoiceId && voiceList.some((v) => v.voice_id === storedVoiceId)
             ? storedVoiceId
             : voiceList[0]?.voice_id ?? null
         return {
@@ -227,9 +233,12 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
           player_role_name: scenarioData.player_role?.label ?? '',
           language: scenarioData.supported_languages?.[0] ?? 'en',
           tts_enabled: rt.tts_ready && (scenarioData.voice_supported !== false),
-          voice_id: prev.voice_id && voiceList.some((v) => v.voice_id === prev.voice_id)
-            ? prev.voice_id
-            : defaultVoiceId,
+          // The form's starting voice is only the stored default read at
+          // mount, so the character's own voice overrides it.
+          voice_id:
+            !castVoiceId && prev.voice_id && voiceList.some((v) => v.voice_id === prev.voice_id)
+              ? prev.voice_id
+              : defaultVoiceId,
           input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
           // On by default wherever the scenario permits them (issue #501 §3).
           // Every other field here is derived from the scenario; this one sat

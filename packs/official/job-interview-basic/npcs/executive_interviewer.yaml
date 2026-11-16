@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/victor_hargrove_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: bm_george
 public_persona:
   occupation: >-
     VP of Engineering at Vantage Fintech Solutions, a mid-sized financial

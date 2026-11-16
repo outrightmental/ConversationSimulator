@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/priya_nair_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: bf_emma
 public_persona:
   occupation: >-
     Engineering Team Lead at a mid-sized software consultancy. Priya manages a

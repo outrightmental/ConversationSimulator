@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/kenji_yamamoto_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: am_adam
 public_persona:
   occupation: >-
     Part-time store clerk at a 24-hour convenience store (konbini) in the

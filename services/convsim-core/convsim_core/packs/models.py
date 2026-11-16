@@ -136,6 +136,10 @@ class ScenarioCard(BaseModel):
     #: label (issue #501 §2 — "NPC" is the most technical word on the
     #: conversation screen).
     npc_name: Optional[str] = None
+    #: The character's own voice: an approved built-in voice id from the NPC
+    #: file's ``voice.voice_id``. None when the pack casts none, in which case
+    #: the brief uses the player's default voice.
+    npc_voice_id: Optional[str] = None
 
     # ── Canonical ScenarioInfo contract fields ────────────────────────────────
     player_role: PlayerRoleInfo = PlayerRoleInfo(label="")

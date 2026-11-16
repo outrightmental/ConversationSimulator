@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/rosa_garcia_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: af_heart
 public_persona:
   occupation: >-
     Barista at Café Sol, a neighbourhood coffee bar on a quiet street in the

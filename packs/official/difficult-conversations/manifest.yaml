@@ -2,7 +2,7 @@
 schema_version: "0.1"
 pack_id: official.difficult_conversations
 name: Difficult Conversations
-version: 0.1.1
+version: 0.1.2
 description: >-
   Practice real-life conversations that most people avoid or handle poorly.
   Build confidence giving feedback, setting boundaries, and owning mistakes
@@ -19,6 +19,10 @@ tags:
   - conflict
 supported_languages:
   - en
+# Every scenario here is written to be spoken: with voice installed, the
+# brief switches the character's voice on (docs/voice-setup.md).
+requirements:
+  voice_support: true
 entry_scenarios:
   - scenarios/coworker_feedback.yaml
   - scenarios/missed_deadline_apology.yaml

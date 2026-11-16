@@ -269,6 +269,7 @@ def _row_to_detail(row: sqlite3.Row, *, include_hidden: bool) -> ScenarioDetail:
     return ScenarioDetail(
         scenario_id=row["scenario_id"],
         npc_name=_npc_display_name(row["pack_source_path"], row["rel_path"], yaml_data),
+        npc_voice_id=_npc_voice_id(row["pack_source_path"], row["rel_path"], yaml_data),
         pack_id=row["pack_id"],
         pack_name=row["pack_name"],
         title=row["title"] or row["scenario_id"],
@@ -351,6 +352,34 @@ def _npc_display_name(
     return _display_name_of(
         _load_pack_yaml(pack_source_path, str(scenario_dir / ref))
     )
+
+
+def _npc_voice_id(
+    pack_source_path: Optional[str],
+    rel_path: Optional[str],
+    yaml_data: dict,
+) -> Optional[str]:
+    """The character's own voice, from the NPC file's ``voice.voice_id``.
+
+    Only an approved built-in voice is returned; anything else (a voice the
+    validator would refuse, ``engine: none``, no voice block) is None and the
+    brief falls back to the player's default voice.
+    """
+    from convsim_core.tts.voices import APPROVED_VOICES
+
+    npc = yaml_data.get("npc")
+    if not isinstance(npc, dict) or not rel_path:
+        return None
+    ref = npc.get("ref")
+    if not isinstance(ref, str) or not ref:
+        return None
+    scenario_dir = PurePosixPath(rel_path.replace("\\", "/")).parent
+    npc_data = _load_pack_yaml(pack_source_path, str(scenario_dir / ref))
+    voice = npc_data.get("voice")
+    if not isinstance(voice, dict) or voice.get("engine") == "none":
+        return None
+    voice_id = voice.get("voice_id")
+    return voice_id if isinstance(voice_id, str) and voice_id in APPROVED_VOICES else None
 
 
 def _display_name_of(npc_data: dict) -> Optional[str]:

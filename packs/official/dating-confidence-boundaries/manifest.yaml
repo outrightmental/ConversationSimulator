@@ -2,7 +2,7 @@
 schema_version: "0.1"
 pack_id: official.dating_confidence_boundaries
 name: Dating — Confidence & Boundaries
-version: 0.1.1
+version: 0.1.2
 description: >-
   Practice the social skills that make dating feel less daunting and more
   human: starting a conversation, asking someone out, accepting a no with
@@ -20,6 +20,10 @@ tags:
   - communication
 supported_languages:
   - en
+# Every scenario here is written to be spoken: with voice installed, the
+# brief switches the character's voice on (docs/voice-setup.md).
+requirements:
+  voice_support: true
 entry_scenarios:
   - scenarios/the_ask.yaml
   - scenarios/graceful_exit.yaml

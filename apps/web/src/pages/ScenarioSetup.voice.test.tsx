@@ -69,6 +69,7 @@ const ok = <T,>(data: T) => ({ ok: true as const, data })
 const VOICES = {
   voices: [
     { voice_id: 'af_heart', display_name: 'Heart (US female)', engine: 'kokoro', gender: 'female' as const, locale: 'en-US' },
+    { voice_id: 'am_michael', display_name: 'Michael (US male)', engine: 'kokoro', gender: 'male' as const, locale: 'en-US' },
   ],
 }
 
@@ -237,6 +238,28 @@ describe('conversation brief: voice installed', () => {
   beforeEach(() => {
     mockApi.health.mockResolvedValue(ok(health(true, true)))
     mockApi.getVoiceSetup.mockResolvedValue(ok(readyPlan()))
+  })
+
+  it('switches the voice on and selects the voice the pack cast for the character', async () => {
+    localStorage.setItem('convsim.voice.preferredVoiceId', 'af_heart')
+    mockApi.getScenario.mockResolvedValue(ok({ ...scenario, npc_voice_id: 'am_michael' }))
+    renderBrief()
+    await loaded()
+
+    const toggle = screen.getByRole('checkbox', { name: /npc voice/i })
+    await waitFor(() => expect(toggle).toBeChecked())
+    // The character's own voice wins over the player's default from Settings.
+    expect(screen.getByRole('combobox', { name: /npc voice selection/i })).toHaveValue('am_michael')
+  })
+
+  it('uses the player\u2019s default voice for a character the pack did not cast', async () => {
+    localStorage.setItem('convsim.voice.preferredVoiceId', 'am_michael')
+    mockApi.getScenario.mockResolvedValue(ok({ ...scenario, npc_voice_id: null }))
+    renderBrief()
+    await loaded()
+
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /npc voice/i })).toBeChecked())
+    expect(screen.getByRole('combobox', { name: /npc voice selection/i })).toHaveValue('am_michael')
   })
 
   it('shows no installer and no install buttons', async () => {

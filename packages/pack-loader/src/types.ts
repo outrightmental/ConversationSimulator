@@ -19,7 +19,7 @@ export interface RawManifest {
   content_rating: 'G' | 'PG' | 'PG-13';
   tags?: string[];
   supported_languages?: string[];
-  requirements?: { min_app_version?: string; recommended_llm?: string[] };
+  requirements?: { min_app_version?: string; recommended_llm?: string[]; voice_support?: boolean };
   entry_scenarios?: string[];
   assets?: { allow_external_urls: false };
   safety: { policy: string };
@@ -153,7 +153,7 @@ export interface PackIndexEntry {
   pack_root_kind: string;
   supported_languages: string[];
   tags: string[];
-  requirements: { min_app_version?: string; recommended_llm?: string[] } | null;
+  requirements: { min_app_version?: string; recommended_llm?: string[]; voice_support?: boolean } | null;
   scenario_count: number;
   entry_scenarios: string[];
   installed_at: number;

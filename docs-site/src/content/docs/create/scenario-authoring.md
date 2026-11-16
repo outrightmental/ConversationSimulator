@@ -186,7 +186,8 @@ archetype: professional_negotiator
 fictional: true       # Required. Must always be true. Schema fails if absent.
 age_band: adult       # Required. Only "adult" is allowed in MVP.
 voice:
-  engine: none        # kokoro | sherpa-onnx | none
+  engine: kokoro      # kokoro, or none to use the player's default voice
+  voice_id: af_nicole # one of the ten approved built-in voices
 
 public_persona:
   occupation: >-
@@ -224,6 +225,7 @@ If you see `✓ Pack is valid`, the NPC file is well-formed.
 |-------|----------------|
 | `fictional: true` | Required by schema. Validation fails immediately if absent or `false`. |
 | `age_band: adult` | Only `adult` is permitted in MVP. |
+| `voice` | The character's own voice when the player has voice on. `engine: kokoro` with a `voice_id` from the ten approved built-in voices (`af_heart`, `af_bella`, `af_nicole`, `af_sky`, `am_adam`, `am_michael`, `bf_emma`, `bf_isabella`, `bm_george`, `bm_lewis`; `GET /api/tts/voices` lists them). The conversation brief selects it, and the player can still change it. `engine: none`, or no `voice_id`, leaves the choice to the player's default voice. No other voice can be used: there is no cloning or import. |
 | `public_persona` | Shown to the player and used in runtime prompts. Be specific — a vague occupation produces a flat, interchangeable NPC. |
 | `private_persona.hidden_agenda` | System-prompt context the player never sees. Write as observable evaluation criteria the NPC applies to each player turn. |
 | `private_persona.biases_to_simulate` | Tendencies that shift the NPC's tone without the player knowing they exist. These create the asymmetry that makes practice meaningful. |
@@ -571,6 +573,19 @@ assets:
 safety:
   policy: safety/interview_safety.yaml
 ```
+
+**Voice-ready packs.** Add this to the manifest when every scenario in the
+pack is written to be spoken:
+
+```yaml
+requirements:
+  voice_support: true
+```
+
+When the player has voice installed, the conversation brief then switches the
+character's voice on by default. Without it the brief leaves voice off and
+says the scenario was written for text. A scenario can override the pack with
+its own `requirements` block.
 
 ---
 

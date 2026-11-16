@@ -137,7 +137,13 @@ per request: about a second to load the model, then the work.
   character's thinking pause is a target, not an addition: what the player
   already waited for the reply is taken off it.
 
-Only the ten approved built-in voices can be used, as before.
+Only the ten approved built-in voices can be used, as before. A pack casts
+one for each character in the NPC file (`voice.voice_id`); the brief selects
+it, and the player can still change it. The official packs cast every
+character their text describes as she or he; a character written as they is
+left to the player's default voice. A pack marked `requirements.voice_support:
+true` has the character's voice switched on by default once voice is
+installed; the five player-facing official packs are marked.
 
 Two engine details are handled in `voice/engine.py`:
 

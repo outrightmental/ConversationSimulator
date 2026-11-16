@@ -2,7 +2,7 @@
 schema_version: "0.1"
 pack_id: official.language_cafe
 name: Language Café
-version: 0.1.2
+version: 0.1.3
 description: >-
   Practice natural conversations in Spanish, French, Japanese, and English
   through friendly everyday interactions. Build confidence in a new language
@@ -21,6 +21,10 @@ supported_languages:
   - es
   - fr
   - ja
+# Every scenario here is written to be spoken: with voice installed, the
+# brief switches the character's voice on (docs/voice-setup.md).
+requirements:
+  voice_support: true
 entry_scenarios:
   - scenarios/spanish_coffee.yaml
   - scenarios/french_travel_checkin.yaml

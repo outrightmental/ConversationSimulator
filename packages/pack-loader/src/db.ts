@@ -195,6 +195,7 @@ function deserializePack(row: Record<string, unknown>): PackIndexEntry {
       ? (JSON.parse(row['requirements'] as string) as {
           min_app_version?: string;
           recommended_llm?: string[];
+          voice_support?: boolean;
         })
       : null,
     scenario_count: row['scenario_count'] as number,
