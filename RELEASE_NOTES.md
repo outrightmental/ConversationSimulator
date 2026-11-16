@@ -1,4 +1,92 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.2 — Release Notes
+
+> **Patch release (2026-11-16).** Voice installs from inside the app with one
+> button, in the demo and the full app, and the character is heard. The free
+> demo edition should be built from this release.
+
+## What's new in v0.4.2
+
+### Voice installs with one button (#487)
+
+Voice used to be a dead end. The conversation brief listed push-to-talk,
+hands-free and the character's voice greyed out and marked "not loaded", and
+a click did nothing: no build shipped a speech engine, and setting one up
+meant compiling whisper.cpp and running a Kokoro server by hand.
+
+The app now installs voice itself:
+
+- On the conversation brief, **Add voice → Install voice** downloads a
+  speech engine, the Whisper *base* listening model and the Kokoro v1.0
+  voices: about 559 MB on Windows. The card states the size before the button
+  is pressed, and **What gets downloaded** lists each file's source and
+  licence. Every file is checked against a pinned SHA-256 and discarded if it
+  does not match.
+- The install shows progress for each step and can be cancelled. A cancel
+  keeps no partial download; a dropped connection keeps what arrived, and
+  **Try again** continues from there. The last step starts the engine once,
+  so a download that cannot run on this machine fails in the installer and
+  not in a silent conversation.
+- Voice switches on when the install finishes, without a restart, and
+  push-to-talk is selected for the conversation being set up.
+- Each greyed-out voice control on the brief now leads to the install button.
+  In the full app the same card is in **Settings → Voice output**.
+- The app converts a microphone recording to WAV itself, so voice input needs
+  no ffmpeg. A recording longer than 30 seconds is transcribed whole.
+- The conversation's language reaches the voice: the Spanish café is spoken
+  as Spanish. The built-in voices speak English, Spanish, French, Italian,
+  Portuguese and Hindi; in another language the reply stays text, and the
+  brief says so before the conversation starts.
+
+[`docs/voice-setup.md`](docs/voice-setup.md) lists what is downloaded and
+from where.
+
+### The character is heard (#533)
+
+With voice on, the conversation screen never played a reply. Its audio queue
+waited for an event the engine does not send, and in a packaged build the
+audio address pointed at the app's own window, where nothing serves it. The
+screen now plays the audio that each reply returns, one sentence after
+another, from the engine's own address. The same applies to the short
+acknowledgements played while the player speaks.
+
+### The demo offers voice
+
+The demo was text only. It keeps its one required download, the AI model, and
+the conversation brief now offers voice as a second, optional one. Nothing
+about voice appears in first run. `docs/steam-next-fest-demo.md` records the
+decision and adds demo gate D-11 for it.
+
+## Upgrade notes
+
+- Voice is not installed by an update. It is offered on the conversation
+  brief and installs only when **Install voice** is pressed.
+- A `whisper-cli` and a Kokoro server set up by hand keep working. An in-app
+  install takes over from them once it is complete.
+- The engine and models go to `models/voice/` in the app's data folder, about
+  560 MB. To remove voice, delete that folder; the app falls back to text.
+- Synthesised sentences are now cached under `cache/tts/` in the data folder.
+  **Settings → Voice output → Clear TTS cache** empties it.
+- No database migration.
+
+## Known gaps
+
+- The speech engine has been run on Windows only. The macOS and Linux builds
+  are pinned from the same release and checked on download, but have not been
+  run; if the engine does not start, the install says so and text still
+  works. Demo gate D-11 is the check on each platform.
+- With voice on, a reply's text still waits until all of its audio is ready;
+  a long opening line can take several seconds to appear (#533).
+- The character's voice is not switched on by default for the official
+  scenarios, which are marked as written for text. Tick **NPC voice (TTS)**
+  on the brief to hear the replies.
+- The built-in voices are English voices. They speak the other supported
+  languages with an accent.
+- The app has no button to remove voice.
+- The gaps listed for v0.4.1 below still apply.
+
+---
+
 # Conversation Simulator v0.4.1 — Release Notes
 
 > **Patch release (2026-11-11).** The demo's five conversations hold
