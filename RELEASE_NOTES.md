@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# Conversation Simulator v0.4.7 — Release Notes
+# Conversation Simulator v0.4.6 — Release Notes
 
 > **Patch release (2026-11-16).** The check that stops a character repeating
 > itself now works in Japanese.
 
-## What's new in v0.4.7
+## What's new in v0.4.6
 
 ### Kenji stops repeating himself (#583)
 
@@ -351,7 +351,7 @@ on reference hardware still judges each conversation.
   still play their built-in catalog versions, which have neither the rubric
   nor the rewritten characters. The demo plays the pack versions (#582).
 - The repetition check compares words, so it does not yet catch a repeat in
-  Japanese, which is written without spaces (#583). Fixed in v0.4.7.
+  Japanese, which is written without spaces (#583). Fixed in v0.4.6.
 - The macOS build runs on Apple Silicon only (#575).
 
 ---
