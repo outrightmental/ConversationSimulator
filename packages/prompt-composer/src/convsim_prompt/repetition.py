@@ -25,6 +25,14 @@ Words are compared case- and punctuation-insensitively: text is NFKC
 normalised and case-folded, apostrophes are dropped (so "What's" and
 "What’s" are one word), and every other non-word character separates words.
 
+Japanese and Chinese are written without spaces, so a clause would be one
+"word" and none of the tests could fire (issue #583). Each kana and CJK
+ideograph is therefore its own word, and a comparison in which either line is
+mostly such characters doubles every length threshold (``CJK_SCALE``): a run
+of twelve characters, a closing question of eight, twelve characters before
+similarity counts. A character carries roughly half a word, and a run of six
+characters is often only a set phrase such as "にございます".
+
 A repeat the player asked for is not a loop. In spanish_coffee asking Rosa to
 say it again, more slowly, is a repair strategy the rubric rewards, and the
 pack's smoke and golden tests play it. ``asks_for_repeat`` tells such a
@@ -56,19 +64,41 @@ SIMILARITY_THRESHOLD = 0.5
 SIMILARITY_MIN_WORDS = 6
 #: How many of the NPC's most recent lines a reply is compared with.
 GUARD_WINDOW = 2
+#: Length thresholds are multiplied by this when either line is mostly kana
+#: or CJK ideographs, each of which is one word (issue #583).
+CJK_SCALE = 2
 
 RUN = "run"
 QUESTION = "question"
 SIMILAR = "similar"
 
 _APOSTROPHES = re.compile(r"['‘’ʼ`´]")
-_WORD = re.compile(r"\w+")
+# Hiragana, katakana (with the prolonged sound mark), CJK ideographs and their
+# extension A, and compatibility ideographs. NFKC has already turned
+# half-width katakana into full-width.
+_CJK_CHARS = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+_CJK = re.compile(f"[{_CJK_CHARS}]")
+_WORD = re.compile(f"[{_CJK_CHARS}]|(?:(?![{_CJK_CHARS}])\\w)+")
 
 
 def words(text: str) -> List[str]:
-    """Case- and punctuation-insensitive words of ``text``."""
+    """Case- and punctuation-insensitive words of ``text``.
+
+    Each kana or CJK ideograph is a word of its own (issue #583).
+    """
     folded = unicodedata.normalize("NFKC", text or "").casefold()
     return _WORD.findall(_APOSTROPHES.sub("", folded))
+
+
+def _mostly_cjk(ws: Sequence[str]) -> bool:
+    if not ws:
+        return False
+    return sum(1 for w in ws if len(w) == 1 and _CJK.match(w)) * 2 > len(ws)
+
+
+def length_scale(*lines_words: Sequence[str]) -> int:
+    """``CJK_SCALE`` when any of the lines is mostly kana or ideographs, else 1."""
+    return CJK_SCALE if any(_mostly_cjk(ws) for ws in lines_words) else 1
 
 
 def shared_runs(a: Sequence[str], b: Sequence[str], min_len: int) -> List[List[str]]:
@@ -104,7 +134,9 @@ def shared_runs(a: Sequence[str], b: Sequence[str], min_len: int) -> List[List[s
 
 _CLOSERS = "\"'”’»)]*_ \t\r\n"
 _QUESTION_MARKS = ("?", "？")
-_SENTENCE_BREAK = re.compile(r"(?<=[.!?…！？。])\s+")
+# Sentences break at whitespace after . ! ? or an ellipsis, and right after
+# a full-width ！？。, which Japanese and Chinese follow with no space.
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?…])\s+|(?<=[！？。])\s*")
 
 
 def ending_question(text: str) -> Optional[Tuple[str, ...]]:
@@ -117,7 +149,8 @@ def ending_question(text: str) -> Optional[Tuple[str, ...]]:
     s = (text or "").rstrip(_CLOSERS)
     if not s.endswith(_QUESTION_MARKS):
         return None
-    last = _SENTENCE_BREAK.split(s)[-1]
+    # A break after a final full-width mark leaves an empty last piece.
+    last = [piece for piece in _SENTENCE_BREAK.split(s) if piece.strip()][-1]
     w = tuple(words(last))
     return w or None
 
@@ -231,17 +264,21 @@ def check_repetition(
         previous_words = words(previous)
         if not previous_words:
             continue
+        scale = length_scale(line_words, previous_words)
         if runs:
-            for run in shared_runs(line_words, previous_words, REPEAT_RUN_WORDS):
+            for run in shared_runs(line_words, previous_words, REPEAT_RUN_WORDS * scale):
                 matches.append(RepetitionMatch(kind=RUN, against=index, words=tuple(run)))
         if (
             index == 0
             and closing is not None
-            and len(closing) >= SAME_QUESTION_MIN_WORDS
+            and len(closing) >= SAME_QUESTION_MIN_WORDS * scale
             and closing == ending_question(previous)
         ):
             matches.append(RepetitionMatch(kind=QUESTION, against=index, words=closing))
-        if similarity and min(len(line_words), len(previous_words)) >= SIMILARITY_MIN_WORDS:
+        if (
+            similarity
+            and min(len(line_words), len(previous_words)) >= SIMILARITY_MIN_WORDS * scale
+        ):
             score = trigram_similarity(line_words, previous_words)
             if score > SIMILARITY_THRESHOLD:
                 matches.append(RepetitionMatch(kind=SIMILAR, against=index, similarity=score))

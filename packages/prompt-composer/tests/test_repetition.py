@@ -386,3 +386,50 @@ class TestRetryPrompt:
         retry = compose_repetition_retry_prompt(bundle, [_NPC])
         assert retry.was_truncated == bundle.was_truncated
         assert retry.estimated_token_count == max(1, len(retry.system_prompt + retry.user_prompt) // 4)
+
+
+# ---------------------------------------------------------------------------
+# Japanese, written without spaces (issue #583)
+# ---------------------------------------------------------------------------
+
+_KENJI_OPENING = "いらっしゃいませ！何かお探しですか？どうぞ、ゆっくりご覧ください。"
+_KENJI_TEA = "お茶はあちらの冷蔵庫にございます。おにぎりはレジの横にございます。ほかに何かお探しですか？"
+
+
+class TestJapanese:
+    def test_each_kana_and_kanji_is_a_word(self):
+        from convsim_prompt.repetition import words
+
+        assert words("いらっしゃい ラーメン") == list("いらっしゃい") + list("ラーメン")
+        # Latin, digits and accents inside the same line keep their words.
+        assert words("Café 2.50 です") == ["café", "2", "50", "で", "す"]
+
+    def test_a_line_said_again_is_caught(self):
+        from convsim_prompt.repetition import check_repetition
+
+        assert check_repetition(_KENJI_OPENING, [_KENJI_OPENING]).flagged
+        assert check_repetition(_KENJI_TEA, [_KENJI_TEA]).flagged
+
+    def test_the_same_closing_question_is_caught(self):
+        from convsim_prompt.repetition import QUESTION, check_repetition, ending_question
+
+        assert ending_question(_KENJI_TEA) == tuple("ほかに何かお探しですか")
+        report = check_repetition("はい、承知しました。ほかに何かお探しですか？", [_KENJI_TEA])
+        assert [m.kind for m in report.matches] == [QUESTION]
+
+    def test_a_shared_set_phrase_is_not_a_repeat(self):
+        """Polite endings recur in every line; six characters are not six words."""
+        from convsim_prompt.repetition import check_repetition
+
+        assert not check_repetition(
+            "おにぎりはこちらにございます。", ["お茶はあちらにございます。"]
+        ).flagged
+        assert not check_repetition("はい。何ですか？", ["いいえ。何ですか？"]).flagged
+
+    def test_english_and_spanish_thresholds_are_unchanged(self):
+        from convsim_prompt.repetition import ending_question, length_scale, words
+
+        assert length_scale(words("What is the smallest you would take?")) == 1
+        assert length_scale(words(_KENJI_TEA), words("Fine.")) == 2
+        assert ending_question("Son 4,50. ¿Algo más?") == ("algo", "más")
+        assert ending_question("That is 8.50. Anything else?") == ("anything", "else")
