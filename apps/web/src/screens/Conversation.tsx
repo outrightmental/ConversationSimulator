@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
-import { ttsAudioUrl } from '../api/origin'
+import { speechAudioUrl, ttsAudioUrl } from '../api/origin'
 import type {
   SessionEvent,
   InputMode,
@@ -318,6 +318,9 @@ export default function Conversation() {
   const ttsEnabledRef = useRef(false)
   // Ids of the `tts_audio_chunk` events already queued for playback.
   const ttsPlayedEventIdsRef = useRef<Set<number>>(new Set())
+  // True from the moment a turn is sent until its first sentence is heard, so
+  // time-to-first-audio is recorded once per turn.
+  const ttsAwaitingFirstAudioRef = useRef(false)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
@@ -455,10 +458,20 @@ export default function Conversation() {
     }
     audio.onended = advance
     audio.onerror = advance
-    audio.play().catch(() => {
-      // Autoplay blocked or resource unavailable — skip to next chunk.
-      advance()
-    })
+    audio
+      .play()
+      .then(() => {
+        // The moment the character is first heard this turn: the one figure
+        // the server cannot measure (issue #533).
+        if (ttsAwaitingFirstAudioRef.current) {
+          ttsAwaitingFirstAudioRef.current = false
+          recordInterval('tts_first_sentence_ms', 'turn_submit')
+        }
+      })
+      .catch(() => {
+        // Autoplay blocked or resource unavailable — skip to next chunk.
+        advance()
+      })
   }
 
   // The start and turn responses carry the reply's audio as `tts_audio_chunk`
@@ -466,24 +479,46 @@ export default function Conversation() {
   // event this queue was first written for is never emitted by the core, which
   // left a voice session silent (issue #533). Each event is played once, by its
   // id, so a socket delivery added later cannot double a sentence.
-  function _enqueueTtsFromResponse(events: SessionEvent[]) {
+  //
+  // The words arrive before the audio exists. Each event names where its
+  // sentence will be spoken from (`audio_path`); a request there waits until
+  // the sentence is synthesised, so queueing the URL is all it takes for the
+  // first sentence to be heard as soon as it is ready and the rest in order.
+  // An engine that still synthesises before answering sends `cache_path`
+  // instead, and that is played as before.
+  //
+  // `waitedMs` is how long the player has already waited for this reply. The
+  // thinking pause is a target, not an addition: what the wait has already
+  // used is taken off it, so a slow machine adds no artificial delay.
+  function _enqueueTtsFromResponse(events: SessionEvent[], waitedMs = 0) {
     for (const event of events) {
       if (event.event_type !== 'tts_audio_chunk') continue
       if (ttsPlayedEventIdsRef.current.has(event.event_id)) continue
       ttsPlayedEventIdsRef.current.add(event.event_id)
+      const audioPath = event.payload['audio_path']
       const cachePath = event.payload['cache_path']
-      if (typeof cachePath !== 'string' || cachePath === '') continue
+      const url =
+        typeof audioPath === 'string' && audioPath !== ''
+          ? speechAudioUrl(audioPath)
+          : typeof cachePath === 'string' && cachePath !== ''
+          ? ttsAudioUrl(cachePath)
+          : null
+      if (!url) continue
       const pause = event.payload['thinking_pause_ms']
-      _enqueueTtsChunk(cachePath, typeof pause === 'number' ? pause : undefined)
+      const pauseLeft = typeof pause === 'number' ? Math.max(0, pause - waitedMs) : undefined
+      _enqueueTtsUrl(url, pauseLeft)
     }
   }
 
   function _enqueueTtsChunk(cachePath: string, thinkingPauseMs?: number) {
+    const url = ttsAudioUrl(cachePath)
+    if (url) _enqueueTtsUrl(url, thinkingPauseMs)
+  }
+
+  function _enqueueTtsUrl(url: string, thinkingPauseMs?: number) {
     // Only play TTS audio when the session was started with TTS enabled.
     // The text transcript remains authoritative regardless of this flag.
     if (!ttsEnabledRef.current) return
-    const url = ttsAudioUrl(cachePath)
-    if (!url) return
     ttsQueueRef.current.push(url)
     if (ttsPlayingRef.current === null && ttsHoldTimerRef.current === null) {
       // Apply the NPC thinking pause before starting the first chunk, but only
@@ -1040,6 +1075,7 @@ export default function Conversation() {
     setTurnProgress(null)
 
     mark('turn_submit')
+    ttsAwaitingFirstAudioRef.current = true
 
     // Drives the staged "this is taking a while" notice while the turn is out.
     _startWaitClock()
@@ -1142,7 +1178,7 @@ export default function Conversation() {
 
     // The reply, spoken. Not gated on the commit guard below either: the text
     // may have arrived by socket, the audio only ever arrives here.
-    _enqueueTtsFromResponse(turnData.events)
+    _enqueueTtsFromResponse(turnData.events, waitedMs)
 
     // Outside the commit guard below: the reply itself may already be on screen
     // from the socket, but the scenario events it fired only ever travel on

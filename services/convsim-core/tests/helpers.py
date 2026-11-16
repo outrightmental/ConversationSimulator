@@ -292,3 +292,29 @@ def make_pack_zip(
     """Convenience: create a pack directory and return it as zip bytes."""
     pack_dir = make_pack_dir(base, manifest, extra_files)
     return pack_dir_to_zip(pack_dir, top_level_dir)
+
+
+def speech_audio(client, tts_event: dict):
+    """Collect one sentence's audio the way the app does (issue #533).
+
+    A turn answers with the reply's words before its audio exists. Each
+    ``tts_audio_chunk`` event names where the sentence is spoken from
+    (``audio_path``, relative to ``/api``); a request there waits until the
+    sentence has been synthesised. Returns the HTTP response: 200 with a WAV
+    body when there is audio, 404 when synthesis failed.
+    """
+    audio_path = tts_event["payload"]["audio_path"]
+    return client.get(f"/api{audio_path}")
+
+
+def recorded_speech(client, tts_event: dict) -> dict:
+    """The event's payload as the session records it once synthesis is done."""
+    import json
+
+    conn = client.app.state.db.connection()
+    row = conn.execute(
+        "SELECT payload_json FROM turn_session_events WHERE id = ?",
+        (tts_event["event_id"],),
+    ).fetchone()
+    assert row is not None, f"no recorded event {tts_event['event_id']}"
+    return json.loads(row["payload_json"])

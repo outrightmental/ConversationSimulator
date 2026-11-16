@@ -25,6 +25,7 @@ from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.runtime.kokoro_sidecar import KokoroSidecar
 from convsim_core.runtime.supervisor import ProcessSupervisor
 from convsim_core.services.session_events import SessionEventBus
+from convsim_core.services.speech_jobs import SpeechRegistry
 from convsim_core.storage.database import Database
 from convsim_core.storage.repositories.settings_repo import load_settings
 from convsim_core.stt import build_stt_worker
@@ -98,6 +99,10 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         # crash can never leave a session unable to accept a turn.
         app.state.session_bus = SessionEventBus()
         app.state.turn_locks = {}                    # session_id → asyncio.Lock
+        # Replies whose audio is still being synthesised (issue #533): the
+        # turn answers with the words, and each sentence's audio is collected
+        # from here as it becomes ready.
+        app.state.speech = SpeechRegistry()
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
         # Boot with the user's persisted runtime selection (written by
         # /api/models/use and the setup pipeline) rather than the static config
@@ -162,6 +167,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         # a manual step. Failures are logged; health endpoints stay truthful.
         schedule_startup_autostart(app)
         yield
+        await app.state.speech.shutdown()
         await app.state.voice_install.shutdown()
         await supervisor.stop_all()
         db.close()

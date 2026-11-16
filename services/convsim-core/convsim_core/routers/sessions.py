@@ -22,11 +22,12 @@ import logging
 import secrets
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Request
 from starlette.requests import HTTPConnection
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from convsim_core.edition import (
@@ -57,13 +58,16 @@ from convsim_core.services.relationship_memory import update_relationship_memory
 from convsim_core.services.session_events import SessionEventBus, SessionTurnStreamer
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
-from convsim_core.services.tts_queue import synthesize_utterance
+from convsim_core.services.speech_jobs import SpeechJob, SpeechRegistry
+from convsim_core.services.tts_queue import TtsChunkResult
+from convsim_core.tts.sentence_splitter import split_into_sentences
 from convsim_core.services.turn_timing import (
     TurnClock,
     TurnTimingBuilder,
     VoiceTiming,
     load_turn_timings,
     persist_turn_timing,
+    update_turn_timing_voice,
 )
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
@@ -385,52 +389,76 @@ class SessionCompareResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _run_tts_for_utterance(
+# How long a request for one sentence's audio waits for its synthesis. A
+# sentence takes a few seconds; this only bounds a worker that never answers.
+_SPEECH_WAIT_SECONDS = 90.0
+
+
+def _speech_registry(request: Request) -> SpeechRegistry:
+    """The app's speech registry, created on first use.
+
+    Normally the lifespan creates it; a test that builds the app without
+    running the lifespan still gets one.
+    """
+    registry = getattr(request.app.state, "speech", None)
+    if registry is None:
+        registry = SpeechRegistry()
+        request.app.state.speech = registry
+    return registry
+
+
+def _begin_speech(
+    request: Request,
+    *,
     utterance: str,
     session_id: str,
     turn_number: int,
     voice_id: str,
-    tts_worker: Any,
     conn: Any,
     now: str,
     thinking_pause_ms: int = 0,
     language: Optional[str] = None,
+    on_done: Any = None,
 ) -> List[SessionEventPayload]:
-    """Synthesize *utterance* sentence-by-sentence and persist tts_audio_chunk events.
+    """Start speaking *utterance* and return its ``tts_audio_chunk`` events at once.
 
-    Returns an ordered list of SessionEventPayload for the caller to include in
-    the HTTP response.  Any TTS failure is captured per-chunk and does not raise.
+    The reply's text must never wait for its audio (issue #533), so this does
+    not synthesise anything before returning. It records one event per
+    sentence, marked ``pending``, each with the address its audio will be
+    served from (``audio_path``, relative to ``/api``), and starts synthesis
+    in the background. As each sentence finishes its event is rewritten with
+    where the audio is (``cache_path``) or why there is none (``error``).
 
     ``thinking_pause_ms`` is embedded in the first chunk's payload so the client
-    can delay playback start to simulate the NPC "thinking" before speaking.
+    can hold playback back long enough for the NPC to seem to think.
 
     ``language`` is the session's language, so a worker that pronounces by
     language reads a Spanish reply as Spanish.
+
+    ``on_done`` is called with the finished :class:`SpeechJob`, for timing.
     """
-    try:
-        chunks = await synthesize_utterance(
-            utterance=utterance,
-            voice_id=voice_id,
-            tts_worker=tts_worker,
-            language=language,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("TTS queue failed for session %s: %s", session_id, exc, exc_info=True)
+    sentences = split_into_sentences(utterance)
+    if not sentences:
         return []
 
+    total = len(sentences)
     events: List[SessionEventPayload] = []
-    for i, chunk in enumerate(chunks):
+    payloads: List[Dict[str, Any]] = []
+    row_ids: List[int] = []
+    for index, sentence in enumerate(sentences):
         payload: Dict[str, Any] = {
-            "chunk_index": chunk.chunk_index,
-            "total_chunks": chunk.total_chunks,
-            "text": chunk.text,
-            "voice_id": chunk.voice_id,
-            "cache_path": chunk.audio_path,
-            "error": chunk.error,
+            "chunk_index": index,
+            "total_chunks": total,
+            "text": sentence,
+            "voice_id": voice_id,
+            "cache_path": None,
+            "error": None,
+            "pending": True,
+            "audio_path": f"/sessions/{session_id}/speech/{turn_number}/{index}",
         }
         # Attach thinking pause only to the first chunk so the client waits
-        # before starting playback, then streams subsequent chunks normally.
-        if i == 0 and thinking_pause_ms > 0:
+        # before starting playback, then plays subsequent chunks normally.
+        if index == 0 and thinking_pause_ms > 0:
             payload["thinking_pause_ms"] = thinking_pause_ms
         cursor = conn.execute(
             "INSERT INTO turn_session_events "
@@ -438,14 +466,39 @@ async def _run_tts_for_utterance(
             "VALUES (?, ?, 'tts_audio_chunk', ?, ?)",
             (session_id, turn_number, json.dumps(payload), now),
         )
-        conn.commit()
+        payloads.append(payload)
+        row_ids.append(int(cursor.lastrowid))
         events.append(SessionEventPayload(
             event_id=cursor.lastrowid,
             session_id=session_id,
             event_type="tts_audio_chunk",
-            payload=payload,
+            payload=dict(payload),
             created_at=now,
         ))
+    conn.commit()
+
+    def _record(chunk: TtsChunkResult) -> None:
+        final = dict(payloads[chunk.chunk_index])
+        final.update(cache_path=chunk.audio_path, error=chunk.error, pending=False)
+        try:
+            conn.execute(
+                "UPDATE turn_session_events SET payload_json = ? WHERE id = ?",
+                (json.dumps(final), row_ids[chunk.chunk_index]),
+            )
+            conn.commit()
+        except Exception:  # noqa: BLE001 - e.g. the session was deleted meanwhile
+            logger.info("Could not record speech for session %s", session_id, exc_info=True)
+
+    _speech_registry(request).start(
+        session_id=session_id,
+        turn_number=turn_number,
+        sentences=sentences,
+        voice_id=voice_id,
+        language=language,
+        tts_worker=request.app.state.tts_worker,
+        on_sentence=_record,
+        on_done=on_done,
+    )
     return events
 
 
@@ -882,12 +935,12 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
     tts_events: List[SessionEventPayload] = []
     if tts_enabled:
         voice_id = setup.get("tts_voice_id", _DEFAULT_TTS_VOICE_ID)
-        tts_events = await _run_tts_for_utterance(
+        tts_events = _begin_speech(
+            request,
             utterance=opening_text,
             session_id=session_id,
             turn_number=0,
             voice_id=voice_id,
-            tts_worker=request.app.state.tts_worker,
             conn=conn,
             now=now,
             language=setup.get("language"),
@@ -1094,6 +1147,9 @@ async def _run_turn(
     )
 
     tts_events: List[SessionEventPayload] = []
+    # Row id of this turn's timing record, once written; the speech job fills
+    # in the voice stage there when it finishes.
+    timing_row: Dict[str, Optional[int]] = {"id": None}
     tts_enabled = setup.get("tts_enabled", False)
     if tts_enabled and not result.used_fallback:
         voice_id = setup.get("tts_voice_id", _DEFAULT_TTS_VOICE_ID)
@@ -1103,26 +1159,33 @@ async def _run_turn(
             difficulty_settings_patience=diff_settings.patience if diff_settings else 50,
             enabled=bool(npc_thinking_pause_enabled),
         )
-        synth_started = time.perf_counter()
-        tts_events = await _run_tts_for_utterance(
+        # The words go out now; the audio follows (issue #533). Synthesis has
+        # not finished when this turn's record is written, so the record goes
+        # out with the voice stage unknown and is completed when the last
+        # sentence is done.
+        def _record_voice_timing(job: SpeechJob) -> None:
+            if timing_row["id"] is None:
+                return
+            update_turn_timing_voice(
+                conn,
+                timing_row["id"],
+                VoiceTiming(synth_ms=job.synth_ms, first_audio_ms=job.first_audio_ms),
+            )
+
+        tts_events = _begin_speech(
+            request,
             utterance=result.npc_utterance,
             session_id=session_id,
             turn_number=result.turn_number,
             voice_id=voice_id,
-            tts_worker=request.app.state.tts_worker,
             conn=conn,
             now=now,
             language=setup.get("language"),
             thinking_pause_ms=pause_ms,
+            on_done=_record_voice_timing,
         )
-        # Synthesis runs here, after the pipeline returned, so the voice stage
-        # is timed here. The queue synthesizes every sentence before answering,
-        # so the moment the first chunk was ready is not observable yet
-        # (first_audio_ms stays null until #533/#544).
-        timing.voice = VoiceTiming(
-            synth_ms=round((time.perf_counter() - synth_started) * 1000.0, 1),
-            first_audio_ms=None,
-        )
+        if tts_events:
+            timing.voice = VoiceTiming(synth_ms=None, first_audio_ms=None)
 
     # Build the turn's record once, here, after the pipeline's transaction
     # committed and after synthesis, so the total is the whole request (issue
@@ -1130,7 +1193,7 @@ async def _run_turn(
     # of its own. An input safety stop never reached the model and has none.
     if result.timing is not None:
         record = result.timing.build()
-        persist_turn_timing(conn, session_id, result.turn_number, record, now)
+        timing_row["id"] = persist_turn_timing(conn, session_id, result.turn_number, record, now)
         npc_event.payload["timing"] = record.model_dump()
         npc_event.payload["salvaged"] = result.salvaged
 
@@ -1166,6 +1229,72 @@ async def _run_turn(
         events=[player_event, npc_event] + tts_events,
         ending_type=result.ending_type,
     )
+
+
+def _recorded_speech_path(
+    conn: Any, session_id: str, turn_number: int, chunk_index: int
+) -> Optional[str]:
+    """Where a sentence's audio was recorded to be, from the session's events."""
+    rows = conn.execute(
+        "SELECT payload_json FROM turn_session_events "
+        "WHERE session_id = ? AND turn_number = ? AND event_type = 'tts_audio_chunk' "
+        "ORDER BY id DESC",
+        (session_id, turn_number),
+    ).fetchall()
+    for row in rows:
+        try:
+            payload = json.loads(row["payload_json"])
+        except (ValueError, TypeError):
+            continue
+        if isinstance(payload, dict) and payload.get("chunk_index") == chunk_index:
+            path = payload.get("cache_path")
+            return path if isinstance(path, str) and path else None
+    return None
+
+
+@router.get("/{session_id}/speech/{turn_number}/{chunk_index}")
+async def get_speech(
+    session_id: str, turn_number: int, chunk_index: int, request: Request
+) -> FileResponse:
+    """Serve one sentence of a reply as audio, waiting for it if need be.
+
+    The turn that produced the reply answered before its audio existed (issue
+    #533). This is where the client collects each sentence: while a sentence
+    is still being synthesised the request waits for it, so the audio is heard
+    the moment it is ready and no polling is needed. A sentence whose
+    synthesis failed, or that this session never had, is 404, which the
+    client's player skips.
+    """
+    from convsim_core.routers.tts import _resolve_tts_cache_dir
+
+    pending = _speech_registry(request).sentence(session_id, turn_number, chunk_index)
+    audio_path: Optional[str]
+    if pending is not None:
+        try:
+            # Shielded: one listener giving up must not cancel the sentence
+            # for another (a reconnecting client asks again).
+            audio_path = await asyncio.wait_for(
+                asyncio.shield(pending), timeout=_SPEECH_WAIT_SECONDS
+            )
+        except asyncio.TimeoutError:
+            audio_path = None
+    else:
+        audio_path = _recorded_speech_path(
+            request.app.state.db.connection(), session_id, turn_number, chunk_index
+        )
+    if not audio_path:
+        raise HTTPException(status_code=404, detail="No audio for this sentence")
+
+    # Only a file inside the TTS cache is ever served, whatever the record says.
+    cache_dir = _resolve_tts_cache_dir(request.app.state.tts_worker)
+    try:
+        resolved = Path(audio_path).resolve()
+        resolved_cache = cache_dir.resolve()
+    except OSError:
+        raise HTTPException(status_code=404, detail="No audio for this sentence")
+    if resolved_cache not in resolved.parents or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="No audio for this sentence")
+    return FileResponse(str(resolved), media_type="audio/wav")
 
 
 @router.post("/{session_id}/end", response_model=SessionEndResponse)
@@ -1402,6 +1531,7 @@ async def delete_session(session_id: str, request: Request) -> None:
         # FTS shadow tables have no foreign-key cascade, so delete entries explicitly.
         conn.execute("DELETE FROM session_transcript_fts WHERE session_id = ?", (session_id,))
         conn.execute("DELETE FROM turn_sessions WHERE session_id = ?", (session_id,))
+    _speech_registry(request).forget_session(session_id)
 
 
 def _turns_from_rows(

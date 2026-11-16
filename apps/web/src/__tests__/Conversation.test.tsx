@@ -2231,6 +2231,116 @@ describe('Conversation screen', () => {
       spy.mockRestore()
     })
 
+    // ── Words first, audio after (the rest of issue #533) ───────────────────
+    // The engine now answers before the audio exists. Each sentence is listed
+    // as pending, with the address it will be spoken from; a request there
+    // waits for the sentence, so queueing the address is all the screen does.
+
+    function pendingChunk(eventId: number, turn: number, index: number, total: number, pauseMs?: number) {
+      return {
+        event_id: eventId,
+        session_id: SESSION_ID,
+        event_type: 'tts_audio_chunk',
+        payload: {
+          chunk_index: index,
+          total_chunks: total,
+          text: `Sentence ${index + 1}.`,
+          voice_id: 'af_heart',
+          cache_path: null,
+          error: null,
+          pending: true,
+          audio_path: `/sessions/${SESSION_ID}/speech/${turn}/${index}`,
+          ...(pauseMs != null ? { thinking_pause_ms: pauseMs } : {}),
+        },
+        created_at: '2026-07-01T00:00:02Z',
+      }
+    }
+
+    it('speaks pending sentences from the addresses the response names, in order', async () => {
+      const { created, spy } = spyOnAudio()
+      mockApi.startSession.mockResolvedValue({
+        ok: true,
+        data: {
+          ...startResponse,
+          events: [...startResponse.events, pendingChunk(10, 0, 0, 2), pendingChunk(11, 0, 1, 2)],
+        },
+      })
+
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(created).toHaveLength(1))
+
+      // The opening line is on screen before a single sentence has played.
+      expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument()
+      expect(created[0].url).toBe(`/api/sessions/${SESSION_ID}/speech/0/0`)
+      act(() => created[0].el.onended?.())
+      expect(created.map((c) => c.url)).toEqual([
+        `/api/sessions/${SESSION_ID}/speech/0/0`,
+        `/api/sessions/${SESSION_ID}/speech/0/1`,
+      ])
+      spy.mockRestore()
+    })
+
+    it('moves on when a pending sentence turns out to have no audio', async () => {
+      const { created, spy } = spyOnAudio()
+      mockApi.startSession.mockResolvedValue({
+        ok: true,
+        data: {
+          ...startResponse,
+          events: [...startResponse.events, pendingChunk(10, 0, 0, 2), pendingChunk(11, 0, 1, 2)],
+        },
+      })
+
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(created).toHaveLength(1))
+      // The engine answered 404 for the first sentence: its synthesis failed.
+      act(() => (created[0].el as unknown as { onerror: () => void }).onerror())
+
+      expect(created.map((c) => c.url)).toEqual([
+        `/api/sessions/${SESSION_ID}/speech/0/0`,
+        `/api/sessions/${SESSION_ID}/speech/0/1`,
+      ])
+      spy.mockRestore()
+    })
+
+    async function sendTurnAnsweredAfter(ms: number, pauseMs: number) {
+      mockApi.submitTurn.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, ms))
+        return {
+          ok: true as const,
+          data: { ...turnResponse, events: [...turnResponse.events, pendingChunk(20, 1, 0, 1, pauseMs)] },
+        }
+      })
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'I have five years of experience.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() =>
+        expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+      )
+    }
+
+    it('holds the voice back for the thinking pause when the reply came quickly', async () => {
+      const { created, spy } = spyOnAudio()
+      await sendTurnAnsweredAfter(0, 400)
+
+      // The words are on screen; the character has not started speaking yet.
+      expect(created).toHaveLength(0)
+      await waitFor(() => expect(created).toHaveLength(1), { timeout: 2000 })
+      expect(created[0].url).toBe(`/api/sessions/${SESSION_ID}/speech/1/0`)
+      spy.mockRestore()
+    })
+
+    it('adds no pause when the player has already waited longer than it', async () => {
+      const { created, spy } = spyOnAudio()
+      // The reply took 120 ms; the pause asked for is 50 ms. Nothing is left of it.
+      await sendTurnAnsweredAfter(120, 50)
+
+      expect(created).toHaveLength(1)
+      spy.mockRestore()
+    })
+
     it('constructs audio URL from the filename of the cache path', async () => {
       const urls: string[] = []
       const AudioSpy = vi.spyOn(window, 'Audio').mockImplementation(

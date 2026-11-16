@@ -126,9 +126,16 @@ per request: about a second to load the model, then the work.
   Italian, Portuguese and Hindi are phonemised by eSpeak NG. In any other
   language the reply stays text, and the brief says so before the
   conversation starts.
-- **Playing it.** The conversation screen plays the audio that the start and
-  turn responses return, one sentence after another, from the core's own
-  origin (issue #533).
+- **Playing it.** The reply's words never wait for its audio (issue #533).
+  The start and turn responses answer as soon as the words exist and list
+  each sentence as pending, with the address it will be spoken from
+  (`GET /api/sessions/{id}/speech/{turn}/{index}`). Synthesis runs behind the
+  response. A request to a sentence's address waits until that sentence is
+  ready, so the conversation screen simply queues the addresses: the first
+  sentence is heard as soon as it is synthesised and the rest follow in
+  order. A sentence whose synthesis failed answers 404 and is skipped. The
+  character's thinking pause is a target, not an addition: what the player
+  already waited for the reply is taken off it.
 
 Only the ten approved built-in voices can be used, as before.
 
@@ -199,6 +206,7 @@ reply in the packaged app. Demo gate D-11 is that check on each platform.
 | `POST /api/voice/setup/install` | Body `{"components": []}`; empty means everything not ready. Starts a job, or returns the one already running. |
 | `GET /api/voice/setup/install/{id}` | Job status and per-stage byte counts. |
 | `DELETE /api/voice/setup/install/{id}` | Cancel. 409 once the job has ended. |
+| `GET /api/sessions/{id}/speech/{turn}/{index}` | One sentence of a reply as WAV. Waits while the sentence is being synthesised; 404 when there is no audio for it. |
 
 Readiness is reported where it always was: `runtime.stt_ready` and
 `runtime.tts_ready` on `GET /api/health`.
@@ -215,8 +223,6 @@ in-app install takes over from them once it is complete.
 
 - **Removing voice from inside the app.** Delete the voice folder; the app
   falls back to text at the next launch.
-- **Text first, audio after.** A reply's text still waits for all of its
-  audio. That is the rest of issue #533.
 - **Spanish-accented voices.** The approved voices are English voices; they
   speak the other supported languages with eSpeak NG phonemes.
 - **Silero VAD.** Hands-free turn-taking runs in the web view and needs only
