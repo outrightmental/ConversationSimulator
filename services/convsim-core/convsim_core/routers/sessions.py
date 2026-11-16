@@ -78,13 +78,40 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 _VALID_STATES_FOR_TURN = {"PlayerTurnListening"}
 
 
+# Scenarios the full app still plays from the built-in catalog although an
+# official pack defines the same id. The First Words tutorial runs on the
+# scripted runtime, whose script is written against the catalog entry's state.
+_CATALOG_FIRST_SCENARIOS = frozenset({"first_words_tutorial"})
+
+
+def _official_pack_for(conn: Any, scenario_id: str) -> Optional[str]:
+    """The installed official pack that defines ``scenario_id``, or None."""
+    try:
+        row = conn.execute(
+            "SELECT p.slug FROM scenarios s JOIN packs p ON s.pack_id = p.id "
+            "WHERE s.slug = ? AND p.slug LIKE 'official.%' ORDER BY p.slug LIMIT 1",
+            (scenario_id,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001 - an index that cannot be read falls back to the catalog
+        return None
+    return row["slug"] if row is not None else None
+
+
 def _resolve_scenario(request: HTTPConnection, scenario_id: str):
     """Resolve a scenario the way this edition plays it.
 
     The demo edition (issue #495) plays the official packs' curated
-    conversations, so it resolves pack-first and pinned to the curated pack;
-    the full app keeps the historical catalog-first order. ``request`` may be
-    a WebSocket: only its app is read.
+    conversations, so it resolves pack-first and pinned to the curated pack.
+
+    The full app does the same for every id an installed official pack
+    defines (issue #582). Six ids exist both in the built-in catalog and in
+    an official pack, three of them demo conversations; played catalog-first,
+    the full app ran the catalog's older copies, without the scenario's rubric,
+    the rewritten characters or the authored state and events. The catalog is
+    kept for ids no official pack defines, and for the scripted tutorial. The
+    lookup is pinned to the official pack, so a community pack that reuses an
+    id never replaces an official conversation. ``request`` may be a
+    WebSocket: only its app is read.
     """
     conn = request.app.state.db.connection()
     if is_demo(request.app.state.service_config):
@@ -94,6 +121,12 @@ def _resolve_scenario(request: HTTPConnection, scenario_id: str):
             prefer_installed_pack=True,
             pack_id=demo_pack_id_for(scenario_id),
         )
+    if scenario_id not in _CATALOG_FIRST_SCENARIOS:
+        official = _official_pack_for(conn, scenario_id)
+        if official is not None:
+            return resolve_scenario_info(
+                scenario_id, conn, prefer_installed_pack=True, pack_id=official
+            )
     return resolve_scenario_info(scenario_id, conn)
 
 

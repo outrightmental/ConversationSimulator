@@ -598,12 +598,29 @@ class TestAScenarioWithARubric:
         assert all("business_case" not in s for s in body["strengths"] + body["improvements"])
 
 
-class TestAScenarioWithNoRubric:
-    """behavioral_interview plays its hardcoded catalog entry in the full app."""
+@pytest.fixture()
+def catalog_app(tmp_path):
+    """An app with no official packs installed, so behavioral_interview plays
+    its catalog entry, which has no rubric. With the packs installed the full
+    app plays the pack's version instead (#582)."""
+    config = ServiceConfig(
+        host="127.0.0.1",
+        port=7355,
+        data_dir=str(tmp_path / "data"),
+        log_dir=str(tmp_path / "logs"),
+        db_dir=str(tmp_path / "db"),
+        packs_dir=str(tmp_path / "packs"),
+        official_packs_dir=str(tmp_path / "no-official-packs"),
+    )
+    return create_app(config)
 
-    def test_plays_and_debriefs_as_before(self, app) -> None:
+
+class TestAScenarioWithNoRubric:
+    """A scenario without a rubric: behavioral_interview's catalog entry."""
+
+    def test_plays_and_debriefs_as_before(self, catalog_app) -> None:
         runtime = _RecordingRuntime()
-        body, _ = _play(app, "behavioral_interview", runtime)
+        body, _ = _play(catalog_app, "behavioral_interview", runtime)
         for request in runtime.turn_requests():
             assert request.json_schema == NPC_TURN_OUTPUT_SCHEMA
             assert "--- LAYER:RUBRIC ---" not in request.messages[0].content

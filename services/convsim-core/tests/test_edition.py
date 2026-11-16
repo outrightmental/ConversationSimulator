@@ -411,16 +411,58 @@ def test_demo_every_offered_difficulty_starts_a_session(demo_client):
             assert created.status_code == 201, f"{s.scenario_id}@{level}: {created.text}"
 
 
-def test_full_edition_resolution_order_is_unchanged(full_client):
-    """The full app keeps catalogue-first resolution for catalogue ids."""
+# Every id that exists both in the built-in catalog and in an official pack,
+# except the scripted tutorial, whose script is written against the catalog.
+_CATALOG_AND_PACK_IDS = (
+    "behavioral_interview",
+    "coworker_feedback",
+    "hostile_executive_interview",
+    "spanish_coffee",
+    "used_car_negotiation",
+)
+
+
+def _official_opening(scenario_id: str) -> str:
+    [path] = _OFFICIAL_PACKS.glob(f"*/scenarios/{scenario_id}.yaml")
+    return yaml.safe_load(path.read_text(encoding="utf-8"))["opening"]["npc_says"]
+
+
+def test_every_id_shared_with_the_catalog_is_listed():
+    """The list above is every overlap, so a new one cannot slip past the test below."""
+    from convsim_core.scenarios import SCENARIOS
+
+    official = {p.stem for p in _OFFICIAL_PACKS.glob("*/scenarios/*.yaml")}
+    assert set(SCENARIOS) & official == set(_CATALOG_AND_PACK_IDS) | {"first_words_tutorial"}
+
+
+@pytest.mark.parametrize("scenario_id", _CATALOG_AND_PACK_IDS)
+def test_full_edition_plays_the_official_pack_version(full_client, scenario_id):
+    """The full app plays the official pack's scenario where one exists (#582),
+    not the catalog's older copy without its rubric and rewritten character."""
     from convsim_core.scenarios import SCENARIOS
 
     client, _ = full_client
-    created = client.post("/api/sessions", json=_session_body("behavioral_interview"))
+    created = client.post("/api/sessions", json=_session_body(scenario_id))
     assert created.status_code == 201, created.text
     start = client.post(f"/api/sessions/{created.json()['session_id']}/start")
     opening = next(e for e in start.json()["events"] if e["event_type"] == "npc_opening")
-    assert opening["payload"]["content"] == SCENARIOS["behavioral_interview"].opening_npc_says
+    pack_opening = " ".join(_official_opening(scenario_id).split())
+    assert " ".join(opening["payload"]["content"].split()) == pack_opening
+    assert pack_opening != " ".join((SCENARIOS[scenario_id].opening_npc_says or "").split())
+
+
+def test_full_edition_keeps_the_catalog_tutorial(full_client):
+    """The scripted tutorial still plays the catalog entry its script targets."""
+    from convsim_core.scenarios import SCENARIOS
+
+    client, _ = full_client
+    created = client.post(
+        "/api/sessions", json={**_session_body("first_words_tutorial"), "runtime_id": "scripted"}
+    )
+    assert created.status_code == 201, created.text
+    start = client.post(f"/api/sessions/{created.json()['session_id']}/start")
+    opening = next(e for e in start.json()["events"] if e["event_type"] == "npc_opening")
+    assert opening["payload"]["content"] == SCENARIOS["first_words_tutorial"].opening_npc_says
 
 
 def test_demo_ignores_a_foreign_pack_that_reuses_a_curated_slug(tmp_path, monkeypatch):

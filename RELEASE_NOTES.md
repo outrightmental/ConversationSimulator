@@ -1,4 +1,41 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.7 — Release Notes
+
+> **Patch release (2026-11-16).** The full game plays the official pack
+> versions of five conversations it was still playing from older built-in
+> copies.
+
+## What's new in v0.4.7
+
+### The full game plays the conversations the demo plays (#582)
+
+Five conversations exist both as an official pack scenario and as an older
+built-in copy: The Behavioral Interview, The Used Car Deal, Coffee at Café
+Sol, The Feedback Conversation and The Executive Gauntlet.
+The demo played the pack versions; the full game still played the built-in
+copies, so none of v0.4.1's work reached them there: no scoring on the
+scenario's own rubric, none of the rewritten characters (Ray's counter
+offers, Rosa's confirmations, Dana's concrete answers), and none of the
+authored state and events.
+
+The full game now plays the official pack's version of any conversation an
+official pack defines, as the demo does. A community pack that reuses one of
+these names never replaces the official conversation. The scripted First
+Words tutorial keeps its built-in version, which its script is written for.
+
+## Upgrade notes
+
+- A conversation of these five that was in progress when you update
+  continues on the pack version, whose meters can differ from the built-in
+  copy's. Starting it again gives the cleanest run.
+- No database migration.
+
+## Known gaps
+
+- The gaps listed for v0.4.6 and earlier below still apply, except #582.
+
+---
+
 # Conversation Simulator v0.4.6 — Release Notes
 
 > **Patch release (2026-11-16).** The check that stops a character repeating
@@ -350,6 +387,7 @@ on reference hardware still judges each conversation.
   Interview, The Used Car Deal, Coffee at Café Sol) and three other scenarios
   still play their built-in catalog versions, which have neither the rubric
   nor the rewritten characters. The demo plays the pack versions (#582).
+  Fixed in v0.4.7.
 - The repetition check compares words, so it does not yet catch a repeat in
   Japanese, which is written without spaces (#583). Fixed in v0.4.6.
 - The macOS build runs on Apple Silicon only (#575).
