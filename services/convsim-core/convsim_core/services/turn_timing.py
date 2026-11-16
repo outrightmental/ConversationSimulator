@@ -326,6 +326,36 @@ def persist_turn_timing(
     return int(cursor.lastrowid)
 
 
+def update_turn_timing_voice(
+    conn: sqlite3.Connection, event_id: int, voice: VoiceTiming
+) -> None:
+    """Fill in the voice stage of a record already written.
+
+    A reply's audio is synthesised after the turn has answered (issue #533),
+    so the record goes out with the voice stage unknown and is completed here
+    when the last sentence is done. A record that is gone (its session was
+    deleted meanwhile) or unreadable is left alone.
+    """
+    row = conn.execute(
+        "SELECT payload_json FROM turn_session_events WHERE id = ? AND event_type = ?",
+        (event_id, TURN_TIMING_EVENT_TYPE),
+    ).fetchone()
+    if row is None:
+        return
+    try:
+        payload = json.loads(row["payload_json"])
+    except (ValueError, TypeError):
+        return
+    if not isinstance(payload, dict):
+        return
+    payload["voice"] = voice.model_dump()
+    with conn:
+        conn.execute(
+            "UPDATE turn_session_events SET payload_json = ? WHERE id = ?",
+            (json.dumps(payload), event_id),
+        )
+
+
 def load_turn_timings(conn: sqlite3.Connection, session_id: str) -> dict[int, dict[str, Any]]:
     """The persisted records of one session, keyed by game turn number."""
     rows = conn.execute(

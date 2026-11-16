@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 from convsim_core.runtime.types import RuntimeStatus
 from convsim_core.tts.base import TtsWorker
@@ -37,6 +38,12 @@ class FakeTtsWorker(TtsWorker):
     READY status and never raises TtsUnavailableError.
     """
 
+    def __init__(self) -> None:
+        # One folder for everything this worker writes, as a real worker has
+        # its cache. The audio routes serve only files inside the worker's
+        # cache folder, so without this a fake sentence could not be played.
+        self._cache_dir = Path(tempfile.gettempdir()) / "convsim_tts_fake"
+
     @property
     def id(self) -> str:
         return "fake"
@@ -47,7 +54,10 @@ class FakeTtsWorker(TtsWorker):
 
     async def synthesize(self, request: TtsRequest) -> TtsResult:
         validate_voice_id(request.voice_id)
-        fd, audio_path = tempfile.mkstemp(suffix=".wav", prefix="convsim_tts_fake_")
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        fd, audio_path = tempfile.mkstemp(
+            suffix=".wav", prefix="convsim_tts_fake_", dir=str(self._cache_dir)
+        )
         try:
             os.write(fd, _SILENT_WAV)
         finally:

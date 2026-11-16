@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from convsim_core.services.tts_queue import TtsChunkResult, synthesize_utterance
+from tests.helpers import recorded_speech, speech_audio
 from convsim_core.tts.types import TtsRequest, TtsResult, TtsUnavailableError, TtsError
 
 
@@ -294,6 +295,9 @@ def test_tts_audio_chunk_event_has_required_fields(client, tmp_path):
 
 
 def test_tts_audio_chunk_cache_path_matches_synthesize_result(client, tmp_path):
+    """The answer goes out before the audio exists (issue #533): the chunk is
+    pending in the response, and the session's record of it carries the path
+    the worker returned once synthesis is done."""
     sid = _create_session(client, tts_enabled=True)
     fake_path = str(tmp_path / "audio.wav")
     mock_result = TtsResult(
@@ -305,10 +309,19 @@ def test_tts_audio_chunk_cache_path_matches_synthesize_result(client, tmp_path):
         new=AsyncMock(return_value=mock_result),
     ):
         resp = client.post(f"/api/sessions/{sid}/start")
-    tts_event = next(
-        e for e in resp.json()["events"] if e["event_type"] == "tts_audio_chunk"
-    )
-    assert tts_event["payload"]["cache_path"] == fake_path
+        tts_event = next(
+            e for e in resp.json()["events"] if e["event_type"] == "tts_audio_chunk"
+        )
+        assert tts_event["payload"]["pending"] is True
+        assert tts_event["payload"]["cache_path"] is None
+        assert tts_event["payload"]["audio_path"] == f"/sessions/{sid}/speech/0/0"
+        # Asking for the sentence waits for it; the file is not in the worker's
+        # cache folder here, so there is nothing to serve, but the wait is over.
+        speech_audio(client, tts_event)
+    recorded = recorded_speech(client, tts_event)
+    assert recorded["pending"] is False
+    assert recorded["cache_path"] == fake_path
+    assert recorded["error"] is None
 
 
 def test_tts_unavailable_does_not_fail_turn(client):
@@ -320,15 +333,20 @@ def test_tts_unavailable_does_not_fail_turn(client):
         new=AsyncMock(side_effect=TtsUnavailableError("Kokoro down")),
     ):
         resp = client.post(f"/api/sessions/{sid}/turn", json={"content": "Hello"})
-    assert resp.status_code == 200
-    data = resp.json()
-    # Session state must not be corrupted; turn still processed
-    assert data["state"] in ("PlayerTurnListening", "Ended")
-    # tts_audio_chunk events may be present but with error field set
-    tts_events = [e for e in data["events"] if e["event_type"] == "tts_audio_chunk"]
-    for ev in tts_events:
-        assert ev["payload"]["cache_path"] is None
-        assert ev["payload"]["error"] is not None
+        assert resp.status_code == 200
+        data = resp.json()
+        # Session state must not be corrupted; turn still processed
+        assert data["state"] in ("PlayerTurnListening", "Ended")
+        # The chunks are listed, pending; each one's audio is then refused
+        # (404) and its record says why. The turn itself was never at risk.
+        tts_events = [e for e in data["events"] if e["event_type"] == "tts_audio_chunk"]
+        assert tts_events
+        for ev in tts_events:
+            assert ev["payload"]["cache_path"] is None
+            assert speech_audio(client, ev).status_code == 404
+            recorded = recorded_speech(client, ev)
+            assert recorded["cache_path"] is None
+            assert recorded["error"] is not None
 
 
 def test_tts_enabled_turn_emits_ordered_chunks(client, tmp_path):

@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Callable
 
 from convsim_core.tts.base import TtsWorker
 from convsim_core.tts.sentence_splitter import split_into_sentences
@@ -56,14 +57,36 @@ async def synthesize_utterance(
     per chunk (``error`` field set, ``audio_path`` is None) and do not abort
     subsequent chunks — text fallback is always available.
 
-    A worker that declares ``max_concurrency`` above one has that many
-    sentences synthesised at a time; the order of the result is the order of
-    the sentences either way.  ``language`` is the language the utterance is
-    written in, for a worker that pronounces by language.
-
     Returns an empty list for empty utterances.  Never raises.
     """
-    sentences = split_into_sentences(utterance)
+    return await synthesize_sentences(
+        split_into_sentences(utterance), voice_id, tts_worker, speed=speed, language=language
+    )
+
+
+async def synthesize_sentences(
+    sentences: list[str],
+    voice_id: str,
+    tts_worker: TtsWorker,
+    *,
+    speed: float = 1.0,
+    language: str | None = None,
+    on_chunk: Callable[[TtsChunkResult], None] | None = None,
+) -> list[TtsChunkResult]:
+    """Synthesize sentences already split, one chunk each, in sentence order.
+
+    A worker that declares ``max_concurrency`` above one has that many
+    sentences synthesised at a time; the order of the result is the order of
+    the sentences either way.  ``language`` is the language the sentences are
+    written in, for a worker that pronounces by language.
+
+    ``on_chunk`` is called as each sentence finishes, in the order they
+    finish, which with a concurrent worker is not always sentence order.  It
+    is how a caller hands each sentence's audio on without waiting for the
+    last one.  A failure in the callback is logged and does not stop the rest.
+
+    Never raises.
+    """
     if not sentences:
         return []
 
@@ -99,6 +122,11 @@ async def synthesize_utterance(
                 exc_info=True,
             )
             chunk.error = f"Unexpected error: {exc}"
+        if on_chunk is not None:
+            try:
+                on_chunk(chunk)
+            except Exception:  # noqa: BLE001
+                logger.error("TTS chunk callback failed (chunk %d/%d)", idx + 1, total, exc_info=True)
         return chunk
 
     return list(await asyncio.gather(*(_one(i, s) for i, s in enumerate(sentences))))

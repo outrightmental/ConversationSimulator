@@ -483,6 +483,24 @@ class TestSttEnabledNetworkGuard:
 # ---------------------------------------------------------------------------
 
 
+def _spoken(client, tts_event: dict) -> tuple:
+    """Collect one sentence's audio as the app does; return (response, record).
+
+    A turn answers with the reply's words before its audio exists (issue
+    #533). The audio is collected from the address the ``tts_audio_chunk``
+    event names; that request waits for the sentence. The record is the
+    event as the session stores it once synthesis is done.
+    """
+    import json
+
+    response = client.get("/api" + tts_event["payload"]["audio_path"])
+    row = client.app.state.db.connection().execute(
+        "SELECT payload_json FROM turn_session_events WHERE id = ?",
+        (tts_event["event_id"],),
+    ).fetchone()
+    return response, json.loads(row["payload_json"])
+
+
 class TestTtsEnabledNetworkGuard:
     """G-3: TTS synthesis under LOCAL_MODE.
 
@@ -518,7 +536,16 @@ class TestTtsEnabledNetworkGuard:
         res = _guard_client.post(f"/api/sessions/{sid}/turn", json={"content": _TEXT_TURN})
         tts_events = [e for e in res.json()["events"] if e["event_type"] == "tts_audio_chunk"]
         assert tts_events, "No TTS audio chunks under LOCAL_MODE"
-        cache_path = tts_events[0]["payload"].get("cache_path", "")
+        # The audio is fetched from the app itself, never from another host.
+        audio_path = tts_events[0]["payload"].get("audio_path", "")
+        assert audio_path.startswith("/sessions/"), (
+            f"audio_path is not a path on the local service: {audio_path!r}"
+        )
+        response, recorded = _spoken(_guard_client, tts_events[0])
+        assert response.status_code == 200, (
+            f"Audio was not served under LOCAL_MODE: HTTP {response.status_code}"
+        )
+        cache_path = recorded.get("cache_path") or ""
         assert cache_path and not cache_path.startswith("http"), (
             f"cache_path looks like a URL instead of a local path: {cache_path!r}"
         )
@@ -529,8 +556,9 @@ class TestTtsEnabledNetworkGuard:
         res = _guard_client.post(f"/api/sessions/{sid}/turn", json={"content": _TEXT_TURN})
         tts_events = [e for e in res.json()["events"] if e["event_type"] == "tts_audio_chunk"]
         assert tts_events, "No TTS audio chunks"
-        assert tts_events[0]["payload"].get("error") is None, (
-            f"TTS synthesis error under LOCAL_MODE: {tts_events[0]['payload'].get('error')}"
+        _, recorded = _spoken(_guard_client, tts_events[0])
+        assert recorded.get("error") is None, (
+            f"TTS synthesis error under LOCAL_MODE: {recorded.get('error')}"
         )
 
     def test_no_tts_events_when_disabled(self, _guard_client):
@@ -552,7 +580,9 @@ class TestTtsEnabledNetworkGuard:
 
         tts_events = [e for e in turn.json()["events"] if e["event_type"] == "tts_audio_chunk"]
         assert tts_events, "[tts] No audio chunks"
-        assert tts_events[0]["payload"].get("error") is None, "[tts] Synthesis error"
+        response, recorded = _spoken(_guard_client, tts_events[0])
+        assert response.status_code == 200, f"[tts] Audio not served: HTTP {response.status_code}"
+        assert recorded.get("error") is None, "[tts] Synthesis error"
 
         end = _guard_client.post(f"/api/sessions/{sid}/end")
         assert end.status_code == 200, f"[end] {end.text}"

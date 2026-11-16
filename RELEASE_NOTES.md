@@ -1,4 +1,47 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.3 — Release Notes
+
+> **Patch release (2026-11-16).** With the character's voice on, the reply's
+> words appear at once and the voice follows a sentence at a time. The free
+> demo edition should be built from this release.
+
+## What's new in v0.4.3
+
+### The words no longer wait for the voice (#533)
+
+In v0.4.2, turning the character's voice on made the reply's *text* slower:
+the app held the words back until every sentence had been spoken into audio.
+The six-sentence opening of The Behavioral Interview took about nine seconds
+to appear, and the voice only started once the last sentence was ready.
+
+Now the words appear as soon as they are written, and the voice follows:
+
+- The first sentence is heard as soon as it is ready, about one and a half to
+  three seconds later on a recent Windows machine, and the rest follow in
+  order without a gap.
+- The character's thinking pause no longer adds to a slow reply. When the
+  player has already waited longer than the pause, the voice starts at once.
+- A sentence the voice cannot speak is skipped; the others are still heard,
+  and every word is still on screen.
+- Each turn's timing record now includes how long the voice took and when the
+  first sentence was ready.
+
+## Upgrade notes
+
+- No database migration. Conversations recorded with v0.4.2 replay as before.
+- Nothing to do for voice: an install from v0.4.2 keeps working.
+
+## Known gaps
+
+- The voice still starts only once the whole reply has been written; speaking
+  while the character is still writing is #544.
+- The character's voice is not switched on by default for the official
+  scenarios, which are marked as written for text. Tick **NPC voice (TTS)**
+  on the brief to hear the replies.
+- The gaps listed for v0.4.2 and v0.4.1 below still apply.
+
+---
+
 # Conversation Simulator v0.4.2 — Release Notes
 
 > **Patch release (2026-11-16).** Voice installs from inside the app with one
@@ -77,7 +120,8 @@ decision and adds demo gate D-11 for it.
   app on macOS or Linux; demo gate D-11 is that check. If the engine does not
   start on a machine, the install says so and text still works.
 - With voice on, a reply's text still waits until all of its audio is ready;
-  a long opening line can take several seconds to appear (#533).
+  a long opening line can take several seconds to appear (#533). Fixed in
+  v0.4.3.
 - The character's voice is not switched on by default for the official
   scenarios, which are marked as written for text. Tick **NPC voice (TTS)**
   on the brief to hear the replies.

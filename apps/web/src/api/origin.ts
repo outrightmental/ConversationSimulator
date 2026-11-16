@@ -39,3 +39,17 @@ export function ttsAudioUrl(cachePath: string, base: string = API_BASE): string 
   const filename = cachePath.replace(/\\/g, '/').split('/').pop()
   return filename ? `${base}/tts/audio/${filename}` : null
 }
+
+/**
+ * URL one sentence of a reply is spoken from, given the `audio_path` its
+ * `tts_audio_chunk` event carries (a path under `/api`, for example
+ * `/sessions/<id>/speech/3/0`).
+ *
+ * The reply's text arrives before its audio exists; a request to this URL
+ * waits until that sentence has been synthesised and then answers with it, so
+ * an <audio> element pointed here starts the moment the sentence is ready.
+ */
+export function speechAudioUrl(audioPath: string, base: string = API_BASE): string | null {
+  if (!audioPath.startsWith('/')) return null
+  return `${base}${audioPath}`
+}

@@ -50,6 +50,7 @@ from fastapi.testclient import TestClient
 
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
+from tests.helpers import recorded_speech, speech_audio
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +217,16 @@ def _upload_audio(
     return resp.json()
 
 
+def _assert_spoken(client: TestClient, tts_event: dict) -> None:
+    """The sentence's audio is served: the reply answered first, the audio
+    is collected from its own address once synthesised (issue #533)."""
+    response = speech_audio(client, tts_event)
+    assert response.status_code == 200, (
+        f"[stage: tts] No audio for the sentence: HTTP {response.status_code} {response.text[:200]}"
+    )
+    assert response.content[:4] == b"RIFF", "[stage: tts] The audio served is not a WAV file"
+
+
 def _submit_turn(client: TestClient, session_id: str, text: str) -> dict:
     """POST a player turn and return the parsed response body.
 
@@ -365,16 +376,17 @@ class TestEnglishVoiceSmoke:
         )
 
     def test_tts_audio_chunk_has_cache_path(self, voice_client):
-        """Stage tts: the first TTS chunk carries a non-null cache_path."""
+        """Stage tts: the first sentence's audio is served, and recorded, as a local file."""
         session_id, _ = _create_and_start(
             voice_client, self._SCENARIO, self._LANGUAGE, tts_enabled=True
         )
         data = _submit_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
         tts_events = [e for e in data["events"] if e["event_type"] == "tts_audio_chunk"]
         assert tts_events, "[stage: tts] No tts_audio_chunk events"
-        first = tts_events[0]["payload"]
-        assert first.get("cache_path") is not None, (
-            f"[stage: tts] First audio chunk has no cache_path: {first}"
+        _assert_spoken(voice_client, tts_events[0])
+        recorded = recorded_speech(voice_client, tts_events[0])
+        assert recorded.get("cache_path"), (
+            f"[stage: tts] First audio chunk has no cache_path once spoken: {recorded}"
         )
 
     def test_tts_audio_chunk_has_no_error(self, voice_client):
@@ -385,9 +397,10 @@ class TestEnglishVoiceSmoke:
         data = _submit_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
         tts_events = [e for e in data["events"] if e["event_type"] == "tts_audio_chunk"]
         assert tts_events, "[stage: tts] No tts_audio_chunk events"
-        first = tts_events[0]["payload"]
-        assert first.get("error") is None, (
-            f"[stage: tts] TTS synthesis error on first chunk: {first.get('error')}"
+        _assert_spoken(voice_client, tts_events[0])
+        recorded = recorded_speech(voice_client, tts_events[0])
+        assert recorded.get("error") is None, (
+            f"[stage: tts] TTS synthesis error on first chunk: {recorded.get('error')}"
         )
 
     def test_full_voice_path(self, voice_client):
@@ -427,7 +440,8 @@ class TestEnglishVoiceSmoke:
         # Stage: tts — NPC utterance produces at least one audio chunk
         tts_events = [e for e in turn_data["events"] if e["event_type"] == "tts_audio_chunk"]
         assert tts_events, "[stage: tts] No TTS audio chunks"
-        first = tts_events[0]["payload"]
+        _assert_spoken(voice_client, tts_events[0])
+        first = recorded_speech(voice_client, tts_events[0])
         assert first.get("cache_path"), "[stage: tts] Missing cache_path on first chunk"
         assert first.get("error") is None, f"[stage: tts] Synthesis error: {first.get('error')}"
 
@@ -516,7 +530,8 @@ class TestSpanishVoiceSmoke:
             "[stage: tts] No tts_audio_chunk events for Spanish scenario. "
             "TTS synthesises NPC responses regardless of player input language."
         )
-        assert tts_events[0]["payload"].get("cache_path"), (
+        _assert_spoken(voice_client, tts_events[0])
+        assert recorded_speech(voice_client, tts_events[0]).get("cache_path"), (
             "[stage: tts] Missing cache_path on first TTS chunk"
         )
 
@@ -565,7 +580,8 @@ class TestSpanishVoiceSmoke:
         # Stage: tts — NPC utterance produces at least one audio chunk
         tts_events = [e for e in turn_data["events"] if e["event_type"] == "tts_audio_chunk"]
         assert tts_events, "[stage: tts] No TTS audio chunks for Spanish scenario"
-        first = tts_events[0]["payload"]
+        _assert_spoken(voice_client, tts_events[0])
+        first = recorded_speech(voice_client, tts_events[0])
         assert first.get("cache_path"), "[stage: tts] Missing cache_path"
         assert first.get("error") is None, f"[stage: tts] Synthesis error: {first.get('error')}"
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from 'vitest'
-import { CORE_ORIGIN, apiBaseFor, ttsAudioUrl } from '../api/origin'
+import { CORE_ORIGIN, apiBaseFor, speechAudioUrl, ttsAudioUrl } from '../api/origin'
 
 describe('apiBaseFor', () => {
   it('is relative behind the dev proxy and absolute in a packaged build', () => {
@@ -26,5 +26,19 @@ describe('ttsAudioUrl', () => {
   it('has no URL for a path with no file name', () => {
     expect(ttsAudioUrl('')).toBeNull()
     expect(ttsAudioUrl('/cache/tts/')).toBeNull()
+  })
+})
+
+describe('speechAudioUrl', () => {
+  it('puts the API base in front of the path a sentence is spoken from', () => {
+    expect(speechAudioUrl('/sessions/sess-1/speech/3/0')).toBe('/api/sessions/sess-1/speech/3/0')
+    expect(speechAudioUrl('/sessions/sess-1/speech/3/0', apiBaseFor(true))).toBe(
+      'http://127.0.0.1:7355/api/sessions/sess-1/speech/3/0',
+    )
+  })
+
+  it('refuses anything that is not a path on the engine', () => {
+    expect(speechAudioUrl('https://elsewhere.example/a.wav')).toBeNull()
+    expect(speechAudioUrl('')).toBeNull()
   })
 })
