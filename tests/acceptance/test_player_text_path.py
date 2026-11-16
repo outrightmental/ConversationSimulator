@@ -285,7 +285,10 @@ class _StateDeltaRuntime(FakeChatRuntime):
         payload = {
             "npc_utterance": "Impressive. Tell me more.",
             "npc_emotion": "impressed",
-            "state_delta": {"trust": 15, "rapport": 8},
+            # behavioral_interview plays its official pack version (#582).
+            # rapport is one of the variables its turn schema lets the model
+            # move, and 8 is within its per-turn limit of 10.
+            "state_delta": {"rapport": 8},
             "event_flags": [],
             "rubric_observations": [{"rubric_id": "clarity", "observation": "Clear answer", "score_delta": 3}],
             "safety": {"status": "ok"},
@@ -331,8 +334,7 @@ class TestStateEvolution:
             )
         assert res.status_code == 200
         npc_payload = res.json()["events"][1]["payload"]
-        assert npc_payload["state_delta"].get("trust") == 15
-        assert npc_payload["state_delta"].get("rapport") == 8
+        assert npc_payload["state_delta"] == {"rapport": 8}
 
     def test_state_carries_into_subsequent_turn(self, tmp_config):
         app = create_app(tmp_config)

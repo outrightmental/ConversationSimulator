@@ -54,12 +54,21 @@ from convsim_prompt.debrief_output import (
 
 @pytest.fixture()
 def tmp_config(tmp_path):
+    # No official packs: behavioral_interview then plays its catalog entry,
+    # whose rubric ids (communication_clarity, ...) these tests score. With
+    # the official packs installed the full app plays the pack's version and
+    # its own rubric (#582). Every folder is the test's own, never the
+    # player's real data root.
     return ServiceConfig(
         host="127.0.0.1",
         port=7355,
         data_dir=str(tmp_path / "data"),
         log_dir=str(tmp_path / "logs"),
         db_dir=str(tmp_path / "db"),
+        packs_dir=str(tmp_path / "packs"),
+        models_dir=str(tmp_path / "models" / "llm"),
+        cache_dir=str(tmp_path / "cache"),
+        official_packs_dir=str(tmp_path / "no-official-packs"),
     )
 
 
