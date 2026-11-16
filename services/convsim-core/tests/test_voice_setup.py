@@ -169,6 +169,43 @@ def test_unknown_platform_has_no_engine():
     assert catalog.engine_asset("plan9-mips") is None
 
 
+def test_this_machine_resolves_to_a_pinned_engine():
+    assert catalog.detect_platform_key() in catalog.engine_platform_keys()
+
+
+def test_platform_lookup_starts_no_process_on_windows(monkeypatch):
+    """``platform.machine()`` runs ``ver`` in a ``cmd`` child on Windows with
+    Python 3.11, which flashes a console window over the packaged app at every
+    start. The lookup reads the environment instead."""
+    import platform
+    import subprocess
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("the platform lookup must not start a process or call uname()")
+
+    monkeypatch.setattr(subprocess, "check_output", _forbidden)
+    monkeypatch.setattr(subprocess, "Popen", _forbidden)
+    monkeypatch.setattr(platform, "uname", _forbidden)
+    monkeypatch.setattr(platform, "machine", _forbidden)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
+    monkeypatch.delenv("PROCESSOR_ARCHITEW6432", raising=False)
+    assert catalog.detect_platform_key() == "win-x64"
+
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "ARM64")
+    assert catalog.detect_platform_key() == "win-arm64"
+
+    # A 32-bit process on a 64-bit system reports the real architecture here.
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "x86")
+    monkeypatch.setenv("PROCESSOR_ARCHITEW6432", "AMD64")
+    assert catalog.detect_platform_key() == "win-x64"
+
+    # Plain 32-bit Windows has no engine build.
+    monkeypatch.delenv("PROCESSOR_ARCHITEW6432")
+    assert catalog.detect_platform_key() is None
+
+
 def test_every_approved_voice_has_a_speaker_id():
     assert set(catalog.KOKORO_SPEAKER_IDS) == set(APPROVED_VOICES)
     assert len(set(catalog.KOKORO_SPEAKER_IDS.values())) == len(APPROVED_VOICES)

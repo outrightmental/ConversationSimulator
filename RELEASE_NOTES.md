@@ -71,10 +71,11 @@ decision and adds demo gate D-11 for it.
 
 ## Known gaps
 
-- The speech engine has been run on Windows only. The macOS and Linux builds
-  are pinned from the same release and checked on download, but have not been
-  run; if the engine does not start, the install says so and text still
-  works. Demo gate D-11 is the check on each platform.
+- Voice is installed and round-tripped (a sentence spoken, transcribed and
+  compared) on Windows, macOS and Linux by an automated check, and was used
+  by hand on Windows. Nobody has yet spoken into a microphone in the packaged
+  app on macOS or Linux; demo gate D-11 is that check. If the engine does not
+  start on a machine, the install says so and text still works.
 - With voice on, a reply's text still waits until all of its audio is ready;
   a long opening line can take several seconds to appear (#533).
 - The character's voice is not switched on by default for the official

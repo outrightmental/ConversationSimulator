@@ -26,7 +26,7 @@ every word. ``docs/voice-setup.md`` records the measurements.
 """
 from __future__ import annotations
 
-import platform as _platform
+import os
 import sys
 from dataclasses import dataclass
 from typing import Optional
@@ -154,9 +154,28 @@ ENGINE_VERSION_PROGRAM = "sherpa-onnx-version"
 _ENGINE_PROGRAMS = (ENGINE_STT_PROGRAM, ENGINE_TTS_PROGRAM, ENGINE_VERSION_PROGRAM)
 
 
+def _machine() -> str:
+    """This process's processor architecture, lower-cased.
+
+    Not ``platform.machine()``. On Windows that goes through
+    ``platform.uname()``, which on Python 3.11 runs ``ver`` in a ``cmd``
+    child. This is asked every time the core starts, and the packaged core
+    has no console of its own, so that child would flash a console window
+    over the app. The environment answers the same question for free.
+    """
+    if sys.platform == "win32":
+        # PROCESSOR_ARCHITEW6432 is set only for a 32-bit process on a 64-bit
+        # system, where it names the real architecture.
+        return (
+            os.environ.get("PROCESSOR_ARCHITEW6432")
+            or os.environ.get("PROCESSOR_ARCHITECTURE", "")
+        ).lower()
+    return os.uname().machine.lower()
+
+
 def detect_platform_key() -> Optional[str]:
     """The engine build for this machine, or None when there is none."""
-    machine = _platform.machine().lower()
+    machine = _machine()
     arm = machine in ("arm64", "aarch64")
     x64 = machine in ("x86_64", "amd64")
     if sys.platform == "win32":
