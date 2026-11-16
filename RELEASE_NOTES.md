@@ -1,4 +1,34 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.7 — Release Notes
+
+> **Patch release (2026-11-16).** The check that stops a character repeating
+> itself now works in Japanese.
+
+## What's new in v0.4.7
+
+### Kenji stops repeating himself (#583)
+
+Since v0.4.1 the app catches a character about to repeat one of its last two
+lines and asks for a fresh one. It compared words, and Japanese is written
+without spaces between words, so a whole clause counted as one word and the
+check never fired: Kenji, the convenience store clerk in the Japanese
+conversation, could say the same line every turn.
+
+Japanese and Chinese text is now compared character by character, with the
+lengths that count as a repeat doubled for it, so a set phrase that every
+polite line ends with ("にございます") is not mistaken for a repeat while
+a line said again, or the same closing question, is caught. Sentences that
+end with a full-width 。 ？ ！ are now split there, as English ones are at a
+full stop.
+
+English, Spanish and French lines are compared exactly as before.
+
+## Upgrade notes
+
+- No database migration.
+
+---
+
 # Conversation Simulator v0.4.5 — Release Notes
 
 > **Patch release (2026-11-16).** A conversation no longer ends on a question
@@ -321,7 +351,7 @@ on reference hardware still judges each conversation.
   still play their built-in catalog versions, which have neither the rubric
   nor the rewritten characters. The demo plays the pack versions (#582).
 - The repetition check compares words, so it does not yet catch a repeat in
-  Japanese, which is written without spaces (#583).
+  Japanese, which is written without spaces (#583). Fixed in v0.4.7.
 - The macOS build runs on Apple Silicon only (#575).
 
 ---
