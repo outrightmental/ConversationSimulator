@@ -285,8 +285,9 @@ offers a second, optional one:
   does not show. The brief is the one place.
 
 [`docs/voice-setup.md`](voice-setup.md) is the reference for the install
-itself. The speech engine has been run on Windows only; gate D-11 covers the
-other platforms.
+itself. The Voice smoke workflow installs and round-trips speech on Linux,
+macOS and Windows; gate D-11 is the microphone-and-speakers check in the
+packaged demo on each.
 
 ### Turn / session / time cap
 
@@ -317,7 +318,7 @@ own promise.
 | D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text by default with an optional voice download) and what the full app adds; no "free" claims about the paid app. |
 | D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only; every demo capsule and library asset is at Valve's size, on the demo plate, ribboned where it may carry the name and not on the hero. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, its capsules and library assets from `publishing/assets/capsules/demo/` under Store Assets and Library Assets on the same page, and the two library entries read apart at a glance. |
 
-| D-11 | Optional voice works | Manual, all three platforms | From a conversation brief with voice not installed: **Install voice** completes; push-to-talk transcribes a spoken sentence; the character's opening line and replies are heard; with the network disconnected afterwards, both still work. Cancelling mid-download leaves no `.staging` folder under the voice folder. The speech engine was run on Windows x64 only during development, so this is the first run on macOS and Linux. |
+| D-11 | Optional voice works | Manual, all three platforms | From a conversation brief with voice not installed: **Install voice** completes; push-to-talk transcribes a spoken sentence; the character's opening line and replies are heard; with the network disconnected afterwards, both still work. Cancelling mid-download leaves no `.staging` folder under the voice folder. The engine and models are round-tripped on all three platforms by the Voice smoke workflow; this gate is the part only a person can do, a real microphone and real speakers in the packaged demo. |
 
 **D-05 has an automated pre-check.** `scripts/demo-gate-replay.py` plays each
 of the five conversations to the debrief against a running convsim-core on the

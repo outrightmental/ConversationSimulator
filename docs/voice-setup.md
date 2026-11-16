@@ -168,10 +168,28 @@ threads per process), round-tripping synthesised speech back through Whisper:
 
 ## Tested where
 
-The engine has been run on **Windows x64 only**. The macOS and Linux builds
-are pinned from the same release with the checksums GitHub publishes, and
-their archives have the same layout, but they have not been run. Demo gate
-D-11 is the manual check on each platform.
+The install was developed and run by hand on **Windows x64**, in the web UI
+and in a PyInstaller build of the core.
+
+On every shipping platform the check is automated: the **Voice smoke**
+workflow (`.github/workflows/voice-smoke.yml`) runs `scripts/voice-smoke.py`
+on Linux x86_64, macOS on Apple Silicon and Windows x86_64. It installs the
+pinned engine and models through the app's own installer, starts the engine,
+then round-trips four sentences: each is synthesised with a Kokoro voice,
+transcribed with Whisper, and compared word for word with what went in. The
+sentences are the ones that have broken before: words missing from the Kokoro
+lexicon, curly quotes with an ellipsis, a British voice, and Spanish with its
+accents. It runs when the pins or the engine code change, and every Monday,
+so a pin that has moved at its source fails there before it fails for a
+player.
+
+```bash
+python scripts/voice-smoke.py                # full round trip, ~560 MB
+python scripts/voice-smoke.py --engine-only  # engine download and start, ~25 MB
+```
+
+What no machine checks is a person speaking into a microphone and hearing the
+reply in the packaged app. Demo gate D-11 is that check on each platform.
 
 ## API
 
@@ -209,7 +227,8 @@ in-app install takes over from them once it is complete.
 
 1. Edit `voice/catalog.py`: URL, size and SHA-256 together. Bump the asset's
    `version` so existing installs are replaced.
-2. Run a real install against a scratch data folder and round-trip a sentence
-   (synthesise it, transcribe it, compare the words).
-3. For an engine change, do step 2 on every platform, and read the engine's
-   release notes for changes to pronunciation.
+2. Run `python scripts/voice-smoke.py`: a real install into a scratch folder
+   and four round trips.
+3. Open the pull request. The Voice smoke workflow repeats step 2 on Linux,
+   macOS and Windows. For an engine change, also read the engine's release
+   notes for changes to pronunciation.
