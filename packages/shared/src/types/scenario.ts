@@ -45,6 +45,12 @@ export interface ScenarioInfo {
   summary: string;
   /** The NPC's name, resolved from the pack. Absent when the pack has none. */
   npc_name?: string | null;
+  /**
+   * The character's own voice, an approved built-in voice id cast by the pack.
+   * The brief selects it when voice is on; null when the pack casts none, and
+   * absent from an older engine.
+   */
+  npc_voice_id?: string | null;
   content_rating: string;
   pack_id: string;
   pack_name: string;

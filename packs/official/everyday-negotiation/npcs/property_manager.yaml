@@ -6,7 +6,8 @@ archetype: property_manager
 fictional: true
 age_band: adult
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: bf_isabella
 public_persona:
   occupation: >-
     Property manager at Crestwood Realty Group, which manages thirty-two units

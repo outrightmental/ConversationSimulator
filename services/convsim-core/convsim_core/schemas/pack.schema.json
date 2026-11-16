@@ -80,6 +80,10 @@
         "recommended_llm": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "voice_support": {
+          "type": "boolean",
+          "description": "Every scenario in the pack is written to be spoken. With voice installed, the conversation brief switches the character's voice on by default. A scenario may override it with its own requirements block."
         }
       }
     },

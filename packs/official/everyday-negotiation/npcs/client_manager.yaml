@@ -6,7 +6,8 @@ archetype: client_stakeholder
 fictional: true
 age_band: adult
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: bm_lewis
 public_persona:
   occupation: >-
     Director of Product at Halberd Digital, a boutique marketing agency with

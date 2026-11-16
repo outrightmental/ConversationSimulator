@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/dana_reyes_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: af_heart
 public_persona:
   occupation: >-
     Engineering Manager at Meridian Systems, a mid-sized B2B software company

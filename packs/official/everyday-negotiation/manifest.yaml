@@ -2,7 +2,7 @@
 schema_version: "0.1"
 pack_id: official.everyday_negotiation
 name: Everyday Negotiation
-version: 0.1.1
+version: 0.1.2
 description: >-
   Practice realistic everyday negotiation conversations with configurable NPCs.
   Build confidence navigating competing goals and advocating for yourself in
@@ -19,6 +19,10 @@ tags:
   - professional
 supported_languages:
   - en
+# Every scenario here is written to be spoken: with voice installed, the
+# brief switches the character's voice on (docs/voice-setup.md).
+requirements:
+  voice_support: true
 entry_scenarios:
   - scenarios/used_car_negotiation.yaml
   - scenarios/apartment_lease_renewal.yaml

@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/ray_morales_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: am_michael
 public_persona:
   occupation: >-
     Warehouse Operations Supervisor at Crestview Distribution Co., a regional

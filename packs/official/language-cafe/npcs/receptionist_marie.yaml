@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/marie_dupont_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: bf_isabella
 public_persona:
   occupation: >-
     Front-desk receptionist at Hôtel Lumière, a small three-star hotel near

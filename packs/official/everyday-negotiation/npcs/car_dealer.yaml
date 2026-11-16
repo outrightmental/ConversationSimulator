@@ -6,7 +6,8 @@ archetype: sales_negotiator
 fictional: true
 age_band: adult
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: am_michael
 public_persona:
   occupation: >-
     Used car sales representative at Riverside Auto, an independent dealership

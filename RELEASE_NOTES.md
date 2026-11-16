@@ -1,4 +1,53 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.4 — Release Notes
+
+> **Patch release (2026-11-16).** The characters have their own voices, and
+> with voice installed the official conversations are spoken by default. The
+> free demo edition should be built from this release.
+
+## What's new in v0.4.4
+
+### The characters have their own voices
+
+Until now every character spoke in whichever voice the player had last
+picked, and the official conversations were marked as written for text, so
+the brief left the character's voice off even with voice installed.
+
+- Each official character whose story describes them as she or he now has a
+  voice of their own: Dana the hiring manager, Ray the car dealer, Diane the
+  manager, Rosa the barista and eleven more. The conversation brief selects
+  it, and the player can still change it.
+- The five player-facing official packs are marked as written to be spoken.
+  With voice installed, the brief switches the character's voice on by
+  default for their conversations. The scripted First Words tutorial stays
+  text only.
+- Characters the story describes as they are not given a voice yet; they use
+  the player's default voice from Settings.
+
+### For pack authors
+
+- A pack can declare `requirements.voice_support: true` in its manifest. The
+  app already read this field, but the pack schema refused it, so no pack
+  could pass validation with it.
+- An NPC's `voice.voice_id` (one of the ten approved built-in voices) is now
+  used: the brief selects it for that character.
+
+## Upgrade notes
+
+- The five official packs' versions go up (Job Interview, Difficult
+  Conversations, Everyday Negotiation, Dating, Language Café), so an
+  installed copy is replaced by the bundled one at the next start.
+- No database migration.
+
+## Known gaps
+
+- Characters written as they (Jordan in The Ask, among others) have no voice
+  of their own yet; which approved voice suits each is the pack author's
+  call.
+- The gaps listed for v0.4.3 and earlier below still apply.
+
+---
+
 # Conversation Simulator v0.4.3 — Release Notes
 
 > **Patch release (2026-11-16).** With the character's voice on, the reply's
@@ -37,7 +86,7 @@ Now the words appear as soon as they are written, and the voice follows:
   while the character is still writing is #544.
 - The character's voice is not switched on by default for the official
   scenarios, which are marked as written for text. Tick **NPC voice (TTS)**
-  on the brief to hear the replies.
+  on the brief to hear the replies. Fixed in v0.4.4.
 - The gaps listed for v0.4.2 and v0.4.1 below still apply.
 
 ---

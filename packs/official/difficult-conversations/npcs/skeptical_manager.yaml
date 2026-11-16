@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/diane_kowalczyk_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: af_nicole
 public_persona:
   occupation: >-
     Director of Product Operations at a mid-market B2B company. Diane manages

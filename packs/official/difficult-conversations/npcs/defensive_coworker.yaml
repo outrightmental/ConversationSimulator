@@ -7,7 +7,8 @@ fictional: true
 age_band: adult
 portrait: assets/portraits/marcus_webb_placeholder.png
 voice:
-  engine: none
+  engine: kokoro
+  voice_id: am_adam
 public_persona:
   occupation: >-
     Mid-level software developer at the same company as the player. Marcus has
