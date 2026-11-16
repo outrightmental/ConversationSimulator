@@ -28,12 +28,19 @@ from convsim_core.runtime.types import ChatFinal, ChatRequest
 
 @pytest.fixture()
 def tmp_config(tmp_path):
+    # No official packs: behavioral_interview then plays its catalog entry,
+    # whose state (trust, ...) and rubric ids these tests read. With the
+    # official packs installed the full app plays the pack's version (#582).
     return ServiceConfig(
         host="127.0.0.1",
         port=7355,
         data_dir=str(tmp_path / "data"),
         log_dir=str(tmp_path / "logs"),
         db_dir=str(tmp_path / "db"),
+        packs_dir=str(tmp_path / "packs"),
+        models_dir=str(tmp_path / "models" / "llm"),
+        cache_dir=str(tmp_path / "cache"),
+        official_packs_dir=str(tmp_path / "no-official-packs"),
     )
 
 
