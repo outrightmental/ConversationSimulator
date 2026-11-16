@@ -41,6 +41,7 @@ import type {
   VoiceSetupStatus,
   VoiceInstallJob,
   VoiceComponentId,
+  RemoveVoiceResponse,
   RollingSpeeds,
   TurnTiming,
 } from '@convsim/shared';
@@ -419,6 +420,16 @@ async function del(path: string): Promise<ApiResult<undefined>> {
   }
 }
 
+/** DELETE that answers with a JSON body. */
+async function delJson<T>(path: string): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
+    return handleResponse<T>(res)
+  } catch (err) {
+    return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+  }
+}
+
 async function postForm<T>(path: string, body: FormData): Promise<ApiResult<T>> {
   try {
     const res = await fetch(`${BASE}${path}`, { method: 'POST', body })
@@ -773,6 +784,9 @@ export const api = {
   },
   cancelVoiceInstall(jobId: number): Promise<ApiResult<undefined>> {
     return del(`/voice/setup/install/${jobId}`)
+  },
+  removeVoice(): Promise<ApiResult<RemoveVoiceResponse>> {
+    return delJson<RemoveVoiceResponse>('/voice/setup')
   },
   connectSession(
     sessionId: string,

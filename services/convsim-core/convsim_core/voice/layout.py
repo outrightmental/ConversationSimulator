@@ -97,6 +97,19 @@ class VoiceLayout:
     def tts_installed(self) -> bool:
         return self.component_installed(catalog.TTS_COMPONENT)
 
+    def installed_bytes(self) -> int:
+        """Bytes on disk under the voice folder, staged downloads included."""
+        total = 0
+        if not self.root.is_dir():
+            return 0
+        for path in self.root.rglob("*"):
+            try:
+                if path.is_file():
+                    total += path.stat().st_size
+            except OSError:
+                pass
+        return total
+
     def engine_program(self, program: str) -> Path:
         """Absolute path of an engine program in the installed engine."""
         engine = catalog.engine_asset()

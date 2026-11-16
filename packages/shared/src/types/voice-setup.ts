@@ -91,10 +91,17 @@ export interface VoiceSetupStatus {
   install_dir: string;
   /** What installing every component that is not ready would download. */
   download_bytes: number;
+  /** What the in-app install takes on disk now; 0 when nothing is installed.
+   *  Absent from an engine older than voice removal. */
+  installed_bytes?: number;
   components: VoiceComponentStatus[];
   assets: VoiceAssetStatus[];
   /** The running job, or the most recent one. */
   job: VoiceInstallJob | null;
+}
+
+export interface RemoveVoiceResponse {
+  freed_bytes: number;
 }
 
 export interface StartVoiceInstallRequest {

@@ -103,6 +103,15 @@ and a final check:
 Jobs live in memory, not in the database. Nothing about a voice install has
 to survive a restart except the files, and those do.
 
+## Removing it
+
+**Settings → Voice output → Built-in voice → Remove voice** deletes the
+engine, the models and any staged download, after asking, and says how much
+space it freed. Voice switches off at once and text keeps working; voice can
+be installed again from the brief at any time. It is refused while an install
+runs, and while a sentence is being spoken or transcribed (Windows keeps the
+engine's files open), with a message that says so.
+
 ## How the app uses it
 
 Once the files are there, the default speech-to-text and text-to-speech
@@ -212,6 +221,7 @@ reply in the packaged app. Demo gate D-11 is that check on each platform.
 | `POST /api/voice/setup/install` | Body `{"components": []}`; empty means everything not ready. Starts a job, or returns the one already running. |
 | `GET /api/voice/setup/install/{id}` | Job status and per-stage byte counts. |
 | `DELETE /api/voice/setup/install/{id}` | Cancel. 409 once the job has ended. |
+| `DELETE /api/voice/setup` | Remove the in-app install and report the bytes freed. 409 while an install runs or a file is in use. A voice set up by hand is not touched. |
 | `GET /api/sessions/{id}/speech/{turn}/{index}` | One sentence of a reply as WAV. Waits while the sentence is being synthesised; 404 when there is no audio for it. |
 
 Readiness is reported where it always was: `runtime.stt_ready` and
@@ -227,8 +237,6 @@ in-app install takes over from them once it is complete.
 
 ## Not covered
 
-- **Removing voice from inside the app.** Delete the voice folder; the app
-  falls back to text at the next launch.
 - **Spanish-accented voices.** The approved voices are English voices; they
   speak the other supported languages with eSpeak NG phonemes.
 - **Silero VAD.** Hands-free turn-taking runs in the web view and needs only

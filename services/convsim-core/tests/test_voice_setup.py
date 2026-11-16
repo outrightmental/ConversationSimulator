@@ -1141,3 +1141,64 @@ def test_workers_fall_back_when_the_install_is_removed(tmp_path, monkeypatch):
         assert app.state.tts_worker.id == "kokoro"
     finally:
         client.__exit__(None, None, None)
+
+
+# ── Removing voice ────────────────────────────────────────────────────────────
+
+
+def test_removing_voice_frees_the_folder_and_switches_back_to_text(voice_app):
+    client, app, server = voice_app
+    _wait_for(client, client.post("/api/voice/setup/install", json={}).json()["id"])
+    plan = client.get("/api/voice/setup").json()
+    assert plan["installed_bytes"] > 0
+    voice_root = Path(plan["install_dir"])
+
+    response = client.delete("/api/voice/setup")
+
+    assert response.status_code == 200
+    assert response.json()["freed_bytes"] == plan["installed_bytes"]
+    for name in ("engine", "stt", "tts"):
+        assert not (voice_root / name).exists()
+    health = client.get("/api/health").json()
+    assert health["runtime"]["stt_ready"] is False
+    assert health["runtime"]["tts_ready"] is False
+    assert health["stt"]["worker_id"] == "whisper_cpp"
+    after = client.get("/api/voice/setup").json()
+    assert after["installed_bytes"] == 0
+    assert after["job"] is None
+    assert all(not c["installed"] for c in after["components"])
+
+
+def test_voice_can_be_installed_again_after_removal(voice_app):
+    client, app, server = voice_app
+    _wait_for(client, client.post("/api/voice/setup/install", json={}).json()["id"])
+    assert client.delete("/api/voice/setup").status_code == 200
+    job = _wait_for(client, client.post("/api/voice/setup/install", json={}).json()["id"])
+    assert job["status"] == "complete"
+    assert client.get("/api/health").json()["runtime"]["tts_ready"] is True
+
+
+def test_removing_with_nothing_installed_frees_nothing(voice_app):
+    client, app, server = voice_app
+    response = client.delete("/api/voice/setup")
+    assert response.status_code == 200
+    assert response.json()["freed_bytes"] == 0
+
+
+def test_voice_cannot_be_removed_while_it_installs(voice_app):
+    client, app, server = voice_app
+    release = False
+
+    def hold(request: httpx.Request) -> None:
+        deadline = time.monotonic() + 10
+        while not release and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    server.before_respond = hold
+    started = client.post("/api/voice/setup/install", json={}).json()
+    response = client.delete("/api/voice/setup")
+    release = True
+    _wait_for(client, started["id"])
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "VOICE_BUSY"

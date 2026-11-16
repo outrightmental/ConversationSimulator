@@ -32,6 +32,8 @@ export interface UseVoiceInstall {
   /** Start installing. No arguments = everything that is not ready. */
   install: (components?: VoiceComponentId[]) => Promise<void>
   cancel: () => Promise<void>
+  /** Delete the in-app install. Resolves true when it is gone. */
+  remove: () => Promise<boolean>
 }
 
 function isActive(job: VoiceInstallJob | null): boolean {
@@ -141,5 +143,24 @@ export function useVoiceInstall(onChanged?: () => void): UseVoiceInstall {
     }
   }, [activeJobId])
 
-  return { status, job, installing: isActive(job), busy, error, install, cancel }
+  const remove = useCallback(async (): Promise<boolean> => {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await api.removeVoice()
+      if (!mountedRef.current) return r.ok
+      if (!r.ok) {
+        setError(r.error)
+        return false
+      }
+      setJob(null)
+      await loadStatus()
+      onChangedRef.current?.()
+      return true
+    } finally {
+      if (mountedRef.current) setBusy(false)
+    }
+  }, [loadStatus])
+
+  return { status, job, installing: isActive(job), busy, error, install, cancel, remove }
 }
