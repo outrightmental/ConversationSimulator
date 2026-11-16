@@ -1131,6 +1131,9 @@ async def _run_turn(
         event_type="npc_turn",
         payload={
             "content": result.npc_utterance,
+            # The line added to close the conversation (issue #586); already in
+            # `content`. A client that showed the streamed line adds this.
+            "closing_line": result.closing_line,
             "emotion": result.npc_emotion,
             "state_delta": result.state_delta,
             "visible_state": result.visible_state,

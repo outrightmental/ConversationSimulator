@@ -25,6 +25,7 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import re
 import sqlite3
 import time
 from dataclasses import dataclass, replace as dataclass_replace
@@ -41,6 +42,7 @@ from convsim_prompt import (
     TranscriptEntry,
     TurnEvent,
     TurnOutput,
+    compose_closing_prompt,
     compose_repetition_retry_prompt,
     compose_turn_prompt,
     filter_rubric_observations,
@@ -392,8 +394,14 @@ class TurnPipelineResult:
     # bookkeeping completed, with the rest defaulted (issue #538).
     salvaged: bool = False
     # The spoken line as it was streamed to the player, when it was. The REST
-    # response always equals what was streamed.
+    # response equals what was streamed, plus ``closing_line`` when one was
+    # added after it.
     streamed_line: Optional[str] = None
+    # The line added to close the conversation when its ending fired on a
+    # reply that ended with a question (issue #586). Already part of
+    # ``npc_utterance``; carried apart for a client that showed the streamed
+    # line and has only this to add.
+    closing_line: Optional[str] = None
 
 
 def _normalize_text(text: str) -> str:
@@ -921,6 +929,92 @@ async def _retry_repetitive_reply(
     return _RetryReply(output=output, raw_text=parse_input, structured=structured), ""
 
 
+# Endings that close a conversation the player was still in (issue #586).
+# A safety stop and the player leaving close it for other reasons, with lines
+# of their own.
+_CLOSING_ENDINGS = frozenset({"success", "failure", "timeout"})
+_ENDS_WITH_QUESTION = re.compile(r"[?\uff1f][\"'\u201d\u2019)\]]*\s*$")
+_SENTENCE = re.compile(r"[^.!?\u3002\uff01\uff1f]+[.!?\u3002\uff01\uff1f]*[\"'\u201d\u2019)\]]*\s*")
+_MAX_CLOSING_CHARS = 280
+
+
+def _ends_with_question(line: str) -> bool:
+    return bool(_ENDS_WITH_QUESTION.search(line or ""))
+
+
+def _without_questions(text: str) -> str:
+    """The sentences of *text* that are not questions, in order."""
+    kept = [s.strip() for s in _SENTENCE.findall(text or "") if s.strip()]
+    kept = [s for s in kept if "?" not in s and "\uff1f" not in s]
+    return " ".join(kept).strip()
+
+
+async def _closing_line(
+    runtime: ChatRuntime,
+    request: ChatRequest,
+    prompt: PromptBundle,
+    npc_line: str,
+    ending_type: str,
+    hidden_agenda: Optional[List[str]],
+    timing: TurnTimingBuilder,
+    timeout_s: float,
+) -> tuple[Optional[str], str]:
+    """One short line that closes the conversation; or None and why not.
+
+    A scenario's ending is decided after the NPC's reply, on the state that
+    reply produced, so the NPC never knew its line was the last one and the
+    session could end on a question the player has no turn to answer (issue
+    #586). This asks the model once more, with the system prompt untouched so
+    the prompt cache serves it, for a closing line with no question. The call
+    is recorded as a ``closing_line`` extra call. The line is kept only if it
+    parses and passes the output check as written, and any question in it is
+    dropped. Never raises.
+    """
+    closing_prompt = compose_closing_prompt(prompt, npc_line, ending_type)
+    closing_request = request.model_copy(update={
+        "messages": [
+            ChatMessage(role="system", content=closing_prompt.system_prompt),
+            ChatMessage(role="user", content=closing_prompt.user_prompt),
+        ],
+    })
+    final: Optional[ChatFinal] = None
+    started = time.perf_counter()
+    try:
+        raw_text, structured, final = await asyncio.wait_for(
+            _collect_runtime_output_timed(runtime, closing_request), timeout=timeout_s
+        )
+    except Exception as exc:  # noqa: BLE001 — the conversation still ends, on the line it had
+        logger.warning("Closing line failed (%s): ending on the reply as it was", type(exc).__name__)
+        return None, f"the closing call failed ({type(exc).__name__})"
+    finally:
+        timing.record_extra_call(
+            "closing_line", (time.perf_counter() - started) * 1000.0, _output_tokens(final)
+        )
+    events: List[TurnEvent] = []
+    try:
+        output = _parse_reply(
+            _parse_input(raw_text, structured),
+            request=closing_request,
+            runtime=None,
+            hidden_agenda=hidden_agenda,
+            events=events,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return None, f"the closing line did not parse ({type(exc).__name__})"
+    if not _is_model_line(output) or any(
+        e.event_type == "output_violation_detected" for e in events
+    ):
+        return None, "the closing line did not pass the output check as written"
+    line = _without_questions(output.npc_utterance)
+    if not line:
+        return None, "the closing line was only a question"
+    if len(line) > _MAX_CLOSING_CHARS:
+        return None, "the closing line was too long"
+    if " ".join(line.lower().split()) in " ".join(npc_line.lower().split()):
+        return None, "the closing line repeated the reply"
+    return line, ""
+
+
 async def _guard_repetition(
     turn_output: TurnOutput,
     previous_lines: List[str],
@@ -1414,6 +1508,41 @@ async def process_turn(
 
     new_flow_state = "Ended" if ending_type else "PlayerTurnListening"
 
+    # 12b. Close the conversation on a line the player can leave on (issue
+    # #586). The reply was written without knowing it was the last one; when
+    # it ends on a question, one short closing line is added to it.
+    closing_line: Optional[str] = None
+    if (
+        ending_type in _CLOSING_ENDINGS
+        and not used_fallback
+        and _is_model_line(turn_output)
+        and _ends_with_question(turn_output.npc_utterance)
+    ):
+        if streamer is not None:
+            await streamer.progress("finishing")
+        closing_line, why_not = await _closing_line(
+            runtime,
+            request,
+            prompt,
+            turn_output.npc_utterance,
+            ending_type,
+            hidden_agenda,
+            timing,
+            max(
+                REPETITION_RETRY_MIN_TIMEOUT_S,
+                REPETITION_RETRY_TIMEOUT_FACTOR
+                * ((observation.final_at or time.perf_counter()) - observation.sent_at),
+            ),
+        )
+        if closing_line:
+            turn_output.npc_utterance = f"{turn_output.npc_utterance.rstrip()} {closing_line}"
+            turn_parse_events.append(TurnEvent(
+                event_type="closing_line_added",
+                reason=f"the {ending_type} ending fired on a reply that ended with a question",
+            ))
+        else:
+            turn_parse_events.append(TurnEvent(event_type="closing_line_skipped", reason=why_not))
+
     # 13. Persist atomically. Use `with conn:` so a mid-transaction failure
     # triggers an automatic rollback instead of leaving a dirty open transaction
     # on the singleton connection.
@@ -1607,4 +1736,5 @@ async def process_turn(
         timing=timing,
         salvaged=salvaged,
         streamed_line=released_line or None,
+        closing_line=closing_line,
     )

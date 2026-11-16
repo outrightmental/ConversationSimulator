@@ -739,6 +739,41 @@ def build_repetition_retry_layer(repeated_lines: List[str]) -> str:
     ])
 
 
+# How the closing line should land, by the way the conversation ended.
+_CLOSING_TONE = {
+    "success": "It went well for the other person: close it warmly.",
+    "failure": "It did not go the other person's way: close it politely and in character.",
+    "timeout": "Time is up: close it politely, as you would when a meeting runs out of time.",
+}
+
+
+def build_closing_layer(npc_line: str, ending_type: str) -> str:
+    """The instruction for the one closing line of a conversation (issue #586).
+
+    A scenario's ending is decided after the NPC's reply, on the state that
+    reply produced, so the NPC never knows its line was the last one and the
+    session could end on a question the player cannot answer. When it does,
+    the engine asks once more for a short closing line. The NPC's own line is
+    quoted as data, framed like PREVIOUS_NPC_LINE, and the instruction is the
+    app's and sits outside the frame. Returns "" when there is no line.
+    """
+    line = _one_line(npc_line)
+    if not line:
+        return ""
+    tone = _CLOSING_TONE.get(ending_type, "Close it politely and in character.")
+    return "\n".join([
+        _tag("CLOSING"),
+        PREVIOUS_NPC_LINE_BEGIN,
+        f'"{line}"',
+        PREVIOUS_NPC_LINE_END,
+        "You just said that line, and the conversation ends now: there is no "
+        f"next turn for the other person. {tone} In npc_utterance, write one or "
+        "two short sentences that bring the conversation to a close. Do not ask "
+        "a question, do not repeat the line above, and do not mention scores, "
+        "rubrics or that this is a simulation.",
+    ])
+
+
 def build_player_utterance_layer(utterance: str) -> str:
     return "\n".join([
         _tag("PLAYER_UTTERANCE"),

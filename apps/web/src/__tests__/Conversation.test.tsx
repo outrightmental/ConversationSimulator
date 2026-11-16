@@ -2341,6 +2341,51 @@ describe('Conversation screen', () => {
       spy.mockRestore()
     })
 
+    // ── The closing line (issue #586) ─────────────────────────────────────
+    it('adds the closing line to a reply that was already shown from the socket', async () => {
+      const asks = 'Good. How would you approach a cross-region dependency like that?'
+      const closing = 'Thank you, that is all I needed today.'
+      let resolveTurn: (v: unknown) => void = () => {}
+      mockApi.submitTurn.mockImplementation(
+        () => new Promise((resolve) => { resolveTurn = resolve }) as never,
+      )
+      renderConversation({ tts_enabled: false })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'I would split the release by region.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      // The line streams in and is committed from the socket first.
+      act(() => {
+        wsCallback?.({
+          type: 'npc.final', seq: 5, session_id: SESSION_ID, ts: '2026-07-01T00:00:00Z',
+          payload: { content: asks },
+        } as never)
+      })
+      await waitFor(() => expect(screen.getByText(asks)).toBeInTheDocument())
+
+      // The response then carries the whole line plus the closing line apart.
+      await act(async () => {
+        resolveTurn({
+          ok: true,
+          data: {
+            ...turnResponse,
+            state: 'Ended',
+            ending_type: 'success',
+            events: turnResponse.events.map((e) =>
+              e.event_type === 'npc_turn'
+                ? { ...e, payload: { ...e.payload, content: `${asks} ${closing}`, closing_line: closing, ending_type: 'success' } }
+                : e,
+            ),
+          },
+        })
+      })
+
+      await waitFor(() => expect(screen.getByText(`${asks} ${closing}`)).toBeInTheDocument())
+      expect(screen.queryByText(asks, { exact: true })).not.toBeInTheDocument()
+    })
+
     it('constructs audio URL from the filename of the cache path', async () => {
       const urls: string[] = []
       const AudioSpy = vi.spyOn(window, 'Audio').mockImplementation(
