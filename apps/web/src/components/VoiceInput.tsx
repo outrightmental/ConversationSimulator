@@ -4,6 +4,8 @@ import type { InputMode } from '@convsim/shared'
 import { apiClient, api } from '../api/client'
 import { useMicCapture, MAX_RECORDING_SECONDS } from '../hooks/useMicCapture'
 import { useVad } from '../hooks/useVad'
+import { recordingForUpload } from '../lib/wavAudio'
+import { ttsAudioUrl } from '../api/origin'
 import MicButton from './MicButton'
 import VadStatusIndicator from './VadStatusIndicator'
 import VadCalibration from './VadCalibration'
@@ -74,8 +76,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
         if (!r.ok) return
         backchannelPathsRef.current = r.data.backchannels
           .map((b) => {
-            const filename = b.cache_path.replace(/\\/g, '/').split('/').pop()
-            return filename ? `/api/tts/audio/${filename}` : ''
+            return ttsAudioUrl(b.cache_path) ?? ''
           })
           .filter(Boolean)
       })
@@ -131,7 +132,9 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
       setUploadError(null)
       const sttStart = performance.now()
       try {
-        const result = await apiClient.uploadAudio(blob, language)
+        // The speech engine reads WAV; the browser records Opus. Converting
+        // here means the player needs no ffmpeg (lib/wavAudio.ts).
+        const result = await apiClient.uploadAudio(await recordingForUpload(blob), language)
         onSttLatency?.(Math.round(performance.now() - sttStart))
         if (!result.ok) {
           setUploadError(result.error.message)

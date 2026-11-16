@@ -13,8 +13,9 @@ verified_against: v0.4.0
 >
 > **Scope:** Conversation Simulator Steam edition and builds from source. The
 > policy applies to registry-managed models and to user-supplied GGUF files.
-> Section 8 covers the inference engine binary, which is the only other file
-> the app downloads, and the update manifest that builds from source fetch.
+> Section 8 covers the inference engine binary and the update manifest that
+> builds from source fetch. The optional voice install (speech engine, Whisper
+> and Kokoro models) is covered under [Voice models](#voice-models).
 >
 > **Compliance cross-references:** MD-01 (silent download), MD-02 (checksum),
 > MD-03 (licence disclosure), MD-04 (bundled weights) in
@@ -115,13 +116,25 @@ Files are named after the model ID:
 
 ### Voice models
 
-The app does not download speech models. The Whisper speech-to-text and
-Silero voice-detection model files are fetched by the developer scripts
-`runtimes/whisper_cpp/download-runtime.sh` and
-`runtimes/silero_vad/download-model.sh` into `~/.convsim/models/stt/` and
-`~/.convsim/models/vad/`, or placed there by the player; the Kokoro
-text-to-speech worker talks to a server the player runs. See the READMEs in
-`runtimes/`.
+Voice is an optional install, started by **Install voice** on the conversation
+brief or in **Settings → Voice output**. It follows this policy's rules: the
+card states the total size, and its **What gets downloaded** list names each
+asset's source, licence and size, before the button is pressed; every file is
+verified against a pinned SHA-256 before it is used; a cancel leaves no
+partial download behind.
+
+Three things are fetched, into `models/voice/` under the app's data folder:
+the sherpa-onnx speech engine for this platform, the Whisper *base* listening
+model, and the Kokoro v1.0 voices with their pronunciation data. The pins
+live in `services/convsim-core/convsim_core/voice/catalog.py`, not in the
+model registry. [The voice setup reference](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/voice-setup.md) lists each
+file, its source and its licence, and where the rules differ from an LLM
+download (a voice install is not resumed automatically at the next launch;
+pressing **Install voice** again continues it).
+
+The developer scripts under `runtimes/` are the manual alternative: a
+`whisper-cli` with a GGML model, a Kokoro server the player runs. An in-app
+install takes over from them.
 
 ---
 

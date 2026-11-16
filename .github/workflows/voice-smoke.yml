@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: Apache-2.0
+# Voice smoke: install the pinned speech engine and models on every shipping
+# platform and round-trip speech through them.
+#
+# A one-click voice install (docs/voice-setup.md) downloads a prebuilt engine
+# and two models that the app pins by URL, size and SHA-256. The unit tests
+# replace the engine with a stand-in, so they cannot tell whether the engine
+# build for a platform starts, or whether it still pronounces every word.
+# This workflow runs the real thing: scripts/voice-smoke.py installs through
+# the app's own installer, synthesises sentences with Kokoro, transcribes the
+# audio with Whisper, and compares the words.
+#
+# It runs when the pins or the code that drives the engine change, and weekly,
+# because two of the pinned files sit under a release tag their publisher can
+# re-upload to: a moved pin fails here before it fails for a player.
+#
+# Each run downloads about 560 MB per platform, which is why it is not part of
+# the per-PR smoke matrix.
+
+name: Voice smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/convsim-core/convsim_core/voice/**'
+      - 'services/convsim-core/convsim_core/stt/sherpa_whisper.py'
+      - 'services/convsim-core/convsim_core/tts/sherpa_kokoro.py'
+      - 'scripts/voice-smoke.py'
+      - '.github/workflows/voice-smoke.yml'
+  schedule:
+    - cron: "30 4 * * 1"  # Mondays 04:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  voice-smoke:
+    name: Voice smoke / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux-x86_64
+            runner: ubuntu-latest
+          - name: macOS-aarch64
+            runner: macos-latest
+          - name: Windows-x86_64
+            runner: windows-2022
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
+
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer"
+
+      - name: Install convsim-core
+        run: pip install -e "services/convsim-core"
+
+      - name: Install voice and round-trip speech
+        run: |
+          echo "Local: python scripts/voice-smoke.py"
+          python scripts/voice-smoke.py

@@ -2108,6 +2108,129 @@ describe('Conversation screen', () => {
       AudioSpy.mockRestore()
     })
 
+    // ── Audio delivered by the REST responses (issue #533) ──────────────────
+    // The core never emits the socket event above. The audio a voice session
+    // produces arrives on the start and turn responses, and until those were
+    // read the character was silent.
+
+    function ttsChunk(eventId: number, index: number, total: number, file: string | null) {
+      return {
+        event_id: eventId,
+        session_id: SESSION_ID,
+        event_type: 'tts_audio_chunk',
+        payload: {
+          chunk_index: index,
+          total_chunks: total,
+          text: `Sentence ${index + 1}.`,
+          voice_id: 'af_heart',
+          cache_path: file ? `C:\\Users\\player\\cache\\tts\\${file}` : null,
+          error: file ? null : 'synthesis failed',
+        },
+        created_at: '2026-07-01T00:00:02Z',
+      }
+    }
+
+    function spyOnAudio() {
+      const created: { url: string; el: { play: ReturnType<typeof vi.fn>; onended: (() => void) | null } }[] = []
+      const spy = vi.spyOn(window, 'Audio').mockImplementation((url?: string) => {
+        const el = { play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), onended: null, onerror: null }
+        created.push({ url: url ?? '', el })
+        return el as unknown as HTMLAudioElement
+      })
+      return { created, spy }
+    }
+
+    it('speaks the opening line the start response returns, one sentence after another', async () => {
+      const { created, spy } = spyOnAudio()
+      mockApi.startSession.mockResolvedValue({
+        ok: true,
+        data: {
+          ...startResponse,
+          events: [...startResponse.events, ttsChunk(10, 0, 2, 'aaa111.wav'), ttsChunk(11, 1, 2, 'bbb222.wav')],
+        },
+      })
+
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(created).toHaveLength(1))
+
+      expect(created[0].url).toBe('/api/tts/audio/aaa111.wav')
+      expect(created[0].el.play).toHaveBeenCalled()
+      // The second sentence waits for the first to finish.
+      act(() => created[0].el.onended?.())
+      expect(created.map((c) => c.url)).toEqual([
+        '/api/tts/audio/aaa111.wav',
+        '/api/tts/audio/bbb222.wav',
+      ])
+
+      spy.mockRestore()
+    })
+
+    it('speaks the reply the turn response returns', async () => {
+      const { created, spy } = spyOnAudio()
+      mockApi.submitTurn.mockResolvedValue({
+        ok: true,
+        data: { ...turnResponse, events: [...turnResponse.events, ttsChunk(20, 0, 1, 'ccc333.wav')] },
+      })
+
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+      expect(created).toHaveLength(0)
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'I have five years of experience.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() => expect(created).toHaveLength(1))
+      expect(created[0].url).toBe('/api/tts/audio/ccc333.wav')
+      expect(created[0].el.play).toHaveBeenCalled()
+
+      spy.mockRestore()
+    })
+
+    it('skips a sentence whose synthesis failed and speaks the rest', async () => {
+      const { created, spy } = spyOnAudio()
+      mockApi.startSession.mockResolvedValue({
+        ok: true,
+        data: {
+          ...startResponse,
+          events: [
+            ...startResponse.events,
+            ttsChunk(10, 0, 3, 'aaa111.wav'),
+            ttsChunk(11, 1, 3, null),
+            ttsChunk(12, 2, 3, 'ccc333.wav'),
+          ],
+        },
+      })
+
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(created).toHaveLength(1))
+      act(() => created[0].el.onended?.())
+
+      expect(created.map((c) => c.url)).toEqual([
+        '/api/tts/audio/aaa111.wav',
+        '/api/tts/audio/ccc333.wav',
+      ])
+      spy.mockRestore()
+    })
+
+    it('stays silent in a text-only session even when the response carries audio', async () => {
+      const { created, spy } = spyOnAudio()
+      mockApi.startSession.mockResolvedValue({
+        ok: true,
+        data: { ...startResponse, events: [...startResponse.events, ttsChunk(10, 0, 1, 'aaa111.wav')] },
+      })
+
+      renderConversation({ tts_enabled: false })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      expect(created).toHaveLength(0)
+      spy.mockRestore()
+    })
+
     it('constructs audio URL from the filename of the cache path', async () => {
       const urls: string[] = []
       const AudioSpy = vi.spyOn(window, 'Audio').mockImplementation(

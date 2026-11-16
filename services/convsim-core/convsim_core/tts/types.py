@@ -10,6 +10,10 @@ class TtsRequest(BaseModel):
     text: str
     voice_id: str
     speed: float = 1.0
+    # The language the text is written in (a BCP-47 tag such as "es"), when the
+    # caller knows it. A worker that pronounces by language uses it; None means
+    # the voice's own language.
+    language: str | None = None
 
 
 class TtsResult(BaseModel):

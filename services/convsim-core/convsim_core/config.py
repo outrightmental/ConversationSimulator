@@ -91,6 +91,11 @@ class ServiceConfig(BaseSettings):
     cache_dir: str = _DEFAULT_CACHE_DIR
     crash_bundles_dir: str = _DEFAULT_CRASH_BUNDLES_DIR
     models_dir: str = str(_DATA_ROOT / "models" / "llm")
+    # Where a one-click voice install puts the speech engine and its Whisper
+    # and Kokoro models (convsim_core/voice). Unset = a `voice` folder beside
+    # the LLM models folder, so voice follows a player who keeps their models
+    # on another drive. Set CONVSIM_VOICE_DIR to put it somewhere else.
+    voice_dir: Optional[str] = None
     lan_access_enabled: bool = False
     runtime_id: str = "fake"
     stt_worker_id: str = "whisper_cpp"
@@ -123,6 +128,12 @@ class ServiceConfig(BaseSettings):
                 "Set CONVSIM_LAN_ACCESS_ENABLED=true to enable LAN access "
                 "and specify an explicit LAN IP address."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _default_voice_dir(self) -> "ServiceConfig":
+        if not self.voice_dir:
+            self.voice_dir = str(Path(self.models_dir).parent / "voice")
         return self
 
     @property

@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
+import { ttsAudioUrl } from '../api/origin'
 import type {
+  SessionEvent,
   InputMode,
   RollingSpeeds,
   ScenarioInfo,
@@ -314,6 +316,8 @@ export default function Conversation() {
   // enabled only when the setup fetch lands, after that render — hence a ref
   // rather than the render-scope value (issue #501 §1).
   const ttsEnabledRef = useRef(false)
+  // Ids of the `tts_audio_chunk` events already queued for playback.
+  const ttsPlayedEventIdsRef = useRef<Set<number>>(new Set())
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
@@ -457,13 +461,29 @@ export default function Conversation() {
     })
   }
 
+  // The start and turn responses carry the reply's audio as `tts_audio_chunk`
+  // events, in sentence order. That is the only delivery there is: the socket
+  // event this queue was first written for is never emitted by the core, which
+  // left a voice session silent (issue #533). Each event is played once, by its
+  // id, so a socket delivery added later cannot double a sentence.
+  function _enqueueTtsFromResponse(events: SessionEvent[]) {
+    for (const event of events) {
+      if (event.event_type !== 'tts_audio_chunk') continue
+      if (ttsPlayedEventIdsRef.current.has(event.event_id)) continue
+      ttsPlayedEventIdsRef.current.add(event.event_id)
+      const cachePath = event.payload['cache_path']
+      if (typeof cachePath !== 'string' || cachePath === '') continue
+      const pause = event.payload['thinking_pause_ms']
+      _enqueueTtsChunk(cachePath, typeof pause === 'number' ? pause : undefined)
+    }
+  }
+
   function _enqueueTtsChunk(cachePath: string, thinkingPauseMs?: number) {
     // Only play TTS audio when the session was started with TTS enabled.
     // The text transcript remains authoritative regardless of this flag.
     if (!ttsEnabledRef.current) return
-    const filename = cachePath.replace(/\\/g, '/').split('/').pop()
-    if (!filename) return
-    const url = `/api/tts/audio/${filename}`
+    const url = ttsAudioUrl(cachePath)
+    if (!url) return
     ttsQueueRef.current.push(url)
     if (ttsPlayingRef.current === null && ttsHoldTimerRef.current === null) {
       // Apply the NPC thinking pause before starting the first chunk, but only
@@ -649,6 +669,8 @@ export default function Conversation() {
           ])
         }
       }
+      // The opening line, spoken.
+      _enqueueTtsFromResponse(startData.events)
       setSessionState(startData.state)
       const openingVisible = opening?.payload['visible_state']
       if (openingVisible && typeof openingVisible === 'object') {
@@ -660,6 +682,10 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
+    // _enqueueTtsFromResponse is a ref-only helper, like _enqueueTtsChunk in
+    // the socket effect below; starting the session must not re-run because a
+    // render made a new copy of it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, devMode, mark, recordInterval])
 
   // WebSocket connection — best effort; REST fallback continues to work
@@ -1113,6 +1139,10 @@ export default function Conversation() {
     recordInterval('full_response_ms', 'turn_submit')
 
     const npcEvent = turnData.events.find((e) => e.event_type === 'npc_turn')
+
+    // The reply, spoken. Not gated on the commit guard below either: the text
+    // may have arrived by socket, the audio only ever arrives here.
+    _enqueueTtsFromResponse(turnData.events)
 
     // Outside the commit guard below: the reply itself may already be on screen
     // from the socket, but the scenario events it fired only ever travel on

@@ -19,7 +19,7 @@ from convsim_core.logging_setup import configure_logging
 from convsim_core.origins import TAURI_WEBVIEW_ORIGINS
 from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.paths import legacy_convsim_dir, platform_data_root
-from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, performance as performance_router, preflight as preflight_router, session_ws as session_ws_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router, workshop as workshop_router
+from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, performance as performance_router, preflight as preflight_router, session_ws as session_ws_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, voice_setup as voice_setup_router, workbench as workbench_router, workshop as workshop_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.runtime.kokoro_sidecar import KokoroSidecar
@@ -30,6 +30,9 @@ from convsim_core.storage.repositories.settings_repo import load_settings
 from convsim_core.stt import build_stt_worker
 from convsim_core.tts import build_tts_worker
 from convsim_core.vad import build_vad_worker
+from convsim_core.voice.jobs import VoiceInstallManager
+from convsim_core.voice.layout import VoiceLayout
+from convsim_core.voice.workers import apply_voice_workers
 
 
 # Origins the packaged Tauri desktop shell serves its web UI from. Defined once
@@ -111,6 +114,15 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         app.state.tts_worker = build_tts_worker(config.tts_worker_id)
         app.state.vad_worker = build_vad_worker(config.vad_worker_id)
+        # One-click voice (convsim_core/voice). If the player has installed it,
+        # the default STT/TTS workers above give way to the built-in engine;
+        # the manager re-applies that the moment an install finishes, so voice
+        # switches on without a restart.
+        app.state.voice_install = VoiceInstallManager(
+            VoiceLayout(config.voice_dir),
+            on_installed=lambda: apply_voice_workers(app),
+        )
+        apply_voice_workers(app)
         sidecar = LlamaCppSidecar(log_dir=config.log_dir)
         app.state.sidecar = sidecar
         kokoro_sidecar = KokoroSidecar(log_dir=config.log_dir)
@@ -150,6 +162,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         # a manual step. Failures are logged; health endpoints stay truthful.
         schedule_startup_autostart(app)
         yield
+        await app.state.voice_install.shutdown()
         await supervisor.stop_all()
         db.close()
 
@@ -182,6 +195,9 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     app.include_router(stt_router.router)
     app.include_router(tts_router.router)
     app.include_router(vad_router.router)
+    # Open in the demo too: voice is the one extra download a demo player may
+    # choose (docs/steam-next-fest-demo.md).
+    app.include_router(voice_setup_router.router)
     app.include_router(packs_router.router)
     app.include_router(scenarios_router.router)
     app.include_router(sessions_router.router)

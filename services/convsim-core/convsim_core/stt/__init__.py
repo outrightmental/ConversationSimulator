@@ -19,6 +19,7 @@ from convsim_core.stt.types import (
 # Import built-in workers to trigger their @register_stt() decorators.
 import convsim_core.stt.fake  # noqa: F401, E402
 import convsim_core.stt.whisper_cpp  # noqa: F401, E402
+import convsim_core.stt.sherpa_whisper  # noqa: F401, E402
 
 __all__ = [
     "SttWorker",

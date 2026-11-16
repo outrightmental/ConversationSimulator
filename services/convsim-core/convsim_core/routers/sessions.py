@@ -394,6 +394,7 @@ async def _run_tts_for_utterance(
     conn: Any,
     now: str,
     thinking_pause_ms: int = 0,
+    language: Optional[str] = None,
 ) -> List[SessionEventPayload]:
     """Synthesize *utterance* sentence-by-sentence and persist tts_audio_chunk events.
 
@@ -402,12 +403,16 @@ async def _run_tts_for_utterance(
 
     ``thinking_pause_ms`` is embedded in the first chunk's payload so the client
     can delay playback start to simulate the NPC "thinking" before speaking.
+
+    ``language`` is the session's language, so a worker that pronounces by
+    language reads a Spanish reply as Spanish.
     """
     try:
         chunks = await synthesize_utterance(
             utterance=utterance,
             voice_id=voice_id,
             tts_worker=tts_worker,
+            language=language,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("TTS queue failed for session %s: %s", session_id, exc, exc_info=True)
@@ -885,6 +890,7 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
             tts_worker=request.app.state.tts_worker,
             conn=conn,
             now=now,
+            language=setup.get("language"),
         )
 
     return SessionStartResponse(
@@ -1106,6 +1112,7 @@ async def _run_turn(
             tts_worker=request.app.state.tts_worker,
             conn=conn,
             now=now,
+            language=setup.get("language"),
             thinking_pause_ms=pause_ms,
         )
         # Synthesis runs here, after the pipeline returned, so the voice stage

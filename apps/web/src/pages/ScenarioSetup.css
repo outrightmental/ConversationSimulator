@@ -643,6 +643,48 @@
   border-color: var(--cs-you);
 }
 
+/* A mode that is not installed yet carries the way to install it. The row is
+   still dimmed, because the mode cannot be chosen; the button is not, because
+   it can be pressed. So the dimming moves from the row to its label. */
+.brief-option.has-action {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 0.7rem;
+}
+
+.brief-option.has-action .brief-option-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.brief-option.is-disabled.has-action {
+  opacity: 1;
+}
+
+.brief-option.is-disabled.has-action .brief-option-main {
+  opacity: 0.6;
+}
+
+.brief-option-action {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--cs-you-deep);
+  border-radius: 8px;
+  background: rgba(167, 139, 250, 0.12);
+  color: var(--cs-text-strong);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.brief-option-action:hover {
+  border-color: var(--cs-you);
+  background: rgba(167, 139, 250, 0.22);
+}
+
 .brief-option input {
   margin: 0.2rem 0 0;
   accent-color: var(--cs-you);

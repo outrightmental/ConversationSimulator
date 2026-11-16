@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// In a packaged Tauri build the web UI is served from tauri://localhost (macOS/Linux)
-// or https://tauri.localhost (Windows) — there is no Vite dev-server proxy.  Detect
-// this and send API traffic directly to the core service on its fixed port.
-// In dev mode (tauri dev), Vite still proxies /api and /ws, so relative paths work.
-const _isTauriProduction: boolean =
-  typeof window !== 'undefined' &&
-  '__TAURI__' in window &&
-  (window.location.protocol === 'tauri:' ||
-    window.location.hostname === 'tauri.localhost')
-
-const CORE_ORIGIN = 'http://127.0.0.1:7355'
+// Where the core is (a packaged build talks to it directly; dev goes through
+// the Vite proxy) is decided in ./origin, shared with URLs built outside this
+// client.
+import { API_BASE, IS_TAURI_PRODUCTION as _isTauriProduction } from './origin'
 
 import type {
   HealthResponse,
@@ -45,6 +38,9 @@ import type {
   LogbookExport,
   PreflightResponse,
   SetupInstallJob,
+  VoiceSetupStatus,
+  VoiceInstallJob,
+  VoiceComponentId,
   RollingSpeeds,
   TurnTiming,
 } from '@convsim/shared';
@@ -54,7 +50,7 @@ export type { ApiError, ApiResult } from './errors';
 
 import type { ApiError, ApiResult } from './errors';
 
-const BASE = _isTauriProduction ? `${CORE_ORIGIN}/api` : '/api'
+const BASE = API_BASE
 
 /**
  * Fetch the diagnostics log excerpt as raw JSON, bounded by a timeout.
@@ -432,6 +428,12 @@ async function postForm<T>(path: string, body: FormData): Promise<ApiResult<T>> 
   }
 }
 
+/** File extension for a recording, from its MIME type. */
+function audioExtension(blob: Blob): 'wav' | 'ogg' | 'webm' {
+  if (blob.type.includes('wav')) return 'wav'
+  return blob.type.includes('ogg') ? 'ogg' : 'webm'
+}
+
 export const apiClient = {
   health(): Promise<ApiResult<HealthResponse>> {
     return get<HealthResponse>('/health')
@@ -446,7 +448,7 @@ export const apiClient = {
   },
 
   uploadAudio(blob: Blob, language?: string): Promise<ApiResult<SttUploadResponse>> {
-    const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
+    const ext = audioExtension(blob)
     const form = new FormData()
     form.append('audio', blob, `recording.${ext}`)
     if (language) {
@@ -464,7 +466,7 @@ export const apiClient = {
   },
 
   vadCalibrate(blob: Blob): Promise<ApiResult<VadCalibrateResponse>> {
-    const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
+    const ext = audioExtension(blob)
     const form = new FormData()
     form.append('audio', blob, `calibration.${ext}`)
     return postForm<VadCalibrateResponse>('/vad/calibrate', form)
@@ -757,6 +759,20 @@ export const api = {
   },
   cancelSetupInstall(jobId: number): Promise<ApiResult<undefined>> {
     return del(`/setup/install/${jobId}`)
+  },
+  // One-click voice install (docs/voice-setup.md). Reading the plan downloads
+  // nothing; startVoiceInstall is the player's consent.
+  getVoiceSetup(): Promise<ApiResult<VoiceSetupStatus>> {
+    return get<VoiceSetupStatus>('/voice/setup')
+  },
+  startVoiceInstall(components?: VoiceComponentId[]): Promise<ApiResult<VoiceInstallJob>> {
+    return post<VoiceInstallJob>('/voice/setup/install', { components: components ?? [] })
+  },
+  getVoiceInstallJob(jobId: number): Promise<ApiResult<VoiceInstallJob>> {
+    return get<VoiceInstallJob>(`/voice/setup/install/${jobId}`)
+  },
+  cancelVoiceInstall(jobId: number): Promise<ApiResult<undefined>> {
+    return del(`/voice/setup/install/${jobId}`)
   },
   connectSession(
     sessionId: string,

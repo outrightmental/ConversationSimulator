@@ -382,8 +382,9 @@ export default function Home() {
               </Link>
             )}
           </li>
-          {/* Voice is not part of the demo; its readiness rows would only invite a
-              download the demo never offers. */}
+          {/* These rows link to Settings, whose voice panel the demo does not
+              show. The demo offers voice from the conversation brief instead
+              (docs/steam-next-fest-demo.md, "Voice in the demo"). */}
           {!isDemo && (
           <li>
             {t('home.status.stt')}:{' '}

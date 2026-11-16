@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiClient } from '../api/client'
+import { recordingForUpload } from '../lib/wavAudio'
 
 export type VadMode = 'ptt' | 'hands-free'
 /** Visual state of the VAD engine during hands-free recording. */
@@ -182,7 +183,7 @@ export function useVad(): UseVadReturn {
     async (blob: Blob) => {
       setIsCalibrating(true)
       try {
-        const result = await apiClient.vadCalibrate(blob)
+        const result = await apiClient.vadCalibrate(await recordingForUpload(blob))
         if (!result.ok) throw new Error(result.error.message)
         update({ threshold: result.data.recommended_threshold, calibratedAt: new Date().toISOString() })
         setBackendAvailable(true)
