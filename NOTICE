@@ -57,6 +57,21 @@ Licensing summary by content type (SPDX identifiers):
     Downloaded by the user through explicit action only.
     License for each model is displayed to the user before download.
 
+  Voice (optional; see docs/voice-setup.md):
+    Not bundled in this repository or in release artifacts.
+    Downloaded by the user through explicit action only, from the publishers
+    below, and run as a separate program. Each license is displayed to the
+    user before download.
+      sherpa-onnx speech engine — https://github.com/k2-fsa/sherpa-onnx
+        SPDX-License-Identifier: Apache-2.0
+        Includes ONNX Runtime (MIT) and eSpeak NG (GPL-3.0-or-later).
+      Whisper base, converted for sherpa-onnx (OpenAI)
+        SPDX-License-Identifier: MIT
+      Kokoro-82M v1.0 voices, converted for sherpa-onnx (hexgrad)
+        SPDX-License-Identifier: Apache-2.0
+      eSpeak NG pronunciation data — https://github.com/espeak-ng/espeak-ng
+        SPDX-License-Identifier: GPL-3.0-or-later
+
   User-generated scenario packs:
     License chosen by the creator; must be declared in pack manifest.yaml.
 

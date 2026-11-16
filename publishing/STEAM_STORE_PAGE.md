@@ -624,7 +624,11 @@ Character count: 228. Within the 300-character limit.
 
 ### Demo copy rules
 
-- The demo is **text only**; do not mention voice as a demo feature.
+- The demo is **text by default**. Voice is an optional ~560 MB download
+  offered on the conversation brief (decided 2026-11-16, see
+  `docs/steam-next-fest-demo.md`). Mention it only as optional and only with
+  its size, and not before demo gate D-11 has passed on the platform the copy
+  is for.
 - Name the download size honestly (it is the registry starter model's size;
   update the number if `CONVSIM_DEMO_MODEL_ID` changes the model).
 - The upsell list must match the in-app card word for word

@@ -5,6 +5,12 @@ Integration layer for [whisper.cpp](https://github.com/ggml-org/whisper.cpp) —
 
 Audio recorded via push-to-talk is transcribed on-device. No audio is sent to remote services.
 
+> **The app installs voice itself.** On a conversation brief, or in
+> Settings → Voice output, **Install voice** downloads a speech engine and
+> its models with one press ([`docs/voice-setup.md`](../../docs/voice-setup.md)).
+> What follows is the manual route, for developers and for trying another
+> engine. An in-app install takes over from it.
+
 ## Quick start
 
 ```sh

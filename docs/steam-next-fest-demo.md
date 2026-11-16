@@ -157,7 +157,8 @@ store page. Nothing is greyed out.
 | First-run wizard | "Set me up" only, one model, no Ollama / GGUF disclosure | Copy says "the demo's AI model"; badge says "Demo". |
 | Model Manager (`/model-manager`) | Reachable (it is the repair path for an incomplete install); shows the one model | Ollama / GGUF cards are not rendered. |
 | Settings | Language, transcript saving, local folders, sessions, clear local data | Runtime, voice, Steam Cloud, pack management, NPC memory, system health, advanced are full-app. Privacy controls (gate F-06) are never trimmed. |
-| Conversation | Unchanged | Voice controls already fall back when STT/TTS are not installed; the demo installs neither. |
+| Conversation brief | Unchanged, plus the optional voice install | See [Voice in the demo](#voice-in-the-demo). Voice is never part of first run; the brief offers it. |
+| Conversation | Unchanged | Voice controls fall back to text while voice is not installed. |
 | Debrief | Unchanged, plus the compact upsell; voice invite not shown; "back" goes to Home | |
 | Support | Unchanged | Crash bundles and the beta-report path are how Next Fest feedback reaches us. |
 | Navigation | Home · Settings · Support, with a "Demo" badge | |
@@ -257,6 +258,36 @@ conversations (the Home picker, one conversation, one debrief) so nothing shown
 is unreachable in the demo. No separate trailer: the base trailer is used.
 Details in the runbook.
 
+### Voice in the demo
+
+**Decision (2026-11-16): the demo offers voice as an optional install.** The
+earlier scope was text only, on the reasoning that a demo has one download by
+definition. Playing the demo build showed what that left on screen: the
+conversation brief listed push-to-talk, hands-free and the character's voice,
+greyed out and marked "not loaded", with nothing a click could do about it. A
+control that is visible, dead and unexplained reads as broken, and speaking
+out loud is the thing the product is for.
+
+So the demo keeps its one *required* download, the AI model, and the brief
+offers a second, optional one:
+
+- **Add voice → Install voice** on the conversation brief downloads the speech
+  engine and its two models (about 559 MB on Windows) with one press, shows
+  progress, can be cancelled, and switches voice on for the conversation being
+  set up. Each greyed-out voice control leads to that button.
+- Nothing about voice appears in first run. D-03's "no other choice being
+  offered" is unchanged.
+- The download follows the model download policy: size, source and licence
+  are on the card before the button is pressed, and every file is checked
+  against a pinned SHA-256.
+- The demo's Settings screen is still trimmed to the privacy controls, and
+  Home still has no voice rows: both would lead to a voice panel the demo
+  does not show. The brief is the one place.
+
+[`docs/voice-setup.md`](voice-setup.md) is the reference for the install
+itself. The speech engine has been run on Windows only; gate D-11 covers the
+other platforms.
+
 ### Turn / session / time cap
 
 **None.** Unlimited play within the five conversations, at every difficulty.
@@ -283,8 +314,10 @@ own promise.
 | D-06 | Save data carries over | Manual | Install the demo, download the model, play one session; install the full app on the same machine: no model download is offered, the session appears in the Logbook. |
 | D-07 | Depot audit and signing | CI + manual | `steam-deploy.yml` with `edition: demo` passes the depot audit and artifact inspection for all three platforms; macOS notarised and Windows signed (G3-01) — a demo is under Valve review like any build. |
 | D-08 | Offline after install | Manual | With the network disconnected after the download, all five conversations play (G2-01 / F-07 for the demo depot). |
-| D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text only) and what the full app adds; no "free" claims about the paid app. |
+| D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text by default with an optional voice download) and what the full app adds; no "free" claims about the paid app. |
 | D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only; every demo capsule and library asset is at Valve's size, on the demo plate, ribboned where it may carry the name and not on the hero. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, its capsules and library assets from `publishing/assets/capsules/demo/` under Store Assets and Library Assets on the same page, and the two library entries read apart at a glance. |
+
+| D-11 | Optional voice works | Manual, all three platforms | From a conversation brief with voice not installed: **Install voice** completes; push-to-talk transcribes a spoken sentence; the character's opening line and replies are heard; with the network disconnected afterwards, both still work. Cancelling mid-download leaves no `.staging` folder under the voice folder. The speech engine was run on Windows x64 only during development, so this is the first run on macOS and Linux. |
 
 **D-05 has an automated pre-check.** `scripts/demo-gate-replay.py` plays each
 of the five conversations to the debrief against a running convsim-core on the
@@ -339,8 +372,9 @@ watch against the latency budget on reference hardware.
 
 ## Explicitly out of scope for the demo
 
-- Voice input/output (an extra ~350 MB download and a second setup path — the
-  demo has one download by definition).
+- Voice as part of first run, or as anything the player must decide before
+  their first conversation. Voice is an optional install offered on the
+  conversation brief (see [Voice in the demo](#voice-in-the-demo)).
 - Premium DLC, Steam Workshop, Steam Cloud, achievements, rich presence.
 - Any demo-only scenario content. Every card is a shipped conversation.
 - A separate demo repository or a fork of the release pipeline: the demo is a

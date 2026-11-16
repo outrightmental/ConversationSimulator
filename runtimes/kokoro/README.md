@@ -6,6 +6,12 @@ locally from a **fixed set of built-in synthetic voices**. There is no voice
 cloning, voice import, or real-person voice path — see
 [Voice policy](#voice-policy) below.
 
+> **The app installs voice itself.** On a conversation brief, or in
+> Settings → Voice output, **Install voice** downloads a speech engine and
+> its models with one press ([`docs/voice-setup.md`](../../docs/voice-setup.md)).
+> What follows is the manual route, for developers and for trying another
+> engine. An in-app install takes over from it.
+
 ## What it does
 
 - The `kokoro` TTS worker calls a local Kokoro REST server that exposes an

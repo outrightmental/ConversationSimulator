@@ -537,31 +537,51 @@ paste the report into a GitHub issue.
 
 ## Voice unavailable {#voice-ready}
 
-Voice is optional, and text works without it. Voice input uses whisper.cpp and
-voice output a local Kokoro speech server; the app does not download either of
-them at this release. **Set up voice** on the debrief screen opens Settings,
-which shows where voice stands but installs nothing. The repository's
-[whisper.cpp](https://github.com/outrightmental/ConversationSimulator/blob/main/runtimes/whisper_cpp/README.md)
-and
-[Kokoro](https://github.com/outrightmental/ConversationSimulator/blob/main/runtimes/kokoro/README.md)
-runtime notes describe the setup.
+Voice is optional, and text works without it. The app installs voice itself.
+On a conversation brief, **Add voice → Install voice** downloads the speech
+engine and its Whisper and Kokoro models (about 559 MB on Windows), shows
+progress, and switches voice on when it finishes, without a restart. In the
+full app the same card is in **Settings → Voice output**, which **Set up
+voice** on the debrief screen opens. The repository's
+[voice setup reference](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/voice-setup.md)
+lists what is downloaded and from where.
 
-Where the app shows that voice is not ready:
+Where the app shows that voice is not installed:
 
 - The Home screen's **Voice input** and **Voice output** rows read **Not
-  installed**.
-- On the Conversation Brief, **Push-to-talk voice** and **Hands-free voice
-  (VAD)** are marked **STT not loaded** and cannot be chosen, and **NPC voice
-  (TTS)** reads **— not loaded**, with *Text-only is always available. Install
-  a TTS model to enable voice output.*
+  installed** (full app; the demo's Home has no voice rows).
+- On the Conversation Brief, the **Session setup** card opens with **Add
+  voice**. **Push-to-talk voice** and **Hands-free voice (VAD)** are marked
+  **Not installed**, each with an **Install voice** button, and **NPC voice
+  (TTS)** reads **— not installed**. Those buttons bring the card's **Install
+  voice** button into view; only that button starts the download.
 - **Settings → Voice output** lists **Voice readiness** for the microphone,
   STT, VAD and TTS, each with what is missing.
+
+If the install does not finish, the card says why and offers **Try again**:
+
+- **Could not connect / timed out.** The network dropped. What already
+  downloaded is kept, and trying again continues from there.
+- **A downloaded file did not match its expected checksum.** The file was
+  discarded and nothing was installed from it. Try again; if it repeats, the
+  file changed at its source and the app needs an update.
+- **Not enough disk space for voice.** Free the space the message names.
+- **The speech engine was installed but did not start.** The engine does not
+  run on this machine. Copy diagnostics from **Support** and open an issue;
+  text still works.
+- **Voice is not available for this kind of computer yet.** There is no
+  engine build for this processor and system.
+
+If voice is installed but a reply is not spoken: the built-in voices speak
+English, Spanish, French, Italian, Portuguese and Hindi, and in any other
+language the reply stays text (the brief says so). If your speech is not
+transcribed, the conversation shows *Speech could not be transcribed* and the
+typed box still works.
 
 If the microphone is the problem, **Voice readiness** shows *permission
 denied* with *Allow microphone access in your browser or OS settings to use
 voice input.* See [Platform notes](/play/platform-notes/) for each system's
 microphone permission. Errors from voice input and output are in `app.log`.
-The demo has no voice.
 
 ---
 

@@ -40,6 +40,9 @@ import { validateSetup, randomSeed } from '@convsim/shared';
 import { api } from '../api/client';
 import type { ApiError } from '../api/errors';
 import { ApiErrorView } from '../components/ApiErrorView';
+import { VoiceInstallCard } from '../components/VoiceInstallCard';
+import { voiceInstallCardVisible } from '../lib/voiceInstall';
+import { useVoiceInstall } from '../hooks/useVoiceInstall';
 import { readPrivacyPref, PRIVACY_KEYS } from '../privacyPrefs';
 import { languageLabel } from '../lib/languageLabel';
 import './ScenarioSetup.css';
@@ -269,6 +272,66 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
     randomizeSeedRef.current?.focus();
   }, [setField]);
 
+  // ── Voice install ──────────────────────────────────────────────────────
+  // Voice used to be a dead end here: the voice options were greyed out with
+  // "not loaded" beside them and nothing a click could do about it. The brief
+  // now carries the installer itself (components/VoiceInstallCard), and every
+  // greyed-out voice control leads to it.
+  //
+  // When an install ends, the readiness this page loaded with is stale. Re-read
+  // it, and switch on what the player just installed: someone who presses
+  // Install voice on the brief wants voice in the conversation they are about
+  // to start, not a second trip through the same controls.
+  const voiceSupported = scenario?.voice_supported !== false;
+  const refreshVoiceReadiness = async () => {
+    const r = await api.health();
+    if (!r.ok || r.data.runtime == null) return;
+    const next = r.data.runtime;
+    const gainedInput = next.stt_ready && !runtime.stt_ready;
+    const gainedOutput = next.tts_ready && !runtime.tts_ready;
+    setRuntime(next);
+    setForm((prev) => ({
+      ...prev,
+      input_mode:
+        gainedInput && prev.input_mode === 'text-only' ? 'push-to-talk' : prev.input_mode,
+      tts_enabled: gainedOutput && voiceSupported ? true : prev.tts_enabled,
+    }));
+  };
+  const voice = useVoiceInstall(() => void refreshVoiceReadiness());
+  const voiceInstallable = voice.status?.supported === true;
+  const voiceCardVisible = voiceInstallCardVisible(voice);
+
+  // A greyed-out voice option was clicked: bring the installer into view, put
+  // focus on its button, and light it up for a moment so the eye follows.
+  const voiceInstallButtonRef = useRef<HTMLButtonElement>(null);
+  const voiceAnchorRef = useRef<HTMLDivElement>(null);
+  const [voiceHighlighted, setVoiceHighlighted] = useState(false);
+  const voiceHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (voiceHighlightTimer.current != null) clearTimeout(voiceHighlightTimer.current);
+    },
+    [],
+  );
+  const showVoiceInstall = useCallback(() => {
+    voiceAnchorRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    voiceInstallButtonRef.current?.focus({ preventScroll: true });
+    setVoiceHighlighted(true);
+    if (voiceHighlightTimer.current != null) clearTimeout(voiceHighlightTimer.current);
+    voiceHighlightTimer.current = setTimeout(() => setVoiceHighlighted(false), 1600);
+  }, []);
+
+  // The built-in voices speak a fixed set of languages. Where they cannot
+  // speak the conversation's language the reply stays text, and the toggle
+  // says so instead of promising a voice that will not come. A voice server
+  // the player runs themselves is not second-guessed.
+  const builtInVoice = voice.status?.components.find((c) => c.id === 'tts');
+  const voiceLanguages = builtInVoice?.installed ? builtInVoice.languages : null;
+  const voiceSpeaksLanguage =
+    voiceLanguages == null ||
+    voiceLanguages.includes(form.language.toLowerCase().split(/[-_]/)[0]);
+  const ttsOn = form.tts_enabled && voiceSpeaksLanguage;
+
   const validationResult =
     scenario != null
       ? validateSetup(form, runtime, scenario.state_meters_permitted)
@@ -288,6 +351,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
       const r = await api.createSession({
         scenario_id: scenarioId,
         ...rest,
+        tts_enabled: ttsOn,
         ...(voice_id ? { tts_voice_id: voice_id } : {}),
       });
       if (r.ok) {
@@ -297,7 +361,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
       }
       setSubmitting(false);
     },
-    [form, scenarioId, scenario, validationResult.valid, onSessionCreated],
+    [form, ttsOn, scenarioId, scenario, validationResult.valid, onSessionCreated],
   );
 
   if (loadError) {
@@ -370,7 +434,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
     difficultyLabel(form.difficulty, scenario.difficulty?.options?.[form.difficulty]),
     languageLabel(form.language),
     INPUT_MODE_SUMMARY[form.input_mode],
-    form.tts_enabled ? 'Voice on' : 'Voice off',
+    ttsOn ? 'Voice on' : 'Voice off',
   ].join(' · ');
 
   const blockerCount = validationResult.errors.length;
@@ -629,6 +693,16 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
               </div>
 
               <div className="brief-setup-grid">
+                {voiceCardVisible && (
+                  <div className="brief-set is-wide" ref={voiceAnchorRef}>
+                    <VoiceInstallCard
+                      ref={voiceInstallButtonRef}
+                      voice={voice}
+                      highlighted={voiceHighlighted}
+                    />
+                  </div>
+                )}
+
                 <div className="brief-set">
                   <h3 className="brief-set-title">Input mode</h3>
                   <div className="brief-options" role="radiogroup" aria-label="Input mode">
@@ -640,12 +714,16 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                       ] as [InputMode, string, boolean][]
                     ).map(([value, label, available]) => {
                       const selected = form.input_mode === value;
+                      // A mode that only needs installing gets a way to do it
+                      // on its own row, so the click that used to do nothing
+                      // now goes somewhere.
+                      const offerInstall = !available && voiceInstallable;
                       return (
                         <div
                           key={value}
                           className={`brief-option${selected ? ' is-selected' : ''}${
                             !available ? ' is-disabled' : ''
-                          }`}
+                          }${offerInstall ? ' has-action' : ''}`}
                         >
                           <label className="brief-option-main">
                             <input
@@ -660,11 +738,23 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                               <span className="brief-option-name">
                                 {label}
                                 {!available && value !== 'text-only' && (
-                                  <span className="brief-option-note">STT not loaded</span>
+                                  <span className="brief-option-note">
+                                    {voiceInstallable ? 'Not installed' : 'STT not loaded'}
+                                  </span>
                                 )}
                               </span>
                             </span>
                           </label>
+                          {offerInstall && (
+                            <button
+                              type="button"
+                              className="brief-option-action"
+                              onClick={showVoiceInstall}
+                              aria-label={`Install voice to use ${label}`}
+                            >
+                              {voice.installing ? 'Installing…' : 'Install voice'}
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -682,10 +772,12 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                     <label className="brief-toggle">
                       <input
                         type="checkbox"
-                        checked={form.tts_enabled}
-                        disabled={!runtime.tts_ready}
+                        checked={ttsOn}
+                        disabled={!runtime.tts_ready || !voiceSpeaksLanguage}
                         onChange={(e) => setField('tts_enabled', e.target.checked)}
-                        aria-describedby={!runtime.tts_ready ? 'tts-status' : undefined}
+                        aria-describedby={
+                          !runtime.tts_ready || !voiceSpeaksLanguage ? 'tts-status' : undefined
+                        }
                       />
                       <span className="brief-toggle-text">
                         NPC voice (TTS)
@@ -693,7 +785,9 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                           <span className="brief-badge-ready"> {runtime.tts_voice_name}</span>
                         )}
                         {!runtime.tts_ready && (
-                          <span className="brief-badge-off"> — not loaded</span>
+                          <span className="brief-badge-off">
+                            {voiceInstallable ? ' — not installed' : ' — not loaded'}
+                          </span>
                         )}
                       </span>
                     </label>
@@ -702,9 +796,24 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                         {validationErrorMap['tts_enabled']}
                       </span>
                     )}
-                    {!runtime.tts_ready && (
+                    {!runtime.tts_ready && !voiceInstallable && (
                       <p className="brief-note" id="tts-status">
                         Text-only is always available. Install a TTS model to enable voice output.
+                      </p>
+                    )}
+                    {!runtime.tts_ready && voiceInstallable && (
+                      <p className="brief-note" id="tts-status">
+                        Text-only is always available.{' '}
+                        <button type="button" className="brief-alert-link" onClick={showVoiceInstall}>
+                          {voice.installing ? 'Voice is installing' : 'Install voice'}
+                        </button>{' '}
+                        to hear replies out loud.
+                      </p>
+                    )}
+                    {runtime.tts_ready && !voiceSpeaksLanguage && (
+                      <p className="brief-note" id="tts-status">
+                        The installed voices cannot speak {languageLabel(form.language)} yet, so
+                        replies in this conversation are text.
                       </p>
                     )}
                     {runtime.tts_ready && !scenario.voice_supported && (
@@ -713,7 +822,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                         was not written with voice in mind.
                       </p>
                     )}
-                    {form.tts_enabled && voices.length > 0 && (
+                    {ttsOn && voices.length > 0 && (
                       <label className="brief-field">
                         <span className="brief-label">NPC voice</span>
                         <select
@@ -883,6 +992,14 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                   <span aria-hidden="true" className={`brief-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
                   <span>
                     STT: {runtime.stt_ready ? 'ready' : 'not loaded — voice input unavailable'}
+                    {!runtime.stt_ready && voiceInstallable && (
+                      <>
+                        {' '}
+                        <button type="button" className="brief-alert-link" onClick={showVoiceInstall}>
+                          Install
+                        </button>
+                      </>
+                    )}
                   </span>
                 </li>
                 <li>
@@ -892,6 +1009,14 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                     {runtime.tts_ready
                       ? runtime.tts_voice_name ?? 'ready'
                       : 'not loaded — text-only available'}
+                    {!runtime.tts_ready && voiceInstallable && (
+                      <>
+                        {' '}
+                        <button type="button" className="brief-alert-link" onClick={showVoiceInstall}>
+                          Install
+                        </button>
+                      </>
+                    )}
                   </span>
                 </li>
                 <li>

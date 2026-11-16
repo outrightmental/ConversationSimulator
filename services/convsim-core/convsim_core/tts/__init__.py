@@ -20,6 +20,7 @@ from convsim_core.tts.voices import APPROVED_VOICES, VoiceInfo, validate_voice_i
 # Import built-in workers to trigger their @register_tts() decorators.
 import convsim_core.tts.fake  # noqa: F401, E402
 import convsim_core.tts.kokoro  # noqa: F401, E402
+import convsim_core.tts.sherpa_kokoro  # noqa: F401, E402
 
 __all__ = [
     "TtsWorker",

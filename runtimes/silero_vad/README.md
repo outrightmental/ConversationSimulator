@@ -2,6 +2,10 @@
 
 [Silero VAD](https://github.com/snakers4/silero-vad) provides local voice activity detection via an ONNX model. ConversationSimulator uses it for noise calibration in hands-free recording mode.
 
+> A one-click voice install ([`docs/voice-setup.md`](../../docs/voice-setup.md))
+> does not include this model and does not need it: hands-free turn-taking
+> runs in the web view. Silero is used for noise calibration only.
+
 ## What it does
 
 - Analyses a short (≈ 3 s) ambient noise recording to set a silence threshold.

@@ -4,6 +4,9 @@ import type { VoiceInfo } from '@convsim/shared'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
+import { VoiceInstallCard } from './VoiceInstallCard'
+import { voiceInstallCardVisible } from '../lib/voiceInstall'
+import { useVoiceInstall } from '../hooks/useVoiceInstall'
 
 export const VOICE_PREF_THINKING_PAUSE = 'convsim.voice.thinkingPauseEnabled'
 export const VOICE_PREF_BACKCHANNEL = 'convsim.voice.backchannelEnabled'
@@ -116,6 +119,15 @@ export default function VoiceSettingsPanel() {
     () => localStorage.getItem(VOICE_PREF_BARGE_IN) !== 'false'
   )
 
+  // One-click voice install. When it finishes, the readiness cards below
+  // are stale, so they are read again.
+  const loadVoiceReadiness = useCallback(() => {
+    api.health()
+      .then((r) => { if (r.ok) { setSttReady(r.data.runtime?.stt_ready ?? false); setTtsReady(r.data.runtime?.tts_ready ?? false) } })
+  }, [])
+  const voice = useVoiceInstall(loadVoiceReadiness)
+  const voiceInstallable = voice.status?.supported === true
+
   const loadCacheSize = useCallback(() => {
     api.getTtsCacheSize()
       .then((r) => { if (r.ok) { setCacheFiles(r.data.files); setCacheSizeBytes(r.data.size_bytes) } else setCacheError(r.error) })
@@ -144,8 +156,7 @@ export default function VoiceSettingsPanel() {
     loadCacheSize()
 
     // Health check for STT and TTS readiness
-    api.health()
-      .then((r) => { if (r.ok) { setSttReady(r.data.runtime?.stt_ready ?? false); setTtsReady(r.data.runtime?.tts_ready ?? false) } })
+    loadVoiceReadiness()
 
     // VAD health check
     api.vadHealth()
@@ -164,7 +175,7 @@ export default function VoiceSettingsPanel() {
         })
       })
       .catch(() => setMicPerm('unavailable'))
-  }, [loadCacheSize])
+  }, [loadCacheSize, loadVoiceReadiness])
 
   function handleVoiceChange(voiceId: string) {
     setPreferredVoiceId(voiceId)
@@ -229,6 +240,13 @@ export default function VoiceSettingsPanel() {
 
   return (
     <div>
+      {/* Install voice: shown only while something is missing or installing. */}
+      {voiceInstallCardVisible(voice) && (
+        <div style={{ marginBottom: '1.25rem' }}>
+          <VoiceInstallCard voice={voice} />
+        </div>
+      )}
+
       {/* Voice readiness */}
       <div style={{ marginBottom: '1.25rem' }}>
         <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#a1a1aa', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -267,7 +285,13 @@ export default function VoiceSettingsPanel() {
             testId="readiness-stt"
             status={sttStatus}
             detail={sttReady === null ? 'checking…' : sttReady ? 'model loaded' : 'no model loaded'}
-            guidance={!sttReady && sttReady !== null ? 'Install a speech-to-text model to enable voice input modes.' : undefined}
+            guidance={
+              !sttReady && sttReady !== null
+                ? voiceInstallable
+                  ? 'Install voice above to speak your turns.'
+                  : 'Install a speech-to-text model to enable voice input modes.'
+                : undefined
+            }
           />
           <ReadinessCard
             label="VAD"
@@ -281,7 +305,13 @@ export default function VoiceSettingsPanel() {
             testId="readiness-tts"
             status={ttsStatus}
             detail={ttsReady === null ? 'checking…' : ttsReady ? 'model loaded' : 'no model loaded'}
-            guidance={!ttsReady && ttsReady !== null ? 'Install a text-to-speech model to enable NPC voice output. Text-only is always available.' : undefined}
+            guidance={
+              !ttsReady && ttsReady !== null
+                ? voiceInstallable
+                  ? 'Install voice above to hear replies out loud. Text-only is always available.'
+                  : 'Install a text-to-speech model to enable NPC voice output. Text-only is always available.'
+                : undefined
+            }
           />
         </div>
       </div>

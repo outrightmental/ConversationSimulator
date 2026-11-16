@@ -332,15 +332,27 @@ On any screen, a **Request failed** card that reads **VALIDATION_ERROR: Request 
 
 ## Voice unavailable
 
-Voice is optional, and text works without it. Voice input uses whisper.cpp and voice output a local Kokoro speech server; the app does not download either of them at this release. **Set up voice** on the debrief screen opens Settings, which shows where voice stands but installs nothing. [`runtimes/whisper_cpp/README.md`](../runtimes/whisper_cpp/README.md) and [`runtimes/kokoro/README.md`](../runtimes/kokoro/README.md) describe the setup. Voice input runs `whisper-cli` as a subprocess, not a server, so nothing listens on a port for it; voice output expects the Kokoro server on port 7358.
+Voice is optional, and text works without it. The app installs voice itself: on a conversation brief, **Add voice → Install voice** downloads the speech engine and its Whisper and Kokoro models (about 559 MB on Windows), shows progress, and switches voice on when it finishes, without a restart. In the full app the same card is in **Settings → Voice output**, which **Set up voice** on the debrief screen opens. [`voice-setup.md`](voice-setup.md) is the reference.
 
-Where the app shows that voice is not ready:
+Where the app shows that voice is not installed:
 
-- The Home screen's **Voice input** and **Voice output** rows read **Not installed**.
-- On the Conversation Brief, **Push-to-talk voice** and **Hands-free voice (VAD)** are marked **STT not loaded** and cannot be chosen, and **NPC voice (TTS)** reads **— not loaded**, with *Text-only is always available. Install a TTS model to enable voice output.*
+- The Home screen's **Voice input** and **Voice output** rows read **Not installed** (full app; the demo's Home has no voice rows).
+- On the Conversation Brief, the **Session setup** card opens with **Add voice**. **Push-to-talk voice** and **Hands-free voice (VAD)** are marked **Not installed**, each with an **Install voice** button, and **NPC voice (TTS)** reads **— not installed**. Those buttons bring the card's **Install voice** button into view; only that button starts the download.
 - **Settings → Voice output** lists **Voice readiness** for the microphone, STT, VAD and TTS, each with what is missing.
 
-If the microphone is the problem, **Voice readiness** shows *permission denied* with *Allow microphone access in your browser or OS settings to use voice input.* See [platform-notes.md](platform-notes.md) for each system's microphone permission. Errors from voice input and output are in `app.log`. The demo has no voice.
+If the install does not finish, the card says why and offers **Try again**:
+
+- **Could not connect / timed out** — the network dropped. What already downloaded is kept, and trying again continues from there.
+- **A downloaded file did not match its expected checksum** — the file was discarded and nothing was installed from it. Try again; if it repeats, the file changed at its source and the app needs an update.
+- **Not enough disk space for voice** — free the space the message names.
+- **The speech engine was installed but did not start** — the engine does not run on this machine. Copy diagnostics from **Support** and open an issue; text still works.
+- **Voice is not available for this kind of computer yet** — there is no engine build for this processor and system.
+
+If voice is installed but a reply is not spoken: the built-in voices speak English, Spanish, French, Italian, Portuguese and Hindi, and in any other language the reply stays text (the brief says so). If your speech is not transcribed, the conversation shows *Speech could not be transcribed* and the typed box still works; `app.log` has the engine's own message.
+
+If the microphone is the problem, **Voice readiness** shows *permission denied* with *Allow microphone access in your browser or OS settings to use voice input.* See [platform-notes.md](platform-notes.md) for each system's microphone permission. Errors from voice input and output are in `app.log`.
+
+A `whisper-cli` and a Kokoro server set up by hand ([`runtimes/whisper_cpp/README.md`](../runtimes/whisper_cpp/README.md), [`runtimes/kokoro/README.md`](../runtimes/kokoro/README.md)) still work; with those the rows above read **STT not loaded** and **— not loaded** when the piece is missing.
 
 ---
 

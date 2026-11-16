@@ -16,6 +16,7 @@ Usage::
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -47,12 +48,18 @@ async def synthesize_utterance(
     voice_id: str,
     tts_worker: TtsWorker,
     speed: float = 1.0,
+    language: str | None = None,
 ) -> list[TtsChunkResult]:
     """Split *utterance* into sentences and synthesize each as a TTS chunk.
 
     Chunks are returned in sentence order.  Synthesis failures are recorded
     per chunk (``error`` field set, ``audio_path`` is None) and do not abort
     subsequent chunks — text fallback is always available.
+
+    A worker that declares ``max_concurrency`` above one has that many
+    sentences synthesised at a time; the order of the result is the order of
+    the sentences either way.  ``language`` is the language the utterance is
+    written in, for a worker that pronounces by language.
 
     Returns an empty list for empty utterances.  Never raises.
     """
@@ -61,9 +68,10 @@ async def synthesize_utterance(
         return []
 
     total = len(sentences)
-    results: list[TtsChunkResult] = []
+    concurrency = getattr(tts_worker, "max_concurrency", 1)
+    slots = asyncio.Semaphore(concurrency if isinstance(concurrency, int) and concurrency > 0 else 1)
 
-    for idx, sentence in enumerate(sentences):
+    async def _one(idx: int, sentence: str) -> TtsChunkResult:
         chunk = TtsChunkResult(
             chunk_index=idx,
             total_chunks=total,
@@ -71,9 +79,10 @@ async def synthesize_utterance(
             voice_id=voice_id,
         )
         try:
-            tts_result = await tts_worker.synthesize(
-                TtsRequest(text=sentence, voice_id=voice_id, speed=speed)
-            )
+            async with slots:
+                tts_result = await tts_worker.synthesize(
+                    TtsRequest(text=sentence, voice_id=voice_id, speed=speed, language=language)
+                )
             chunk.audio_path = tts_result.audio_path
         except TtsUnavailableError as exc:
             logger.info("TTS unavailable (chunk %d/%d): %s", idx + 1, total, exc)
@@ -90,7 +99,6 @@ async def synthesize_utterance(
                 exc_info=True,
             )
             chunk.error = f"Unexpected error: {exc}"
+        return chunk
 
-        results.append(chunk)
-
-    return results
+    return list(await asyncio.gather(*(_one(i, s) for i, s in enumerate(sentences))))

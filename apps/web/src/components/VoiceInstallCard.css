@@ -1,0 +1,253 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * The voice install card (components/VoiceInstallCard.tsx).
+ *
+ * Colour follows docs/brand.md: violet is the player's own action (the install
+ * button, the progress fill), emerald is "ready", amber is something that
+ * wants attention. Type sizes match the conversation brief's setup card, which
+ * is where the card usually sits.
+ */
+
+.voice-install {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid var(--cs-you-deep, #7c3aed);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(167, 139, 250, 0.1), rgba(167, 139, 250, 0.02));
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.voice-install.is-done {
+  border-color: rgba(110, 231, 183, 0.45);
+  background: linear-gradient(180deg, rgba(110, 231, 183, 0.1), rgba(110, 231, 183, 0.02));
+}
+
+/* A disabled voice option was clicked: this is where it leads. */
+.voice-install.is-highlighted {
+  border-color: var(--cs-you, #a78bfa);
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.35);
+}
+
+.voice-install-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.voice-install-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--cs-text-strong, #fafafa);
+}
+
+.voice-install-pct {
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--cs-you, #a78bfa);
+}
+
+.voice-install-text {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--cs-text-muted, #a1a1aa);
+}
+
+.voice-install-problem {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.07);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--cs-text, #e4e4e7);
+}
+
+.voice-install-problem strong {
+  color: var(--cs-event, #fbbf24);
+}
+
+.voice-install-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem 1rem;
+}
+
+.voice-install-actions > .voice-install-text {
+  flex: 1 1 14rem;
+}
+
+.voice-install-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--cs-you, #a78bfa);
+  border-radius: 8px;
+  background: var(--cs-you, #a78bfa);
+  color: #14101f;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.voice-install-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.voice-install-btn:disabled,
+.voice-install-btn-quiet:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.voice-install-btn-size {
+  font-size: 0.74rem;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.voice-install-btn-quiet {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--cs-border, #27272a);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cs-text, #e4e4e7);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.voice-install-btn-quiet:hover:not(:disabled) {
+  border-color: var(--cs-you, #a78bfa);
+}
+
+/* ── What gets downloaded ──────────────────────────────────────────────── */
+
+.voice-install-details {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--cs-text-muted, #a1a1aa);
+}
+
+.voice-install-details summary {
+  padding: 0.55rem 0;
+  cursor: pointer;
+  color: var(--cs-text, #e4e4e7);
+}
+
+.voice-install-assets {
+  list-style: none;
+  margin: 0.2rem 0 0.6rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.voice-install-asset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.1rem 0.75rem;
+}
+
+.voice-install-asset-name {
+  color: var(--cs-text, #e4e4e7);
+}
+
+.voice-install-asset-size {
+  font-variant-numeric: tabular-nums;
+  color: var(--cs-text, #e4e4e7);
+}
+
+.voice-install-asset-meta {
+  grid-column: 1 / -1;
+  font-size: 0.74rem;
+}
+
+.voice-install-asset-url,
+.voice-install-path {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+/* ── Progress ──────────────────────────────────────────────────────────── */
+
+.voice-install-bar {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.voice-install-bar.is-overall {
+  height: 6px;
+}
+
+.voice-install-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cs-you, #a78bfa);
+  transition: width 0.4s ease;
+}
+
+.voice-install-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.voice-install-stage {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--cs-text-muted, #a1a1aa);
+}
+
+.voice-install-stage .voice-install-bar {
+  grid-column: 2 / -1;
+}
+
+.voice-install-stage-note {
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-install-stage.is-running {
+  color: var(--cs-text-strong, #fafafa);
+}
+
+.voice-install-stage.is-running .voice-install-stage-mark {
+  color: var(--cs-you, #a78bfa);
+}
+
+.voice-install-stage.is-complete .voice-install-stage-mark {
+  color: var(--cs-them, #6ee7b7);
+}
+
+.voice-install-stage.is-failed {
+  color: var(--cs-event, #fbbf24);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-install,
+  .voice-install-bar-fill {
+    transition: none;
+  }
+}
