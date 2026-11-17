@@ -1,0 +1,333 @@
+# SPDX-License-Identifier: Apache-2.0
+# Microsoft Store — packs a release for the Microsoft Store and, once Partner
+# Center has an app submission to update, sends it there as a draft.
+#
+# The package (an MSIX) is the release's Windows files: the signed tree the
+# Windows build leg of release.yml assembled for Steam (steam-depot-windows.tar.gz
+# in that run's desktop-Windows-x86_64 artifact), with the shell rebuilt here
+# from the same tag WITHOUT the `steam` Cargo feature, so the Store edition
+# neither needs nor loads Valve's steam_api64.dll. The engine, the AI runtimes
+# and the VC++ runtime come from the release build unchanged.
+# scripts/pack-msix.ps1 does the packing; publishing/MICROSOFT_STORE.md is the
+# reference for the Partner Center side.
+#
+# Runs:
+#   * chained from release.yml after a full release (tag + that run's ID);
+#   * by hand, to package any release again:
+#       gh workflow run microsoft-store.yml -f tag=v0.4.10 -f run_id=<Release run ID>
+#
+# Every run keeps the MSIX as the microsoft-store-msix artifact. Sending it to
+# Partner Center needs the MSSTORE_* secrets below, and leaves a DRAFT
+# submission: submitting it for certification stays a person's click, the
+# same rule that keeps Steam builds from going live on their own.
+#
+# Repository variables (Partner Center → the app → Product identity):
+#   MSSTORE_IDENTITY_NAME            Package/Identity/Name
+#   MSSTORE_PUBLISHER                Package/Identity/Publisher (CN=…)
+#   MSSTORE_PUBLISHER_DISPLAY_NAME   Package/Properties/PublisherDisplayName
+#   MSSTORE_PRODUCT_ID               Store ID
+# Repository secrets (an Entra app Partner Center lets submit for the account;
+# publishing/MICROSOFT_STORE.md §5):
+#   MSSTORE_TENANT_ID, MSSTORE_CLIENT_ID, MSSTORE_CLIENT_SECRET, MSSTORE_SELLER_ID
+name: Microsoft Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to package (vMAJOR.MINOR.PATCH, e.g. v0.4.10)'
+        required: true
+        type: string
+      run_id:
+        description: >
+          Run ID of the full-edition Release run for that tag (Actions → the
+          Release run → the number in its URL). Its desktop-Windows-x86_64
+          artifact holds the signed Windows files.
+        required: true
+        type: string
+      upload:
+        description: 'Send the package to Partner Center as a draft submission (when the MSSTORE_ secrets are set)'
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      run_id:
+        required: true
+        type: string
+      upload:
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  # download-artifact from another run (the release build) needs actions: read.
+  actions: read
+
+jobs:
+  package:
+    name: Microsoft Store package
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      HAS_SIGNING: ${{ (secrets.GCP_SA_KEY_JSON != '' && secrets.GCP_KMS_KEY != '' && secrets.WINDOWS_CODESIGN_CERT != '') || secrets.WINDOWS_SIGN_CERT_PFX != '' }}
+    steps:
+      - name: Check the Microsoft Store identity and the tag
+        id: identity
+        shell: bash
+        env:
+          IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.MSSTORE_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          # A Store package carries the identity Partner Center gave the app
+          # when its name was reserved; without it there is nothing to pack.
+          if [ -z "$IDENTITY_NAME" ] || [ -z "$PUBLISHER" ] || [ -z "$PUBLISHER_DISPLAY_NAME" ]; then
+            echo "::notice::Microsoft Store skipped: the repository variables MSSTORE_IDENTITY_NAME, MSSTORE_PUBLISHER and MSSTORE_PUBLISHER_DISPLAY_NAME are not all set (publishing/MICROSOFT_STORE.md)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          # The Store's version is MAJOR.MINOR.BUILD.0: a pre-release tag has
+          # no Store version, so it is not packed.
+          elif ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::notice::Microsoft Store skipped: $RELEASE_TAG is not a vMAJOR.MINOR.PATCH release."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The app is built from the release tag. The packaging files come from
+      # this workflow's own commit, so a release tagged before they existed
+      # (v0.4.10, the first Store release) can still be packed.
+      - name: Check out the release tag
+        if: steps.identity.outputs.ready == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Take the packaging files from this workflow's commit
+        if: steps.identity.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth 1 origin "$GITHUB_SHA"
+          git checkout "$GITHUB_SHA" -- scripts/pack-msix.ps1 publishing/microsoft-store
+
+      - name: Download the release's Windows files
+        if: steps.identity.outputs.ready == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: desktop-Windows-x86_64
+          path: release-windows
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unpack the Windows depot
+        if: steps.identity.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARBALL="$(find release-windows -name steam-depot-windows.tar.gz | head -n1)"
+          if [ -z "$TARBALL" ]; then
+            echo "::error::Run ${{ inputs.run_id }} has no steam-depot-windows.tar.gz in desktop-Windows-x86_64. Give the run ID of the full-edition Release run for $RELEASE_TAG."
+            exit 1
+          fi
+          tar -xzf "$TARBALL"
+          VERSION="$(cat steam-depot-windows/version.txt)"
+          if [ "v$VERSION" != "$RELEASE_TAG" ]; then
+            echo "::error::Run ${{ inputs.run_id }} built $VERSION, not $RELEASE_TAG."
+            exit 1
+          fi
+          echo "OK: Windows files of $RELEASE_TAG"
+
+      # ── The Store build of the shell ───────────────────────────────────────
+      - uses: pnpm/action-setup@v5
+        if: steps.identity.outputs.ready == 'true'
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v5
+        if: steps.identity.outputs.ready == 'true'
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install Rust stable toolchain
+        if: steps.identity.outputs.ready == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        if: steps.identity.outputs.ready == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install frontend dependencies
+        if: steps.identity.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared TypeScript packages
+        if: steps.identity.outputs.ready == 'true'
+        run: |
+          pnpm --filter @convsim/shared-types build
+          pnpm --filter @convsim/scenario-schema build
+
+      - name: Set app version from release tag
+        if: steps.identity.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONF=apps/desktop/src-tauri/tauri.conf.json
+          python3 - "$CONF" "${RELEASE_TAG#v}" <<'PYEOF'
+          import json, sys
+          path, version = sys.argv[1], sys.argv[2]
+          with open(path) as f:
+              conf = json.load(f)
+          conf["version"] = version
+          with open(path, "w") as f:
+              json.dump(conf, f, indent=2)
+              f.write("\n")
+          print(f"Set {path} version to {version}")
+          PYEOF
+
+      # The release build's command for Windows, minus `--features steam` and
+      # the bundling: tauri.steam.conf.json switches the in-app updater off,
+      # which the Store needs as much as Steam does (the Store updates the
+      # app). The signing secrets are not given to this step, so Tauri's
+      # signCommand skips and the next step signs the executable.
+      - name: Build the shell without Steam
+        if: steps.identity.outputs.ready == 'true'
+        shell: bash
+        env:
+          VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
+          VITE_CONVSIM_EDITION: full
+          CONVSIM_EDITION: full
+        run: |
+          set -euo pipefail
+          pnpm --filter @convsim/desktop exec tauri build --no-bundle \
+            --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json"
+          ls -la apps/desktop/src-tauri/target/release/convsim-desktop.exe
+
+      - name: Set up Java (jsign Authenticode signing)
+        if: steps.identity.outputs.ready == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Sign the shell (Authenticode)
+        if: steps.identity.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          GCP_SA_KEY_JSON:       ${{ secrets.GCP_SA_KEY_JSON }}
+          GCP_KMS_KEY:           ${{ secrets.GCP_KMS_KEY }}
+          WINDOWS_CODESIGN_CERT: ${{ secrets.WINDOWS_CODESIGN_CERT }}
+          CERT_PFX_BASE64:       ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
+          CERT_PASSWORD:         ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = 'apps\desktop\src-tauri\target\release\convsim-desktop.exe'
+          & pwsh -NoLogo -NonInteractive -File scripts\jsign-sign.ps1 -FilePath $exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $sig = Get-AuthenticodeSignature $exe
+          if ($sig.Status -eq 'Valid') {
+            Write-Host "OK: signed by $($sig.SignerCertificate.Subject)"
+          } elseif ($env:HAS_SIGNING -eq 'true') {
+            Write-Error "The shell is not validly signed ($($sig.Status)) although signing secrets are set."
+          } else {
+            Write-Host "::warning::No signing secrets: the shell is unsigned. Partner Center accepts it, but every other binary in the package is signed."
+          }
+          New-Item -ItemType Directory -Force msstore | Out-Null
+          Copy-Item $exe msstore\ConversationSimulator.exe
+
+      # ── Pack ───────────────────────────────────────────────────────────────
+      - name: Pack the MSIX
+        if: steps.identity.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          MSSTORE_IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          MSSTORE_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+          MSSTORE_PUBLISHER_DISPLAY_NAME: ${{ vars.MSSTORE_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = "conversation-simulator-$env:RELEASE_TAG-windows.msix"
+          ./scripts/pack-msix.ps1 -Depot steam-depot-windows -Exe msstore\ConversationSimulator.exe -Tag $env:RELEASE_TAG -OutFile $package
+          "PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Keep the package
+        if: steps.identity.outputs.ready == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: microsoft-store-msix
+          path: ${{ env.PACKAGE }}
+          if-no-files-found: error
+          retention-days: 90
+
+      # ── Send to Partner Center ─────────────────────────────────────────────
+      - name: Check the Microsoft Store secrets
+        if: steps.identity.outputs.ready == 'true'
+        id: store
+        shell: bash
+        env:
+          UPLOAD: ${{ inputs.upload }}
+          TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+          SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
+          CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+          PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+        run: |
+          if [ "$UPLOAD" = "false" ]; then
+            echo "::notice::Partner Center upload skipped: this run was asked to package only. The MSIX is the microsoft-store-msix artifact."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$TENANT_ID" ] || [ -z "$SELLER_ID" ] || [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || [ -z "$PRODUCT_ID" ]; then
+            # Partner Center's submission API only updates an app that already
+            # has a submission, so the first one is made by hand from the
+            # artifact above (publishing/MICROSOFT_STORE.md §4).
+            echo "::notice::Partner Center upload skipped: MSSTORE_TENANT_ID, MSSTORE_SELLER_ID, MSSTORE_CLIENT_ID, MSSTORE_CLIENT_SECRET and the variable MSSTORE_PRODUCT_ID are not all set. Upload the microsoft-store-msix artifact in Partner Center."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up the Microsoft Store CLI
+        if: steps.store.outputs.ready == 'true'
+        uses: microsoft/microsoft-store-apppublisher@v1
+
+      - name: Send to Partner Center as a draft
+        if: steps.store.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+          SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
+          CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+          PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          msstore reconfigure --tenantId $env:TENANT_ID --sellerId $env:SELLER_ID --clientId $env:CLIENT_ID --clientSecret $env:CLIENT_SECRET
+          if ($LASTEXITCODE) { throw "msstore reconfigure failed" }
+          # The package itself is what to publish: given a folder, the tool
+          # looks for a project of a kind it knows, and this is not one.
+          # --noCommit leaves the submission as a draft in Partner Center.
+          msstore publish $env:PACKAGE --appId $env:PRODUCT_ID --noCommit
+          if ($LASTEXITCODE) { throw "msstore publish failed" }
+
+      - name: Summary
+        if: steps.identity.outputs.ready == 'true'
+        shell: bash
+        env:
+          SENT: ${{ steps.store.outputs.ready }}
+        run: |
+          {
+            echo "### Microsoft Store — $RELEASE_TAG"
+            echo ""
+            echo "Package: \`$PACKAGE\` (artifact **microsoft-store-msix**)."
+            if [ "$SENT" = "true" ]; then
+              echo "A draft submission with it is waiting in Partner Center: review it and press **Submit to the Store**."
+            else
+              echo "Not sent to Partner Center. Download the artifact and upload it under the submission's **Packages** (publishing/MICROSOFT_STORE.md §4)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

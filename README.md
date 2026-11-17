@@ -327,6 +327,10 @@ Conversation Simulator is **free and open source, and fairly priced**:
   The price funds continued development; it does not unlock anything the source
   build lacks. The Steam edition makes the same local-first guarantee as the
   open-source build.
+- **Microsoft Store — $9.99 (Windows).** The same full edition for Windows,
+  installed and updated by the Microsoft Store, without Steam's features
+  (achievements, Workshop, DLC). See
+  [publishing/MICROSOFT_STORE.md](publishing/MICROSOFT_STORE.md).
 - **Steam demo — free.** A [demo edition](docs/steam-next-fest-demo.md) of the
   Steam build — one model download, five curated conversations, nothing else —
   ships as a separate free Steam app for Steam Next Fest. Everything you practise

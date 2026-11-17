@@ -183,9 +183,11 @@ jobs:
       # checklist item into a hard CI enforcement.  Contributor forks and PR
       # builds are unaffected because they never carry a v* tag.
       REQUIRE_SIGNED_MACOS: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.tag, 'v')) }}
-      # Steam is the ONLY channel that ships prebuilt binaries. The other supported
-      # path is building from source at a release tag; no installer is published to
-      # GitHub or the website. Every release build is therefore a Steam depot build:
+      # The stores are the ONLY channels that ship prebuilt binaries: Steam, and
+      # for Windows the Microsoft Store, whose package microsoft-store.yml makes
+      # from this leg's Steam depot. The other supported path is building from
+      # source at a release tag; no installer is published to GitHub or the
+      # website. Every release build is therefore a Steam depot build:
       # it bundles llama-server so players get zero-setup inference, and it disables
       # the in-app updater (Steam owns updates via SteamPipe).
       #
@@ -1914,8 +1916,27 @@ jobs:
       set_live_branch: ''
       # Steam takes its depot payload from THIS run's build artifacts. It used to
       # `gh release download` the published installers, but GitHub releases no
-      # longer carry binaries — Steam is the only prebuilt channel, so the depot
+      # longer carry binaries — they ship only through the stores, so the depot
       # content has to come from the build that just ran.
+      run_id: ${{ github.run_id }}
+    secrets: inherit
+
+  # ── Microsoft Store (Windows) ─────────────────────────────────────────────────
+  # Packs this release's Windows files into an MSIX for the Microsoft Store
+  # (publishing/MICROSOFT_STORE.md) and, once Partner Center can take updates
+  # from CI, leaves it there as a DRAFT submission: sending it for
+  # certification is a person's click, as setting a Steam build live is.
+  # Full releases only (the demo is a Steam app), and only when the Store
+  # identity variables are set: without them microsoft-store.yml skips.
+  microsoft-store:
+    name: Microsoft Store
+    needs: [build-desktop, release]
+    if: >-
+      ${{ !cancelled() && needs.build-desktop.result == 'success' &&
+          needs.release.result == 'success' && vars.MSSTORE_IDENTITY_NAME != '' }}
+    uses: ./.github/workflows/microsoft-store.yml
+    with:
+      tag: ${{ github.event.inputs.tag || github.ref_name }}
       run_id: ${{ github.run_id }}
     secrets: inherit
 
