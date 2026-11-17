@@ -49,23 +49,58 @@ criteria.
 > shipped, organized into phases, with the open backlog extending from there. The
 > snapshot below is narrative; the board is the record.
 
+### Now — the demo's first conversation (v0.4 — Demo, milestone due Nov 21, 2026)
+
+The target for the free demo: a player sits down and, surprisingly soon, is
+talking out loud with a believable character. A walk from a fresh profile on
+2026-11-16 measured the gap and set this list, in order of what it costs the
+player:
+
+- **The graphics card does the work:** the shipped engine runs on the
+  processor only, so on a laptop with a capable graphics card the first reply
+  took 55 s. Bundle the graphics-card engine beside the processor one (#530),
+  use it by default with a fallback (#531), and verify it on real hardware
+  (#532)
+- **Replies start in seconds:** the prompt is laid out for the engine's cache
+  and read ahead while the player listens (#524, #525), the character starts
+  speaking with the first sentence (#544, #533), and each turn writes less
+  (#543)
+- **Voice arrives with the model:** first run offers voice, ticked, beside
+  "Set me up" (#464), and voice is confirmed in the packaged builds on all
+  three platforms (#534)
+- **Believable characters:** the D-05 gate played on reference hardware
+  (#580), an ending that agrees with what the character said (#586), and an
+  output check that stops rejecting innocent lines (#526)
+- **On the store:** the demo's Steam artwork (#551), then the demo set live
+  (#495)
+
 ### Next — v1.0 Paid launch (milestone due Nov 28, 2026)
 
 The $9.99 Steam edition goes live. Grouped by what it changes for the player:
 
-- **Replies start sooner:** each turn's prompt extends the last (#524), the prompt is read ahead while the player types (#525), less is read and written per turn (#543), and one honest speed definition replaces the conflicting targets (#522, #520)
-- **The engine fits the machine:** settings take effect (#529), the graphics card by default with a processor fallback (#530, #531, #532), the engine tunes itself (#521, #535, #536), and Ollama gets the selected model (#528)
-- **Turns never go wrong twice:** a turn never runs twice and keeps the player's words on failure (#541), a reply can be stopped (#540), output repair is non-blocking and the output check stops rejecting innocent lines (#526, #527)
+- **Replies start sooner:** one honest speed definition replaces the conflicting targets (#522, #520)
+- **The engine fits the machine:** settings take effect (#529), the engine tunes itself (#521, #535, #536), and Ollama gets the selected model (#528)
+- **Turns never go wrong twice:** a turn never runs twice and keeps the player's words on failure (#541), a reply can be stopped (#540), output repair is non-blocking (#527)
 - **Reply speed is the player's choice:** one control with plain presets, changeable mid-conversation and shown before the start (#546, #547, #548)
-- **Voice works in the packaged builds:** audio plays on all three platforms and never delays the text (#533, #534), and the voice models install from onboarding (#487)
 - **A real-model gate in CI:** the nightly conversation runs the engine players run and gates turn-speed regressions (#457, #542)
-- **Store and business:** the $9.99 registration and premium DLC (#361, #364, #366), the real store URL on the download page (#362), the full achievement set (#494)
-- **Housekeeping before launch:** everything the app writes under the data root (#562), the Windows developer setup (#564), First Words defined once (#553)
+- **Store and business:** the $9.99 registration and premium DLC (#361, #364, #366), the real store URL on the download page (#362), the full achievement set (#494), and copy that calls them simulated characters (#595)
+- **Housekeeping before launch:** everything the app writes under the data root (#562), the Windows developer setup (#564), First Words defined once (#553), the Steam promote workflow (#576)
 - **Launch epics:** public beta readiness (#315) and the signature experience (#316)
 
 ### Then — v1.1 Post-launch (milestone due Jan 16, 2027)
 
-Auto-update (#461), the accessibility audit (#462), performance targets on reference hardware (#463), voice setup from the Model Manager (#464), the community pack browser and pack signing (#465, #466), Flyting (#454), NPCs that escalate and eject a saboteur (#552), an Intel build of the macOS depot (#575), short model names (#555), what this computer can run (#537), per-reply speed (#549), voice that starts mid-reply (#544), the debrief as a continuation of the conversation (#545), the turn-speed epic (#518), and small setup inconsistencies (#566).
+Off the demo's path, deliberately: auto-update (#461), the accessibility audit (#462), performance targets on reference hardware (#463), the community pack browser and pack signing (#465, #466), Flyting (#454), NPCs that escalate and eject a saboteur (#552), an Intel build of the macOS depot (#575), short model names (#555), what this computer can run (#537), per-reply speed (#549), the debrief as a continuation of the conversation (#545), the turn-speed epic (#518), the whole conversation kept as chat turns (#596), and small setup inconsistencies (#566).
+
+### Done — shipped in v0.4.1 to v0.4.9
+
+- [x] The demo characters hold a conversation: replayable D-05 gate, prompt rules, rewritten characters, the rubric end to end, state and events driving the turn, a repetition guard, and the Qwen3-4B-Instruct-2507 starter (#581, #578)
+- [x] Voice installs with one click from inside the app, in the demo too (#487, #582), and can be removed from Settings
+- [x] The reply's text never waits for its voice (#533), and each character has a voice of their own (#583)
+- [x] A conversation ends on a closing line, not on a question the player cannot answer (#586, in part)
+- [x] Repeats are caught in Japanese, which has no spaces between words
+- [x] The full game plays the official pack version of every conversation a pack defines
+- [x] The prompt is laid out for the engine's cache and read ahead while the player listens; the character speaks while the rest of the reply is still being written (#524, #525, #544)
+- [x] First run offers voice beside "Set me up", downloading alongside the model (#464)
 
 ### Done — shipped in v0.4.0
 

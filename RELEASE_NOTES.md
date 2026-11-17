@@ -1,4 +1,52 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.9 — Release Notes
+
+> **Patch release (2026-11-16).** Replies start in seconds, the character
+> speaks while the rest of the reply is still being written, and first run
+> offers voice with the model.
+
+## What's new in v0.4.9
+
+### Replies start in seconds (#524, #525)
+
+Everything in a turn's prompt but your words is known as soon as the
+character finishes speaking: the conversation so far, how the other person
+feels, what the scenario says happens next. The engine now reads all of that
+ahead, while you listen and answer, so when you speak it reads only what you
+said. On a laptop running the model on its processor, the time to the first
+words of a reply fell from 19–34 s to 3–4 s from the second turn on.
+
+### The character speaks as the reply is written (#544, #533)
+
+Each sentence is spoken as soon as it is on screen, instead of after the
+whole turn has been scored. On the same laptop the first sentence of a reply
+is heard about 9 s after you finish, where it used to be 45 s or more.
+
+### Voice with the first download (#464)
+
+The Welcome screen now offers **Include voice: talk out loud and hear the
+replies (+559 MB)** beside **Set me up**, ticked. It downloads alongside the
+model, the install screen shows its progress, and your first conversation
+can be spoken. Untick it and the install screen offers it again while you
+wait; any conversation's brief still has it too. The demo's "Get the full
+game" card no longer lists voice as something only the full game has.
+
+### Smaller fixes
+
+- Each turn writes at most two short rubric notes, so a turn's bookkeeping
+  finishes sooner on a processor (#543, in part).
+- The nightly real-model check fails if a debrief scores anything outside the
+  scenario's own rubric (#578).
+
+## Upgrade notes
+
+- No database migration.
+- What the model reads is laid out differently (the conversation so far now
+  follows the scenario instead of sitting inside it). Conversations in
+  progress continue normally.
+
+---
+
 # Conversation Simulator v0.4.8 — Release Notes
 
 > **Patch release (2026-11-16).** Voice can be removed from inside the app.
