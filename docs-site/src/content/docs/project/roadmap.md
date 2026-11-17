@@ -60,11 +60,12 @@ talking out loud with a believable character. A walk from a fresh profile on
 2026-11-16 measured the gap and set this list, in order of what it costs the
 player:
 
-- **The graphics card does the work:** the shipped engine runs on the
+- **The graphics card does the work:** the shipped engine ran on the
   processor only, so on a laptop with a capable graphics card the first reply
-  took 55 s. Bundle the graphics-card engine beside the processor one (#530),
-  use it by default with a fallback (#531), and verify it on real hardware
-  (#532)
+  took 55 s. The graphics-card engine now ships beside the processor one and
+  is used by default, with a fallback (#530, #531, v0.4.10: the first words
+  in under a second on that laptop); what remains is verifying it on the
+  other hardware rows (#532)
 - **Replies start in seconds:** the prompt is laid out for the engine's cache
   and read ahead while the player listens (#524, #525), the character starts
   speaking with the first sentence (#544, #533), and each turn writes less
@@ -95,7 +96,7 @@ The $9.99 Steam edition goes live. Grouped by what it changes for the player:
 
 Off the demo's path, deliberately: auto-update (#461), the accessibility audit (#462), performance targets on reference hardware (#463), the community pack browser and pack signing (#465, #466), Flyting (#454), NPCs that escalate and eject a saboteur (#552), an Intel build of the macOS depot (#575), short model names (#555), what this computer can run (#537), per-reply speed (#549), the debrief as a continuation of the conversation (#545), the turn-speed epic (#518), the whole conversation kept as chat turns (#596), and small setup inconsistencies (#566).
 
-### Done — shipped in v0.4.1 to v0.4.9
+### Done — shipped in v0.4.1 to v0.4.10
 
 - [x] The demo characters hold a conversation: replayable D-05 gate, prompt rules, rewritten characters, the rubric end to end, state and events driving the turn, a repetition guard, and the Qwen3-4B-Instruct-2507 starter (#581, #578)
 - [x] Voice installs with one click from inside the app, in the demo too (#487, #582), and can be removed from Settings
@@ -105,6 +106,7 @@ Off the demo's path, deliberately: auto-update (#461), the accessibility audit (
 - [x] The full game plays the official pack version of every conversation a pack defines
 - [x] The prompt is laid out for the engine's cache and read ahead while the player listens; the character speaks while the rest of the reply is still being written (#524, #525, #544)
 - [x] First run offers voice beside "Set me up", downloading alongside the model (#464)
+- [x] The graphics card writes the replies, falling back to the processor when it cannot, and every engine download is checked against a pinned SHA-256 (#530, #531)
 
 ### Done — shipped in v0.4.0
 
