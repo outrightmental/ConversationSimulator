@@ -1,0 +1,2 @@
+# synthetic — written from llama-server b9415's --list-devices format, not captured. See README.md.
+Available devices:

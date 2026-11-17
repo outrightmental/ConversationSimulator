@@ -245,6 +245,53 @@ jobs:
           sys.exit(1)
           PYEOF
 
+      # ── The shipping engines (issue #530, Windows and Linux) ─────────────────
+      # Installs both pinned builds exactly the way release.yml bundles them —
+      # the CPU build flat, the Vulkan build in vulkan/ — with the same scripts,
+      # which verify each archive against runtimes/llama_cpp/pin.json and fail
+      # on a missing or mismatched digest. Then the CPU build must run
+      # `--list-devices` and exit 0 from its own directory (how the app starts
+      # it), and must not sit beside the Vulkan backend library. The Vulkan
+      # build's device list is printed for the log only: runners have no card.
+      - name: Install both pinned engines and run the CPU engine (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIR="$RUNNER_TEMP/runtimes"
+          bash runtimes/llama_cpp/download-runtime.sh --dest "$DIR"
+          bash runtimes/llama_cpp/download-runtime.sh --variant vulkan --dest "$DIR/vulkan"
+          if find "$DIR" -maxdepth 1 -iname '*ggml-vulkan*' | grep -q .; then
+            echo "FAIL: Vulkan backend library beside the CPU engine" >&2; exit 1
+          fi
+          (cd "$DIR" && ./llama-server --list-devices)
+          (cd "$DIR/vulkan" && ./llama-server --list-devices) || echo "INFO: no Vulkan device on this runner"
+          du -sh "$DIR" "$DIR/vulkan"
+
+      - name: Install both pinned engines and run the CPU engine (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP "runtimes"
+          .\runtimes\llama_cpp\download-runtime.ps1 -Variant cpu -Dest $dir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan -Dest "$dir\vulkan"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Get-ChildItem $dir -File -Filter '*ggml-vulkan*') {
+            Write-Error "FAIL: Vulkan backend library beside the CPU engine"; exit 1
+          }
+          Push-Location $dir
+          & .\llama-server.exe --list-devices
+          $rc = $LASTEXITCODE
+          Pop-Location
+          if ($rc -ne 0) { Write-Error "FAIL: the CPU engine's --list-devices exited $rc"; exit 1 }
+          Push-Location "$dir\vulkan"
+          & .\llama-server.exe --list-devices
+          if ($LASTEXITCODE -ne 0) { Write-Host "INFO: no Vulkan device on this runner" }
+          Pop-Location
+          $global:LASTEXITCODE = 0
+
       # ── Engine platform detection smoke test (all platforms) ─────────────────
       # Verifies that detect_platform_string() now returns a valid string on
       # every shipping platform, and that the download-runtime endpoint reports
@@ -304,18 +351,80 @@ jobs:
       # The x64 depot ships from the same pin; inspect that asset too (the
       # checker parses Mach-O bytes directly, so the arm64 runner can verify
       # x64 binaries without executing them).
+      # The x64 asset is fetched with the shipping script too (a platform
+      # override makes it fetch the x64 archive on this arm64 runner), so it is
+      # verified against its pinned SHA-256 before the gate inspects it.
       - name: Verify x64 release asset against the floor
+        env:
+          CONVSIM_LLAMA_CPP_PLATFORM: macos-x64
         run: |
           set -euo pipefail
           FLOOR="${CONVSIM_MACOS_MINOS_FLOOR:-14.0}"
-          VERSION="$(sed -n 's/^LLAMA_CPP_PINNED_VERSION="\(.*\)"$/\1/p' runtimes/llama_cpp/download-runtime.sh)"
-          if [ -z "$VERSION" ]; then
-            echo "FAIL: could not read LLAMA_CPP_PINNED_VERSION from download-runtime.sh" >&2
-            exit 1
-          fi
-          echo "Pinned llama.cpp version: $VERSION"
-          URL="https://github.com/ggml-org/llama.cpp/releases/download/${VERSION}/llama-${VERSION}-bin-macos-x64.tar.gz"
-          curl -fSL --retry 3 -o "$RUNNER_TEMP/x64.tar.gz" "$URL"
-          mkdir -p "$RUNNER_TEMP/llama-x64"
-          tar -xzf "$RUNNER_TEMP/x64.tar.gz" -C "$RUNNER_TEMP/llama-x64"
+          bash runtimes/llama_cpp/download-runtime.sh --dest "$RUNNER_TEMP/llama-x64"
           python3 scripts/check-macho-minos.py --max "$FLOOR" "$RUNNER_TEMP/llama-x64"
+
+  # ── Every pinned engine archive matches its pinned SHA-256 (issue #530) ────
+  # Upstream publishes no checksum file; runtimes/llama_cpp/pin.json is the only
+  # thing that verifies an engine download. This job downloads every archive
+  # the pin names and checks it against the pin, and checks the pin against
+  # the digest GitHub's release API reports for each asset — so a typo in the
+  # pin, an asset re-uploaded upstream, or an archive added without a digest
+  # fails here, on the pull request that caused it.
+  llama-pin-verify:
+    name: Pinned engine archives match their SHA-256
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download every pinned archive and verify its digest
+        run: |
+          python3 - <<'PYEOF'
+          import hashlib, json, sys, urllib.request
+
+          pin = json.load(open("runtimes/llama_cpp/pin.json"))
+          tag = pin["tag"]
+          failed = []
+          for name, expected in sorted(pin["sha256"].items()):
+              url = f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}/{name}"
+              digest = hashlib.sha256()
+              size = 0
+              with urllib.request.urlopen(url, timeout=300) as resp:
+                  for chunk in iter(lambda: resp.read(1 << 20), b""):
+                      digest.update(chunk)
+                      size += len(chunk)
+              actual = digest.hexdigest()
+              ok = actual == expected
+              print(f"{'OK  ' if ok else 'FAIL'} {name} ({size / 1e6:.1f} MB) {actual}")
+              if not ok:
+                  failed.append(name)
+          if failed:
+              print(f"FAIL: {len(failed)} archive(s) do not match runtimes/llama_cpp/pin.json", file=sys.stderr)
+              sys.exit(1)
+          PYEOF
+
+      - name: The pin matches GitHub's release digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="$(python3 -c 'import json; print(json.load(open("runtimes/llama_cpp/pin.json"))["tag"])')"
+          gh api "repos/ggml-org/llama.cpp/releases/tags/${TAG}" \
+            --jq '.assets[] | [.name, (.digest // "")] | @tsv' > "$RUNNER_TEMP/digests.tsv"
+          python3 - "$RUNNER_TEMP/digests.tsv" <<'PYEOF'
+          import json, sys
+
+          pin = json.load(open("runtimes/llama_cpp/pin.json"))["sha256"]
+          api = {}
+          for line in open(sys.argv[1]):
+              name, _, digest = line.rstrip("\n").partition("\t")
+              api[name] = digest.removeprefix("sha256:")
+          failed = False
+          for name, expected in sorted(pin.items()):
+              if api.get(name) != expected:
+                  print(f"FAIL {name}: pin {expected}, release API {api.get(name) or 'no such asset'}", file=sys.stderr)
+                  failed = True
+              else:
+                  print(f"OK   {name}")
+          sys.exit(1 if failed else 0)
+          PYEOF

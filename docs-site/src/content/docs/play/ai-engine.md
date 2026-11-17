@@ -101,10 +101,44 @@ slow turn rather than failing it; see
 starter model is the most practical choice for CPU-only machines.
 
 **Partial VRAM fit:** if you have less VRAM than the minimum, llama.cpp can
-still run the model with only part of it on the GPU. Inference will be slower
-but may be acceptable. The app does not choose that split: it leaves the number
-of GPU layers to the engine's own default. See
+still run the model with only part of it on the graphics card. Inference will
+be slower but may be acceptable. The app does not choose that split: it passes
+no layer count, so the engine fits the layers to the card's free memory itself,
+sized for the explicit context the app passes. A number in the **GPU layers**
+field turns that fit off. See
 [Troubleshooting](/start/troubleshooting/#low-vram-or-slow-inference).
+
+### Graphics card
+
+Windows and Linux builds ship two llama.cpp engines: the CPU build and the
+Vulkan build, which runs on NVIDIA, AMD and Intel graphics through the
+driver's own Vulkan support. **Settings → Graphics card** says which one is
+writing the replies and offers three choices:
+
+| Choice | What it does |
+|---|---|
+| **Automatic** (default) | Uses the graphics card when the Vulkan engine lists a separate (discrete) one. Built-in graphics alone, or no card, uses the processor. |
+| **Graphics card** | Uses the Vulkan engine on any card it lists, built-in graphics included. |
+| **Processor only** | Never starts the Vulkan engine. |
+
+A choice takes effect at once: the AI model restarts with it. On macOS there
+is one engine, which uses Metal.
+
+**When the graphics card fails, the processor takes over.** If the Vulkan
+engine cannot list its devices, cannot load the model, fails a short check
+request or answers it wrongly, or stops during a conversation, the app starts
+the CPU engine instead — a turn that was in flight is sent again and recorded
+once — and says so once, in a strip at the top of the window. It remembers the
+failure against the card, its driver version and the engine, so it does not
+try again at every start. A driver update clears that record by itself;
+**Try the graphics card again** in **Settings → Graphics card** clears it at
+once.
+
+On the project's reference laptop (RTX 4080 Laptop GPU), the starter model
+read a 3 000-token prompt about 35 times faster on the Vulkan engine than on
+the CPU engine, and wrote its reply about 6 times faster. The very first reply
+after the Vulkan engine's first-ever start is slower, because the graphics
+driver compiles the engine's shaders once.
 
 ---
 
@@ -126,8 +160,8 @@ can share those model files without a second download.
    with fixed settings chosen for one player in one conversation: one slot,
    the model's context size from the registry, and small prompt batches.
    **Settings → AI engine** has **Context length**, **GPU layers** and **CPU
-   threads** fields under **Show advanced engine settings**, but at this
-   release the engine the app starts does not use them.
+   threads** fields under **Show advanced engine settings**; at this release
+   the engine the app starts uses only **GPU layers** (from its next start).
 3. **You run several AI applications** and prefer managing all model storage
    in one place with `ollama pull` / `ollama rm`.
 

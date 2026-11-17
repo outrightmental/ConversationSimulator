@@ -1,4 +1,46 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.10 — Release Notes
+
+> **Patch release (2026-11-16).** Your graphics card writes the replies.
+
+## What's new in v0.4.10
+
+### The graphics card writes the replies (#530, #531)
+
+The Windows and Linux builds now carry two builds of the same engine: one
+for the graphics card (Vulkan) and the one for the processor they had
+before. On a computer with a dedicated graphics card the app uses the card,
+and on a laptop we measured that changed everything about a conversation:
+
+| | Processor | Graphics card |
+|---|---|---|
+| Reading a 3,000-token prompt | about 30 s | under 1 s |
+| Writing | 15 tokens/s | 92 tokens/s |
+| First words of a reply | 3–20 s | under 1 s |
+| The character heard | about 9 s | 2–4 s |
+
+The very first time the graphics card is used, its driver prepares the
+engine once, which adds about 10 seconds; after that it starts in seconds.
+
+If the card cannot run the engine (no suitable card, an old driver, a
+crash, or a check that comes back wrong) the app switches to the processor
+on its own, tells you once, and remembers not to try that card again until
+its driver changes. **Settings → Graphics card** shows what is writing the
+replies, lets you choose Automatic, Graphics card or Processor, and has
+**Try the graphics card again**.
+
+Every engine download, in the builds and in the app, is now checked against
+a pinned SHA-256, and refused if it does not match.
+
+macOS is unchanged: its engine already used the graphics chip.
+
+## Upgrade notes
+
+- No database migration.
+- The Windows and Linux downloads are about 33 MB larger.
+
+---
+
 # Conversation Simulator v0.4.9 — Release Notes
 
 > **Patch release (2026-11-16).** Replies start in seconds, the character

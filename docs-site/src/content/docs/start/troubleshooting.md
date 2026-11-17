@@ -419,7 +419,9 @@ app asks for. Use the starter model or a larger one (see
 **A turn takes 30 seconds or more**
 
 The model is most likely running on the processor rather than a graphics card:
-the machine has no discrete GPU, or the model does not fit in its video memory.
+the machine has no separate graphics card, the app fell back to the processor
+after the card failed, or **Processor only** is chosen. **Settings → Graphics
+card** says which one is writing the replies.
 Most of the wait then goes to reading the conversation back in before the reply
 starts. That is expected on such machines, and the app waits for it: a slow
 turn is not a failed turn. While you wait, the panel under the transcript says
@@ -434,6 +436,14 @@ for the limits that can still end a turn.
 
 What helps, easiest first:
 
+- **Check the graphics card** (Windows and Linux). Open **Settings → Graphics
+  card**. If it says your processor is writing the replies because the
+  graphics card stopped working with the app, update the graphics driver — the
+  app tries the card again by itself after a driver update — or press **Try the
+  graphics card again**. If it says the app found no separate graphics card,
+  **Graphics card** makes it use built-in graphics, which can speed up reading
+  the conversation on some machines but not reliably writing the reply. See
+  [Graphics card](/play/ai-engine/#graphics-card).
 - **Choose Quick replies.** Open **Settings → Reply speed** and choose
   **Quick replies**. The model writes its reply one piece at a time, so a
   shorter reply arrives sooner. It takes effect on your next message with
@@ -449,12 +459,25 @@ What helps, easiest first:
   reopen the app. See [Custom GGUF file](/play/ai-engine/#custom-gguf-file).
 - **Close other applications**, so the engine has the processor and memory to
   itself. The demo's panel suggests this, because its model is fixed.
-- **GPU layers and context length do not help at this release.**
-  **Settings → AI engine** has **Context length** and **GPU layers** fields
-  under **Show advanced engine settings**, but the engine the app starts does
-  not use them: it leaves the split between processor and graphics card to the
-  engine's own default, and uses the context size the model registry lists. For
-  control over GPU offload, use [Ollama](/play/ai-engine/#ollama).
+- **Leave GPU layers blank.** With the field blank the app passes no layer
+  count, and the engine fits as many layers onto the graphics card as its free
+  memory holds; a number turns that fit off and applies from the engine's next
+  start. **Context length** is not used by the engine the app starts at this
+  release: it uses the context size the model registry lists. For finer
+  control over offload, use [Ollama](/play/ai-engine/#ollama).
+
+**The app says the graphics card stopped working**
+
+The strip at the top of the window means the Vulkan engine failed on this
+machine, and the app switched to the processor so the conversation could go
+on: the engine could not list the card, could not load the model on it, failed
+or answered wrongly a short check request, or stopped during a conversation (a
+turn in flight is sent again to the processor and recorded once). The app
+remembers the failure against the card, its driver version and the engine, so
+it does not retry at every start. Update the graphics driver from the card
+maker (NVIDIA, AMD or Intel) — the app tries the card again by itself after a
+driver update — or press **Try the graphics card again** in **Settings →
+Graphics card**.
 
 **The reply appears all at once instead of word by word**
 

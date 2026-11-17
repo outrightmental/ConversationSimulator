@@ -1,0 +1,7 @@
+# synthetic — written from llama-server b9415's --list-devices format (with -v), not captured. See README.md.
+load_backend: loaded RPC backend from /opt/convsim/runtimes/vulkan/libggml-rpc.so
+load_backend: loaded Vulkan backend from /opt/convsim/runtimes/vulkan/libggml-vulkan.so
+load_backend: loaded CPU backend from /opt/convsim/runtimes/vulkan/libggml-cpu-haswell.so
+Available devices:
+  Vulkan0: AMD Radeon RX 7800 XT (RADV NAVI32) (16368 MiB, 15890 MiB free)
+  Vulkan1: AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO) (31000 MiB, 30500 MiB free)

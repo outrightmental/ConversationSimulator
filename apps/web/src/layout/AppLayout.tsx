@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import OfflineIndicator from '../components/OfflineIndicator'
 import ResumeSessionBanner from '../components/ResumeSessionBanner'
+import EngineFallbackNotice from '../components/EngineFallbackNotice'
 import { useTranslation } from '../i18n'
 import { useGamepadNavigation } from '../hooks/useGamepadNavigation'
 import { useSteamKeyboard } from '../hooks/useSteamKeyboard'
@@ -185,6 +186,10 @@ export default function AppLayout() {
       {/* One click back into a conversation the player navigated away from
           (issue #501). Renders nothing when there is none. */}
       <ResumeSessionBanner />
+
+      {/* The one notice after the app fell back from the graphics card to the
+          processor (issue #531). Renders nothing otherwise. */}
+      <EngineFallbackNotice />
 
       <main
         id="main-content"

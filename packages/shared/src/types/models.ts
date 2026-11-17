@@ -142,6 +142,17 @@ export function isReplySpeed(value: unknown): value is ReplySpeed {
   return typeof value === 'string' && (REPLY_SPEEDS as readonly string[]).includes(value);
 }
 
+/** Which engine build answers (issue #531): the processor, the graphics card
+ *  through Vulkan, or Auto — the card when the engine lists a discrete one,
+ *  else the processor. Ordered as Settings offers them. */
+export const ENGINE_VARIANTS = ['auto', 'vulkan', 'cpu'] as const;
+
+export type EngineVariant = (typeof ENGINE_VARIANTS)[number];
+
+export function isEngineVariant(value: unknown): value is EngineVariant {
+  return typeof value === 'string' && (ENGINE_VARIANTS as readonly string[]).includes(value);
+}
+
 export interface RuntimeSettings {
   context_length: number | null;
   gpu_layers: number | null;
@@ -151,6 +162,30 @@ export interface RuntimeSettings {
   repeat_penalty: number | null;
   /** null means "never chosen"; the backend then applies 'balanced'. */
   reply_speed: ReplySpeed | null;
+  /** null means "never chosen"; the backend then applies 'auto'. Optional so
+   *  an older core that predates the field still type-checks. */
+  engine_variant?: EngineVariant | null;
+}
+
+/** Where the graphics-card engine failed (issue #531). */
+export type EngineFailureRung = 'probe' | 'load' | 'first_generation' | 'wrong_output' | 'crash';
+
+export interface EngineStatusResponse {
+  /** The player's choice. */
+  setting: EngineVariant;
+  /** The build the managed engine runs now; null when it is not running. */
+  running: 'cpu' | 'vulkan' | 'metal' | null;
+  /** The builds this install has. */
+  available: Array<'cpu' | 'vulkan' | 'metal'>;
+  /** The graphics card the last start chose, if any. */
+  device: string | null;
+  reason: string | null;
+  devices: Array<{ backend_id: string; name: string; total_mib: number | null; free_mib: number | null; kind: string }>;
+  /** A remembered graphics-card failure; cleared by a driver update or by
+   *  "Try the graphics card again". */
+  gpu_failure: { rung: EngineFailureRung; detail: string; device: string | null; at: string } | null;
+  /** True until the player has seen the one notice about the failure. */
+  notice_pending: boolean;
 }
 
 export interface RuntimeSettingsResponse {

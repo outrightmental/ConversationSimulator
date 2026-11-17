@@ -453,42 +453,52 @@ exists for API callers; the app's screens do not call it directly.
 ### Source and version
 
 Binaries come from the official llama.cpp GitHub releases
-(`https://github.com/ggml-org/llama.cpp/releases`). An in-app install fetches
-the latest release at the time of the install. The app does not show the tag,
-and no endpoint reports which tag an in-app install fetched: the pipeline
-keeps only byte counts from the engine download, and
-`GET /api/sidecar/download-runtime` reports a tag only for a download started
-through `POST /api/sidecar/download-runtime`, which the app's screens do not
-use. Steam depot builds bundle the tag pinned in
-`runtimes/llama_cpp/download-runtime.sh` and `download-runtime.ps1` (`b9415`
-at this release).
+(`https://github.com/ggml-org/llama.cpp/releases`). Every install — the Steam
+bundle, the download scripts and an in-app install — uses the one tag pinned
+in `runtimes/llama_cpp/pin.json` (`b9415` at this release). The app does not
+show the tag; `GET /api/sidecar/download-runtime` reports it for a download
+started through `POST /api/sidecar/download-runtime`.
 
 ### Integrity
 
-The archive is checked in memory against the `sha256sum.txt` published with
-the release before anything is written. A mismatch moves the download to
-`checksum_mismatch` and nothing is installed. If the release carries no
-`sha256sum.txt` entry for the asset, the download is installed unverified.
+Upstream publishes no checksum file for its releases, so the pin carries a
+SHA-256 for every archive the app can install, copied from the digest GitHub's
+release API reports for each asset. The archive is checked in memory against
+that digest before anything is written. A mismatch moves the download to
+`checksum_mismatch` and nothing is installed. An archive the pin has no digest
+for is refused before it is downloaded: there is no unverified install. The
+same rule holds in `download-runtime.sh` and `download-runtime.ps1`, and CI
+downloads every pinned archive and checks it against the pin.
 
 ### Destination
 
-The binary is placed at `~/.convsim/bin/llama-server` (`llama-server.exe` with
-its DLLs on Windows). convsim-core looks for the engine in this order:
+The CPU build is placed at `~/.convsim/bin/llama-server` (`llama-server.exe`
+with its DLLs on Windows); the Vulkan build goes to
+`~/.convsim/bin/vulkan/`, so the CPU build never sits beside the Vulkan
+backend library. On Linux and macOS the shared libraries are installed with
+their symlinks. convsim-core looks for the CPU build in this order:
 `CONVSIM_LLAMA_CPP_EXECUTABLE`, then `CONVSIM_BUNDLED_RUNTIME_DIR`, then
-`~/.convsim/bin`, then `PATH`.
+`~/.convsim/bin`, then `PATH`; and for the Vulkan build in
+`CONVSIM_LLAMA_CPP_VULKAN_EXECUTABLE`, then `CONVSIM_BUNDLED_RUNTIME_DIR/vulkan`,
+then `~/.convsim/bin/vulkan`.
 
 ### Variants
 
-| Variant | When to use |
-|---------|-------------|
-| `cpu` (default) | Works on every machine. The setup pipeline always installs this one. |
-| `vulkan` | GPU acceleration on Windows. `GET /api/sidecar/gpu-variant` recommends it when `nvidia-smi` or `vulkaninfo` finds a GPU; it is an opt-in request on `POST /api/sidecar/download-runtime`. |
+| Variant | Archive | Where |
+|---------|---------|-------|
+| `cpu` | `win-cpu-x64`, `win-cpu-arm64`, `ubuntu-x64`, `ubuntu-arm64`, `macos-arm64`, `macos-x64` | Every platform. On macOS this is the only build, and it uses Metal. |
+| `vulkan` | `win-vulkan-x64`, `ubuntu-vulkan-x64`, `ubuntu-vulkan-arm64` | Windows x64 and Linux. Runs on NVIDIA, AMD and Intel graphics through the driver's Vulkan runtime. |
 
-GPU variants are **never required** for first-run. Vulkan is recommended for
-NVIDIA GPUs too because the NVIDIA driver ships the Vulkan runtime and Vulkan
-is a single, self-contained release asset. llama.cpp publishes CUDA builds per
-toolkit version plus a separate `cudart-*` archive, which the single-asset
-downloader cannot provision, so CUDA is not offered.
+Steam builds for Windows and Linux ship **both**, and the app chooses at every
+engine start: the graphics card when the Vulkan build lists a discrete one,
+otherwise the processor, with a fallback to the processor when the card fails
+(see [Choosing how to run the AI](/play/ai-engine/#graphics-card)). The setup pipeline,
+which runs only when no engine is bundled, installs the CPU build; the Vulkan
+build is a request on `POST /api/sidecar/download-runtime` with
+`"variant": "vulkan"`. Vulkan is used for NVIDIA cards too, because the NVIDIA
+driver ships the Vulkan runtime; llama.cpp publishes CUDA builds per toolkit
+version plus a separate `cudart-*` archive of about 390 MB, so CUDA is not
+offered.
 
 ### Offline behaviour
 
@@ -500,10 +510,11 @@ that names the connection problem. The failure is recorded with the code
 ### Steam builds
 
 Every release build bundles `llama-server` under `resources/runtimes/` in the
-app bundle. The desktop shell exposes that directory to convsim-core as
-`CONVSIM_BUNDLED_RUNTIME_DIR`, so the engine stage is skipped and no download
-is needed at first launch. Builds from source download the engine on first
-run. See [Sidecar bundling](/dev/sidecar-bundling/).
+app bundle, and on Windows and Linux the Vulkan build under
+`resources/runtimes/vulkan/`. The desktop shell exposes that directory to
+convsim-core as `CONVSIM_BUNDLED_RUNTIME_DIR`, so the engine stage is skipped
+and no download is needed at first launch. Builds from source download the
+engine on first run. See [Sidecar bundling](/dev/sidecar-bundling/).
 
 ### Update check (builds from source)
 

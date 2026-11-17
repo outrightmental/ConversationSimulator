@@ -96,6 +96,14 @@ export const en = {
     },
   },
   // "You have a conversation in progress" (issue #501 §1).
+  // The one notice after the app falls back from the graphics card to the
+  // processor (issue #531). Shown once per failure.
+  engineNotice: {
+    message:
+      'Your graphics card stopped working with the app, so replies now come from your processor. They will take longer. You can try the graphics card again in Settings.',
+    openSettings: 'Open Settings',
+    dismiss: 'OK',
+  },
   resume: {
     label: 'Conversation in progress.',
     withTurns_one: '{{title}} — 1 turn so far.',
@@ -359,6 +367,45 @@ export const en = {
         label: 'Fuller replies',
         detail: 'Longer answers, more waiting',
       },
+    },
+    // Graphics card or processor (issue #531). In every edition: the demo's
+    // first reply is where the card matters most.
+    graphicsCard: {
+      heading: 'Graphics card',
+      description:
+        'Replies arrive much sooner when your graphics card does the work. The app uses it by itself when it can.',
+      choiceLabel: 'What writes the replies',
+      statusGpu: 'Your graphics card is writing the replies ({{device}}).',
+      statusGpuUnnamed: 'Your graphics card is writing the replies.',
+      statusMetal: 'Your Mac’s graphics chip is writing the replies.',
+      statusCpu: 'Your processor is writing the replies.',
+      statusCpuNoCard:
+        'Your processor is writing the replies. The app found no separate graphics card it can use on this computer.',
+      statusCpuAfterFailure:
+        'Your processor is writing the replies. Your graphics card stopped working with the app, so the app switched to the processor.',
+      statusNotRunning: 'The AI model is not running yet. It uses this choice when it starts.',
+      processorOnlyBuild: 'This version of the app runs the AI model on your processor.',
+      auto: {
+        label: 'Automatic',
+        detail: 'The graphics card when it works, otherwise the processor',
+      },
+      vulkan: {
+        label: 'Graphics card',
+        detail: 'Use the graphics card, even a built-in one',
+      },
+      cpu: {
+        label: 'Processor only',
+        detail: 'Slower, but never touches the graphics driver',
+      },
+      applying: 'Restarting the AI model…',
+      applied: 'Done. The AI model has restarted with your choice.',
+      saved: 'Saved. The AI model uses this the next time it starts.',
+      retry: 'Try the graphics card again',
+      retrying: 'Trying the graphics card…',
+      retryWorked: 'It worked: your graphics card is writing the replies again.',
+      retryFailed:
+        'The graphics card still did not work, so the processor is writing the replies. Updating your graphics driver may help.',
+      retryLater: 'The app will try the graphics card the next time the AI model starts.',
     },
     // The buffer between player-facing and technical language (issue #501 §2).
     wording: {

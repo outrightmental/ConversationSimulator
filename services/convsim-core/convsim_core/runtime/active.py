@@ -173,6 +173,7 @@ async def ensure_llama_sidecar_running(
     *,
     model_path: Optional[str] = None,
     startup_timeout: float = 120.0,
+    port: Optional[int] = None,
 ) -> Optional[str]:
     """Start the managed llama-server if it is not already reachable.
 
@@ -184,9 +185,14 @@ async def ensure_llama_sidecar_running(
     install paths is ignored, as ``find_ready_model_path`` ignores the full
     app's other models: the benchmark passes the saved selection, which on a
     shared data root can name a model the demo does not play.
+
+    Which build starts — the graphics card's or the processor's — and the
+    fallback from one to the other are decided by
+    ``engine_variant.start_engine`` (issue #531).
     """
+    from convsim_core.runtime.engine_variant import find_engine_builds, start_engine
     from convsim_core.runtime.launch import resolve_launch_config
-    from convsim_core.runtime.sidecar import SidecarState, find_executable
+    from convsim_core.runtime.sidecar import SidecarState
 
     sidecar = getattr(app.state, "sidecar", None)
     if sidecar is None:
@@ -207,8 +213,8 @@ async def ensure_llama_sidecar_running(
         logger.info("llama-server autostart skipped: no ready model file found")
         return None
 
-    exe = find_executable()
-    if exe is None:
+    builds = find_engine_builds()
+    if builds.default is None and builds.vulkan is None:
         logger.info("llama-server autostart skipped: no engine executable found")
         return None
 
@@ -216,18 +222,67 @@ async def ensure_llama_sidecar_running(
     # registry's context size for this model, one slot, small batches.
     launch = resolve_launch_config(path, conn)
 
+    lock = getattr(sidecar, "start_lock", None) or asyncio.Lock()
+    async with lock:
+        # Another caller may have started it while this one waited for the lock.
+        if sidecar.state in (SidecarState.RUNNING, SidecarState.STARTING):
+            return None
+        try:
+            variant = await start_engine(
+                app,
+                sidecar,
+                model_path=path,
+                launch=launch,
+                conn=conn,
+                startup_timeout=startup_timeout,
+                gpu_layers=player_gpu_layers(conn),
+                port=port,
+                builds=builds,
+            )
+            logger.info("llama-server autostarted with model %s on the %s build", path, variant)
+            return path
+        except Exception as exc:
+            logger.warning("llama-server autostart failed: %s", exc)
+            return None
+
+
+def player_gpu_layers(conn: sqlite3.Connection) -> Optional[int]:
+    """The layer count the player set in Settings, or None to let the engine fit.
+
+    An explicit ``--n-gpu-layers`` turns off the engine's own fit, so it is
+    only passed when the player asked for one (issue #531).
+    """
     try:
-        await sidecar.start(
-            model_path=path,
-            executable=exe,
-            launch=launch,
-            startup_timeout=startup_timeout,
-        )
-        logger.info("llama-server autostarted with model %s", path)
-        return path
-    except Exception as exc:
-        logger.warning("llama-server autostart failed: %s", exc)
+        row = conn.execute(
+            "SELECT value FROM user_settings WHERE key = 'runtime_setting.gpu_layers'"
+        ).fetchone()
+    except sqlite3.Error:
         return None
+    if row is None:
+        return None
+    try:
+        return int(row["value"])
+    except (TypeError, ValueError):
+        return None
+
+
+async def restart_llama_sidecar(app: Any) -> Optional[str]:
+    """Stop the managed engine and start it again, so a new choice takes effect.
+
+    Only an engine that is running (or crashed) is restarted: one that is not
+    running picks the choice up when it next starts. Returns the model path the
+    engine was restarted with, or None.
+    """
+    from convsim_core.runtime.sidecar import SidecarState, wait_for_port_release
+
+    sidecar = getattr(app.state, "sidecar", None)
+    if sidecar is None or sidecar.state not in (SidecarState.RUNNING, SidecarState.CRASHED):
+        return None
+    model_path = sidecar.model_path
+    host, port = sidecar.host, sidecar.port
+    await sidecar.stop()
+    await wait_for_port_release(host, port)
+    return await ensure_llama_sidecar_running(app, model_path=model_path, port=port)
 
 
 def schedule_startup_autostart(app: Any) -> None:

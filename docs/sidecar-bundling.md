@@ -45,9 +45,13 @@ binaries are expected to be on the developer's `PATH`.
 **Install sidecars for development (Linux / macOS):**
 
 ```sh
-# llama.cpp (llama-server)
+# llama.cpp (llama-server) — the CPU build (Metal on macOS)
 ./runtimes/llama_cpp/download-runtime.sh
 # → binary at ~/.convsim/bin/llama-server; add to PATH
+
+# The Vulkan build (Linux), which the app uses when the card works (#531)
+./runtimes/llama_cpp/download-runtime.sh --variant vulkan
+# → binary at ~/.convsim/bin/vulkan/llama-server; found without a PATH change
 
 # Whisper.cpp
 ./runtimes/whisper_cpp/download-runtime.sh
@@ -61,21 +65,27 @@ binaries are expected to be on the developer's `PATH`.
 **Install sidecars for development (Windows):**
 
 ```powershell
-# llama.cpp (llama-server) — CPU variant (default, works on every machine)
+# llama.cpp (llama-server) — the CPU build, which works on every machine
 .\runtimes\llama_cpp\download-runtime.ps1
 # → binary at $HOME\.convsim\bin\llama-server.exe
 
-# GPU-accelerated variant (optional, never required for first-run):
-.\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan # NVIDIA / AMD / Intel via Vulkan
+# The Vulkan build (NVIDIA / AMD / Intel), which the app uses when the card works (#531)
+.\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan
+# → binary at $HOME\.convsim\bin\vulkan\llama-server.exe
 
-# Add to PATH (current session):
+# Add the CPU build to PATH (current session):
 $env:PATH = "$HOME\.convsim\bin;$env:PATH"
 ```
 
+Both scripts download the tag pinned in `runtimes/llama_cpp/pin.json` and
+verify the archive against the SHA-256 pinned there; a missing or mismatched
+digest fails the download and installs nothing (issue #530).
+
 The `find_executable()` function also probes `~/.convsim/bin/llama-server.exe`
-directly (step 3 in the resolution order), so the binary is found immediately
-after an in-app install via `POST /api/sidecar/download-runtime` without
-needing a PATH change or app restart.
+directly (step 3 in the resolution order), and `find_vulkan_executable()`
+probes `~/.convsim/bin/vulkan/llama-server.exe`, so either build is found
+immediately after an in-app install via `POST /api/sidecar/download-runtime`
+without needing a PATH change or app restart.
 
 You can also set the explicit override variable to point to any binary:
 
@@ -105,7 +115,11 @@ path of the `runtimes/` directory inside the installed depot before launching
 <steam-install-dir>/
 ├── convsim               # main application executable (Tauri shell)
 └── runtimes/
-    ├── llama-server      # llama.cpp inference server
+    ├── llama-server      # llama.cpp: the CPU build (Metal on macOS)
+    ├── lib… / *.dll      #   and the libraries it links against
+    ├── vulkan/           # Windows and Linux only (issue #530)
+    │   ├── llama-server  # llama.cpp: the Vulkan build of the same pinned tag
+    │   └── …             #   its libraries, including the Vulkan backend
     ├── whisper-cli       # Whisper.cpp transcription binary
     └── sherpa-onnx-offline-tts   # Kokoro TTS binary
 ```
@@ -113,6 +127,25 @@ path of the `runtimes/` directory inside the installed depot before launching
 On Windows the binaries include the `.exe` suffix. On macOS and Linux there is
 no suffix. The bundled path resolver appends the correct suffix for the current
 platform automatically.
+
+### Two llama.cpp builds, kept apart
+
+The Vulkan archive upstream publishes is the CPU archive plus one library, the
+Vulkan backend (`ggml-vulkan.dll`, `libggml-vulkan.so`). ggml loads every
+backend library it finds beside the executable and in the working directory,
+so the two builds live in separate directories and the sidecar is always
+started with its own directory as the working directory. The CPU build
+therefore never loads the Vulkan backend or touches the graphics driver: a
+machine with a broken Vulkan driver starts the CPU engine exactly as it did
+before the Vulkan build shipped. The release workflow asserts that the CPU
+directory contains no Vulkan backend library and that the CPU build's
+`llama-server --list-devices` exits 0.
+
+Which build runs is decided at every engine start by
+`engine_variant.start_engine()` (issue #531): the player's `engine_variant`
+setting (`auto`, `cpu`, `vulkan`), the Vulkan build's own `--list-devices`
+probe, and a fail-safe ladder that falls back to the CPU build. See
+[local-models.md](local-models.md#graphics-card).
 
 ### Bundled path lookup (Python pseudocode)
 
@@ -148,16 +181,30 @@ def find_sidecar_executable(env_key: str, binary_name: str) -> str | None:
 The actual implementation lives in each sidecar's module
 (`find_executable()` in `convsim_core/runtime/sidecar.py` for llama.cpp, which
 resolves `CONVSIM_LLAMA_CPP_EXECUTABLE` → `CONVSIM_BUNDLED_RUNTIME_DIR/llama-server`
-→ PATH).
+→ `~/.convsim/bin/llama-server` → PATH). The Vulkan build is resolved on its
+own by `find_vulkan_executable()`: `CONVSIM_LLAMA_CPP_VULKAN_EXECUTABLE` →
+`CONVSIM_BUNDLED_RUNTIME_DIR/vulkan/llama-server` →
+`~/.convsim/bin/vulkan/llama-server`, and none at all when
+`CONVSIM_LLAMA_CPP_EXECUTABLE` pins a single engine. Each is looked up
+separately, so a Vulkan build the player downloaded is not shadowed by a
+bundled CPU build.
 
 ---
 
 ## Pinned llama.cpp version and the macOS deployment-target gate
 
-The llama.cpp download scripts pin an exact upstream release
-(`LLAMA_CPP_PINNED_VERSION` in `runtimes/llama_cpp/download-runtime.sh` and
-`download-runtime.ps1`; keep the two in sync). Bumping the pin is a deliberate
-act, and on macOS it must clear one extra bar: **no bundled Mach-O binary may
+The llama.cpp engine is pinned to an exact upstream release in one file,
+`runtimes/llama_cpp/pin.json`: the tag and the SHA-256 of every archive the
+app can install. Both download scripts, CI and the packaged core read it (the
+PyInstaller spec embeds it). Upstream publishes no checksum file, so these
+digests — copied from the `digest` GitHub's release API reports per asset —
+are the only thing that verifies an engine download, and a missing or
+mismatched digest fails the download in both scripts and in the in-app
+downloader. The `llama-pin-verify` job in `binary-health-check.yml` downloads
+every pinned archive and checks it against the pin and the pin against the
+release API. Moving the pin is a deliberate act (see
+[runtimes/llama_cpp/README.md](../runtimes/llama_cpp/README.md#moving-the-pin)),
+and on macOS it must clear one extra bar: **no bundled Mach-O binary may
 declare a minimum macOS newer than our supported floor** (14.0 by default,
 override with `CONVSIM_MACOS_MINOS_FLOOR`).
 
@@ -330,7 +377,8 @@ lifecycle", for the full state machine.
 | Variable | Purpose |
 |---|---|
 | `CONVSIM_BUNDLED_RUNTIME_DIR` | Absolute path to the bundled `runtimes/` directory (set by the Tauri/Electron wrapper in Steam builds) |
-| `CONVSIM_LLAMA_CPP_EXECUTABLE` | Override path to `llama-server` |
+| `CONVSIM_LLAMA_CPP_EXECUTABLE` | Override path to `llama-server`; pins this one engine (no Vulkan build is used beside it) |
+| `CONVSIM_LLAMA_CPP_VULKAN_EXECUTABLE` | Override path to the Vulkan build of `llama-server` (issue #531) |
 | `CONVSIM_WHISPER_CPP_BINARY_PATH` | Override path to `whisper-cli` |
 | `CONVSIM_KOKORO_EXECUTABLE` | Override path to `sherpa-onnx-offline-tts` |
 | `CONVSIM_SHUTDOWN_ON_STDIN_EOF` | Set to `1` by a launcher that holds a pipe on the engine's stdin; EOF on it means "shut down" (see [Shutting the whole tree down](#shutdown)) |

@@ -30,6 +30,7 @@ import type {
   BenchmarkResponse,
   RuntimeSettingsResponse,
   RuntimeSettingsRequest,
+  EngineStatusResponse,
   VoicesResponse,
   TtsCacheSizeResponse,
   TtsCacheClearResponse,
@@ -740,6 +741,21 @@ export const api = {
   },
   resetRuntimeSettings(): Promise<ApiResult<RuntimeSettingsResponse>> {
     return post<RuntimeSettingsResponse>('/runtime/settings/reset')
+  },
+  /** Graphics card or processor (issue #531). */
+  getEngineStatus(): Promise<ApiResult<EngineStatusResponse>> {
+    return get<EngineStatusResponse>('/runtime/engine')
+  },
+  markEngineNoticeSeen(): Promise<ApiResult<EngineStatusResponse>> {
+    return post<EngineStatusResponse>('/runtime/engine/notice-seen')
+  },
+  /** Restart the AI model so a changed choice takes effect now. */
+  restartEngine(): Promise<ApiResult<EngineStatusResponse>> {
+    return post<EngineStatusResponse>('/runtime/engine/restart')
+  },
+  /** Forget a graphics-card failure and try the card again. */
+  retryGraphicsCard(): Promise<ApiResult<EngineStatusResponse>> {
+    return post<EngineStatusResponse>('/runtime/engine/retry-graphics-card')
   },
   listVoices(): Promise<ApiResult<VoicesResponse>> {
     return get<VoicesResponse>('/tts/voices')

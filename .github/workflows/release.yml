@@ -462,15 +462,30 @@ jobs:
       # find_executable() resolves <CONVSIM_BUNDLED_RUNTIME_DIR>/llama-server[.exe]
       # from there. Do NOT place it under resources/bin/ — that is where
       # convsim-core lives and is never scanned for sidecar binaries.
+      #
+      # Two engines on Windows and Linux (issue #530): the CPU build, flat in
+      # resources/runtimes/ exactly as before, and the Vulkan build of the same
+      # pinned tag in resources/runtimes/vulkan/, which find_vulkan_executable()
+      # resolves. The Vulkan archive is the CPU archive plus the Vulkan backend
+      # library; keeping it in its own directory means the CPU build never loads
+      # that library or touches the graphics driver, so a machine with a broken
+      # Vulkan driver starts the CPU engine as it always has. Which one runs is
+      # decided at each start (#531). macOS ships one build, which uses Metal.
+      # Both scripts verify every archive against runtimes/llama_cpp/pin.json
+      # and fail on a missing or mismatched SHA-256.
       - name: Bundle llama-server (Linux / macOS — Steam only)
         if: env.BUNDLE_LLAMA_SERVER == 'true' && runner.os != 'Windows'
         shell: bash
-        env:
-          LLAMA_CPP_DEST: apps/desktop/src-tauri/resources/runtimes
         run: |
           set -euo pipefail
-          bash runtimes/llama_cpp/download-runtime.sh
-          ls -lh apps/desktop/src-tauri/resources/runtimes/llama-server
+          RUNTIME_DIR=apps/desktop/src-tauri/resources/runtimes
+          # The default build: CPU on Linux, Metal on macOS.
+          bash runtimes/llama_cpp/download-runtime.sh --dest "$RUNTIME_DIR"
+          ls -lh "$RUNTIME_DIR/llama-server"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            bash runtimes/llama_cpp/download-runtime.sh --variant vulkan --dest "$RUNTIME_DIR/vulkan"
+            ls -lh "$RUNTIME_DIR/vulkan/llama-server" "$RUNTIME_DIR/vulkan/libggml-vulkan.so"
+          fi
 
       # ── Sign the bundled llama.cpp runtime (macOS) ───────────────────────────
       # Apple notarisation rejects an app containing ANY unsigned Mach-O binary.
@@ -527,8 +542,59 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $dest = "apps\desktop\src-tauri\resources\runtimes"
-          .\runtimes\llama_cpp\download-runtime.ps1 -Dest $dest
-          Get-Item "$dest\llama-server.exe" | Select-Object Name, Length
+          # CPU build flat in runtimes\, Vulkan build in runtimes\vulkan\ (issue #530).
+          .\runtimes\llama_cpp\download-runtime.ps1 -Variant cpu -Dest $dest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan -Dest "$dest\vulkan"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item "$dest\llama-server.exe", "$dest\vulkan\llama-server.exe", "$dest\vulkan\ggml-vulkan.dll" |
+            Select-Object FullName, Length
+
+      # ── Check the bundled engines (Windows / Linux) ──────────────────────────
+      # Issue #530's acceptance criteria, against the exact files that ship:
+      #   1. The CPU path's directory does not contain the Vulkan backend
+      #      library, so the CPU engine can never load it (ggml loads every
+      #      backend library beside the executable, and the app starts the
+      #      engine with its own directory as the working directory).
+      #   2. The Vulkan build is present, with its backend library.
+      #   3. `llama-server --list-devices` runs and exits 0 for the CPU path,
+      #      run the way the app runs it: from its own directory.
+      # The Vulkan build's --list-devices is printed for the log only: CI
+      # runners have no graphics card, and may have no Vulkan loader at all.
+      - name: Check the bundled engines (Windows / Linux — Steam only)
+        if: env.BUNDLE_LLAMA_SERVER == 'true' && runner.os != 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_DIR=apps/desktop/src-tauri/resources/runtimes
+          EXE=""
+          if [ "$RUNNER_OS" = "Windows" ]; then EXE=".exe"; fi
+
+          if find "$RUNTIME_DIR" -maxdepth 1 -iname '*ggml-vulkan*' | grep -q .; then
+            echo "FAIL: the CPU engine's directory contains the Vulkan backend library:" >&2
+            find "$RUNTIME_DIR" -maxdepth 1 -iname '*ggml-vulkan*' >&2
+            exit 1
+          fi
+          echo "OK: no Vulkan backend library beside the CPU engine"
+
+          test -f "$RUNTIME_DIR/llama-server$EXE"
+          test -f "$RUNTIME_DIR/vulkan/llama-server$EXE"
+          find "$RUNTIME_DIR/vulkan" -maxdepth 1 -iname '*ggml-vulkan*' | grep -q . || {
+            echo "FAIL: the Vulkan engine's directory has no Vulkan backend library" >&2
+            exit 1
+          }
+          echo "OK: Vulkan engine bundled in $RUNTIME_DIR/vulkan"
+
+          echo "=== CPU engine: --list-devices ==="
+          (cd "$RUNTIME_DIR" && "./llama-server$EXE" --list-devices)
+          echo "OK: the CPU engine starts and exits 0"
+
+          echo "=== Vulkan engine: --list-devices (informational) ==="
+          (cd "$RUNTIME_DIR/vulkan" && "./llama-server$EXE" --list-devices) \
+            || echo "INFO: the Vulkan engine could not enumerate devices on this runner (no graphics card is expected here)"
+
+          echo "=== Engine directory sizes ==="
+          du -sh "$RUNTIME_DIR" "$RUNTIME_DIR/vulkan"
 
       # ── Java runtime for jsign (Windows KMS signing) ────────────────────────
       # windows-latest ships Temurin, but we pin the version explicitly so the
@@ -561,9 +627,13 @@ jobs:
           CERT_PASSWORD:         ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
         run: |
           $resDir  = "apps\desktop\src-tauri\resources"
+          # Both engines (issue #530). Their DLLs are signed with every other
+          # resource PE by "Sign Windows installers" below, which walks
+          # resources\ recursively.
           $targets = @(
             "$resDir\bin\convsim-core.exe",
-            "$resDir\runtimes\llama-server.exe"
+            "$resDir\runtimes\llama-server.exe",
+            "$resDir\runtimes\vulkan\llama-server.exe"
           )
           foreach ($t in $targets) {
             if (-not (Test-Path $t)) { continue }
@@ -1402,7 +1472,8 @@ jobs:
       #   ConversationSimulator.exe       ← main binary (renamed from Rust crate name)
       #   *.dll                           ← WebView2Loader.dll and Tauri DLLs (if any)
       #   resources/bin/convsim-core.exe  ← PyInstaller sidecar
-      #   resources/runtimes/…            ← llama-server.exe + sibling DLLs (Steam only)
+      #   resources/runtimes/…            ← CPU llama-server.exe + sibling DLLs (Steam only)
+      #   resources/runtimes/vulkan/…     ← Vulkan llama-server.exe + DLLs incl. ggml-vulkan.dll
       #   resources/packs/…               ← bundled official scenario packs
       #   installscript.vdf               ← Steam InstallScript (WebView2 bootstrap)
       #   MicrosoftEdgeWebView2Setup.exe  ← WebView2 Evergreen Bootstrapper (~2 MB)
@@ -1524,8 +1595,13 @@ jobs:
           # The main exe is ALSO built with +crt-static now (see
           # apps/desktop/src-tauri/.cargo/config.toml), so for it these copies
           # are belt-and-suspenders — but they are load-bearing for
-          # llama-server.exe and the ggml DLLs under resources/runtimes/.
+          # llama-server.exe and the ggml DLLs under resources/runtimes/, and
+          # for the Vulkan engine under resources/runtimes/vulkan/ (issue
+          # #530): Windows resolves an executable's DLLs from its own
+          # directory first, so each engine directory gets its own copy.
           $crtDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
+          $engineDirs = @("$depotStage\resources\runtimes", "$depotStage\resources\runtimes\vulkan") |
+            Where-Object { Test-Path $_ }
           foreach ($dll in $crtDlls) {
             $src = Join-Path $env:SystemRoot "System32\$dll"
             if (-not (Test-Path $src)) {
@@ -1533,8 +1609,8 @@ jobs:
               exit 1
             }
             Copy-Item $src "$depotStage\"
-            if (Test-Path "$depotStage\resources\runtimes") {
-              Copy-Item $src "$depotStage\resources\runtimes\"
+            foreach ($engineDir in $engineDirs) {
+              Copy-Item $src "$engineDir\"
             }
             Write-Host "  Copied (app-local VC++ runtime): $dll"
           }

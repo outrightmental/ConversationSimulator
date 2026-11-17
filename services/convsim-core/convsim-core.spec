@@ -62,6 +62,11 @@ a = Analysis(
         # Seeded into SQLite at startup; without it a fresh install has no
         # models to offer and "Set me up" dead-ends with MODEL_NOT_FOUND.
         (str(_REPO_ROOT / 'model-registry' / 'registry.yaml'), 'model-registry'),
+        # The llama.cpp pin: tag and SHA-256 per engine archive (issue #530).
+        # The in-app engine download verifies against it and refuses any
+        # archive it has no digest for, so a build without it cannot install
+        # an engine. Read by convsim_core/runtime/llama_cpp_pin.py.
+        (str(_REPO_ROOT / 'runtimes' / 'llama_cpp' / 'pin.json'), 'runtimes/llama_cpp'),
     ],
     hiddenimports=[
         # uvicorn resolves protocol and loop implementations at runtime.

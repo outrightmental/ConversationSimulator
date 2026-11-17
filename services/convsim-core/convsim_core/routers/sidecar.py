@@ -22,6 +22,8 @@ from pydantic import BaseModel
 
 from convsim_core.edition import require_demo_model_path
 from convsim_core.errors import ConvsimError
+from convsim_core.runtime.active import player_gpu_layers
+from convsim_core.runtime.engine_variant import find_engine_builds, start_engine
 from convsim_core.runtime.launch import resolve_launch_config
 from convsim_core.runtime.llama_cpp_download import (
     DownloadProgress,
@@ -30,7 +32,12 @@ from convsim_core.runtime.llama_cpp_download import (
     detect_windows_gpu_variant,
     download_binary,
 )
-from convsim_core.runtime.sidecar import LlamaCppSidecar, SidecarState
+from convsim_core.runtime.sidecar import (
+    VULKAN_SUBDIR,
+    LlamaCppSidecar,
+    SidecarState,
+    user_install_dir,
+)
 
 router = APIRouter()
 
@@ -91,6 +98,8 @@ class SidecarStatusResponse(BaseModel):
     host: str
     port: int
     started_at: Optional[str] = None
+    #: The build the managed process runs: "cpu", "vulkan" or "metal" (#531).
+    variant: Optional[str] = None
 
 
 # ── Download schemas ──────────────────────────────────────────────────────────
@@ -99,18 +108,18 @@ class SidecarStatusResponse(BaseModel):
 class DownloadRuntimeRequest(BaseModel):
     """Request body for POST /api/sidecar/download-runtime.
 
-    ``version`` is the exact llama.cpp release tag (e.g. ``"b5140"``).
-    Omit to auto-fetch the latest release.
+    ``version`` is the exact llama.cpp release tag. Omit it for the pinned
+    tag (``runtimes/llama_cpp/pin.json``), the only one with pinned SHA-256
+    digests: any other tag is refused, because nothing could verify it.
 
-    ``dest_dir`` overrides the default install directory
-    (``~/.convsim/bin``). The binary is placed inside this directory as
-    ``llama-server`` (or ``llama-server.exe`` on Windows).
+    ``dest_dir`` overrides the default install directory: ``~/.convsim/bin``
+    for the default build, ``~/.convsim/bin/vulkan`` for the Vulkan build,
+    which is where ``find_vulkan_executable()`` looks. The binary is placed
+    inside it as ``llama-server`` (or ``llama-server.exe`` on Windows).
 
-    ``variant`` selects the build variant: ``"cpu"`` (default, always safe) or
-    ``"vulkan"`` (GPU acceleration on NVIDIA/AMD/Intel).  Use
-    ``detect_windows_gpu_variant()`` to discover the recommended variant; GPU
-    variants are never required for first-run.  Only meaningful on Windows;
-    Linux and macOS always use ``"cpu"``.
+    ``variant`` selects the build: ``"cpu"`` (the default build; on macOS it
+    uses Metal) or ``"vulkan"`` (Windows x64 and Linux). Which one runs is
+    decided at each engine start (issue #531).
     """
 
     version: Optional[str] = None
@@ -175,20 +184,49 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
 
     # Same launch configuration as the autostart and the install pipeline
     # (issue #523). An explicit context_length in the request still wins.
-    launch = resolve_launch_config(body.model_path, request.app.state.db.connection())
+    conn = request.app.state.db.connection()
+    launch = resolve_launch_config(body.model_path, conn)
 
+    # A request that names an executable, a host, a port or a context size is
+    # an advanced start of exactly that; one that names none starts the
+    # managed engine the way every other start site does, including the
+    # choice between the graphics card and the processor (issue #531).
+    explicit = (
+        body.executable is not None
+        or body.host != "127.0.0.1"
+        or body.port != 7356
+        or body.context_length is not None
+        or body.threads is not None
+    )
+    builds = None if explicit else find_engine_builds()
+    if builds is not None and builds.default is None and builds.vulkan is None:
+        # Nothing to choose between: start() reports the missing engine itself.
+        explicit = True
     try:
-        await sidecar.start(
-            body.model_path,
-            executable=body.executable,
-            host=body.host,
-            port=body.port,
-            context_length=body.context_length,
-            threads=body.threads,
-            gpu_layers=body.gpu_layers,
-            launch=launch,
-            startup_timeout=body.startup_timeout,
-        )
+        if explicit:
+            await sidecar.start(
+                body.model_path,
+                executable=body.executable,
+                host=body.host,
+                port=body.port,
+                context_length=body.context_length,
+                threads=body.threads,
+                gpu_layers=body.gpu_layers,
+                launch=launch,
+                startup_timeout=body.startup_timeout,
+            )
+        else:
+            async with sidecar.start_lock:
+                await start_engine(
+                    request.app,
+                    sidecar,
+                    model_path=body.model_path,
+                    launch=launch,
+                    conn=conn,
+                    startup_timeout=body.startup_timeout,
+                    gpu_layers=body.gpu_layers if body.gpu_layers is not None else player_gpu_layers(conn),
+                    builds=builds,
+                )
     except (RuntimeError, TimeoutError) as exc:
         raise ConvsimError(
             code="SIDECAR_START_FAILED",
@@ -268,7 +306,18 @@ async def start_download_runtime(body: DownloadRuntimeRequest) -> DownloadRuntim
             status_code=400,
         ) from exc
 
-    dest = Path(body.dest_dir) if body.dest_dir else Path.home() / ".convsim" / "bin"
+    if body.variant not in ("cpu", "vulkan"):
+        raise ConvsimError(
+            code="INVALID_ENGINE_VARIANT",
+            message="variant must be 'cpu' or 'vulkan'.",
+            status_code=422,
+        )
+    if body.dest_dir:
+        dest = Path(body.dest_dir)
+    elif body.variant == "vulkan":
+        dest = user_install_dir() / VULKAN_SUBDIR
+    else:
+        dest = user_install_dir()
 
     _download_cancel = asyncio.Event()
     _download_progress = DownloadProgress(state=DownloadState.FETCHING_RELEASE)

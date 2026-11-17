@@ -49,10 +49,11 @@ function parseInt2(s: string): number | null {
 
 /** The numeric knobs this panel edits.
  *
- *  `reply_speed` is part of the same persisted settings object but is not one
- *  of these: it is a named plain-language choice with its own control above
- *  this panel (issue #501 §1), not a number behind an "advanced" toggle. */
-type AdvancedSettingKey = Exclude<keyof RuntimeSettings, 'reply_speed'>
+ *  `reply_speed` and `engine_variant` are part of the same persisted settings
+ *  object but are not among them: each is a named plain-language choice with
+ *  its own Settings section (issues #501 §1 and #531), not a number behind an
+ *  "advanced" toggle. */
+type AdvancedSettingKey = Exclude<keyof RuntimeSettings, 'reply_speed' | 'engine_variant'>
 
 type AdvancedForm = Record<AdvancedSettingKey, string>
 
@@ -77,7 +78,7 @@ function validateForm(form: AdvancedForm): FieldError[] {
 
   const gl = parseInt2(form.gpu_layers)
   if (form.gpu_layers !== '' && (gl === null || !Number.isInteger(gl) || gl < -1 || gl > 256)) {
-    errs.push({ field: 'gpu_layers', message: 'Must be an integer between -1 (all layers to GPU) and 256.' })
+    errs.push({ field: 'gpu_layers', message: 'Must be an integer between -1 and 256.' })
   }
 
   const th = parseInt2(form.threads)
@@ -580,7 +581,7 @@ export default function RuntimeSettingsPanel() {
           <FieldRow
             label="GPU layers"
             error={fieldErrors['gpu_layers']}
-            note="-1 = all layers to GPU, 0 = CPU only. Leave blank for automatic. Changing this requires a runtime restart."
+            note="Leave blank so the AI model places its layers itself (recommended); a number turns that off. 0 keeps every layer on the processor. Applies the next time the AI model starts."
           >
             <input
               aria-label="gpu layers"
