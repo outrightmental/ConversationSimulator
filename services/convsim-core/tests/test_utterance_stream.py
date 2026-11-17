@@ -199,6 +199,21 @@ class TestSentenceGate:
         assert leaky.released_text == "Nice to meet you."
         assert leaky.blocked is not None
 
+    def test_the_default_check_ignores_the_public_briefs_words(self):
+        """The gate runs the parser's check with the same context (issue #526):
+        a phrase of the agenda the public brief already uses is not a leak."""
+        agenda = ["Watch whether the candidate holds firm with evidence under pressure"]
+        line = "Fine. Hold firm with evidence under pressure, then."
+        without = SentenceGate(hidden_agenda=agenda)
+        without.feed(line, done=True)
+        assert without.blocked is not None
+        assert without.released_text == "Fine."
+        with_brief = SentenceGate(
+            hidden_agenda=agenda, public_brief=["Hold firm with evidence under pressure."]
+        )
+        assert with_brief.feed(line, done=True) == ["Fine.", " Hold firm with evidence under pressure, then."]
+        assert with_brief.blocked is None
+
 
 # ---------------------------------------------------------------------------
 # The gate holds back a repeating first sentence (issue #580)

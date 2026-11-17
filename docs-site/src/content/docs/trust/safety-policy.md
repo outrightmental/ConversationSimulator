@@ -10,8 +10,9 @@ This document covers:
 1. [Content policy](#content-policy) — what is and is not permitted, for users and scenario creators.
 2. [Pack sandboxing and prompt injection](#pack-sandboxing-and-prompt-injection) — how packs are isolated.
 3. [Safety architecture](#architecture) — how the local layered system enforces policy at runtime.
-4. [Writing a safety policy for your pack](#writing-a-safety-policy-for-your-pack) — creator guide.
-5. [Creator guide: understanding validation rejections](#creator-guide-understanding-validation-rejections)
+4. [NPC output check](#npc-output-check) — what an NPC line is checked for, the two corpora, and the rule for changing a pattern.
+5. [Writing a safety policy for your pack](#writing-a-safety-policy-for-your-pack) — creator guide.
+6. [Creator guide: understanding validation rejections](#creator-guide-understanding-validation-rejections)
 
 For the JSON schema definition, see [`schemas/safety.schema.json`](https://github.com/outrightmental/ConversationSimulator/blob/main/schemas/safety.schema.json).  
 For the privacy and data-handling policy, see [privacy](/trust/privacy/).  
@@ -233,6 +234,7 @@ Prompt safety layer (build_safety_policy_layer in layers.py)
       │
       ▼
 NPC structured output validator (turn_output.py)
+  • NPC output check (output_validator.py) ← see "NPC output check" below
       │
       ▼
 Output safety.status: ok | redirect | stop
@@ -244,6 +246,99 @@ model-classifier hook is reserved for future enhancement.
 
 Safety events are logged at WARNING level. Raw player text is never written
 to the log — only the matched category and action are recorded.
+
+---
+
+## NPC output check
+
+Every line an NPC says is checked before the player sees it, by
+`validate_npc_output` in
+[`output_validator.py`](https://github.com/outrightmental/ConversationSimulator/blob/main/packages/prompt-composer/src/convsim_prompt/output_validator.py).
+The parser runs it on the whole line; while a reply streams, the sentence gate
+runs the same check, with the same context, on each sentence before it is
+shown. It reports six categories:
+
+| Category | Kind | What it catches |
+|---|---|---|
+| `hidden_agenda_leak` | recoverable | The NPC narrating its concealed intent ("I'm secretly trying to…", "my real goal is…"), or saying a phrase of its private agenda aloud |
+| `system_rule_leak` | recoverable | The NPC naming its prompt, schema fields or rules, or calling itself an AI |
+| `real_person_impersonation` | recoverable | The NPC claiming to be a named public figure |
+| `nsfw_content` | hard | Explicit sexual content |
+| `illegal_advice` | hard | Instructions for illegal acts |
+| `therapy_or_diagnosis` | hard | The NPC diagnosing, prescribing or acting as a therapist |
+
+A rejected line is never free. A recoverable violation costs a full
+regeneration (20–50 seconds on a CPU-only machine) and, if the retry fails too,
+a canned redirect line. A hard violation ends the session. So each rule
+catches what its category exists for, and not the everyday vocabulary of the
+conversations the packs play (issue #526):
+
+- **Prohibited content is judged by phrase, not by single word.** Words that
+  are sexual in some phrases and ordinary in others ("penetration", "erect",
+  "erection", "aroused") pass inside a professional collocation ("market
+  penetration", "penetration testing", "aroused suspicion", "erect a
+  building", "stood erect") and are a hard violation anywhere else. In a
+  sentence that also has explicit sexual vocabulary the allow-list does not
+  apply. Unambiguous terms fail on their own.
+- **Meta-commentary means the NPC narrating its own concealed intent.**
+  "I secretly want you to…" and "I'm actually trying to test you" fail.
+  Emphasis does not: "I really want to hear specifics", "I really need you
+  to…", "I'm really trying to make this work", "I won't pretend to be
+  thrilled, but…".
+- **The private agenda is compared by phrase.** A line leaks an agenda item
+  when it repeats a run of the item's whole words, in order, that carries
+  three words the scenario has not made public, or two in a run of five or
+  more words. Function words and numbers never count, and neither do the
+  words of the scenario's public brief: its title, summary, player role and
+  brief, visible goals, opening line, difficulty description and the NPC's
+  public persona. The NPC is meant to talk about all of those. Quoted speech
+  in an agenda item is the character's to say and is not compared.
+
+### Output check corpora
+
+Two corpora in
+[`packages/prompt-composer/tests/corpora/`](https://github.com/outrightmental/ConversationSimulator/tree/main/packages/prompt-composer/tests/corpora/)
+pin these rules, and CI runs both on every change:
+
+- **`benign.json`**: at least 100 lines that must pass, grouped by official
+  scenario and written in each pack's own subject vocabulary. Every official
+  scenario has lines. It includes the lines the earlier rules rejected:
+  "market penetration", "I really want to hear specifics, not buzzwords.",
+  and Victor Hargrove's "I want evidence. Tell me whether you held that
+  position when the pressure was on."
+- **`violations.json`**: lines that must still fail, each with the category
+  the check must report. `context_free` lines fail on their own.
+  `by_scenario` lines say part of that scenario's NPC agenda aloud and fail
+  only against it.
+
+The prompt-composer tests check every line with no scenario context. The
+convsim-core tests (`tests/test_output_check_corpora.py`) check every line
+again against its scenario's agenda and public brief, loaded from the pack.
+They also build lines from each official scenario's public brief and check
+that no NPC agenda makes any of them a `hidden_agenda_leak`.
+
+### Changing a pattern
+
+The rule for changing anything in `output_validator.py`:
+
+1. **Both corpora stay green.** A change that rejects a benign line, or lets
+   a violation through, is not ready.
+2. **Add the line that prompted the change.** A false rejection you are
+   fixing goes into `benign.json`. A miss you are fixing goes into
+   `violations.json` with its category. If you narrow a rule, also add the
+   violation it must still catch.
+3. **Never edit the corpora to make a change pass.** Moving a line out of
+   `violations.json`, or changing its category, is a safety policy change.
+   It needs the `area:safety` label and a maintainer's review. So does any
+   change to a hard category.
+4. **A new official scenario adds its lines.** The tests fail until
+   `benign.json` has lines for every scenario in `packs/official/`.
+
+`GET /api/sessions/{id}/debug` reports how often the check rejects lines.
+Each turn has `rejections` (category → lines rejected that turn) and the
+session has `rejection_totals`. Every line the check turns down counts once,
+under its first violation: the reply, the safety retry's reply, and a
+repetition-retry or closing line that was discarded for failing the check.
 
 ---
 

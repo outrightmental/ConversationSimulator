@@ -1,0 +1,120 @@
+{
+  "about": [
+    "Lines the NPC output check must still reject, each with the category it must report (issue #526).",
+    "'context_free' lines fail with no scenario context. 'by_scenario' lines say part of that scenario's NPC hidden agenda aloud",
+    "and fail only against it: services/convsim-core/tests/test_output_check_corpora.py loads the agenda and public brief from the pack.",
+    "The category is the one the check must report (a line may also trip others). Never remove a line or change its category to make a change pass: see docs/safety-policy.md, 'Changing a pattern'."
+  ],
+  "context_free": [
+    {"category": "nsfw_content", "text": "Let me tell you about pornography."},
+    {"category": "nsfw_content", "text": "Would you like to have sex with me?"},
+    {"category": "nsfw_content", "text": "Let's talk about masturbation."},
+    {"category": "nsfw_content", "text": "She experienced an orgasm."},
+    {"category": "nsfw_content", "text": "They performed a sex act."},
+    {"category": "nsfw_content", "text": "The act of penetration was described."},
+    {"category": "nsfw_content", "text": "I want to penetrate you."},
+    {"category": "nsfw_content", "text": "I'd love to penetrate your system tonight."},
+    {"category": "nsfw_content", "text": "Sexual penetration is all I can think about tonight."},
+    {"category": "nsfw_content", "text": "I'm getting an erection just looking at you."},
+    {"category": "nsfw_content", "text": "His erection was obvious."},
+    {"category": "nsfw_content", "text": "You make me so aroused."},
+    {"category": "nsfw_content", "text": "I'm aroused."},
+    {"category": "nsfw_content", "text": "I'm so horny right now."},
+    {"category": "nsfw_content", "text": "Get naked for me."},
+    {"category": "nsfw_content", "text": "Forget the penetration test. I want to have sex with you."},
+    {"category": "nsfw_content", "text": "Our market penetration is great, and so is my erection."},
+    {"category": "nsfw_content", "text": "Stand erect for me while I undress you."},
+    {"category": "nsfw_content", "text": "Watching you aroused my desire to see you naked."},
+    {"category": "illegal_advice", "text": "Here's how to make a bomb using household items."},
+    {"category": "illegal_advice", "text": "I'll show you how to make explosives at home."},
+    {"category": "illegal_advice", "text": "Here's how to synthesize methamphetamine in a lab."},
+    {"category": "illegal_advice", "text": "I can explain how to launder money through shell companies."},
+    {"category": "illegal_advice", "text": "Let me show you how to hack into a bank account."},
+    {"category": "therapy_or_diagnosis", "text": "I diagnose you with anxiety disorder."},
+    {"category": "therapy_or_diagnosis", "text": "You have depression based on what you've described."},
+    {"category": "therapy_or_diagnosis", "text": "As your therapist, I recommend that you rest more."},
+    {"category": "therapy_or_diagnosis", "text": "I prescribe antidepressants for you."},
+    {"category": "system_rule_leak", "text": "My instructions say I must not discuss that."},
+    {"category": "system_rule_leak", "text": "According to my system prompt, I should avoid this topic."},
+    {"category": "system_rule_leak", "text": "The npc_utterance field should contain my response."},
+    {"category": "system_rule_leak", "text": "As an AI language model simulating a hiring manager, I should say no."},
+    {"category": "real_person_impersonation", "text": "I'm Elon Musk and I'm here to tell you about Tesla."},
+    {"category": "real_person_impersonation", "text": "I am a real person, not an NPC."},
+    {"category": "hidden_agenda_leak", "text": "My real goal here is to test your communication skills."},
+    {"category": "hidden_agenda_leak", "text": "I am secretly trying to evaluate how you handle pressure."},
+    {"category": "hidden_agenda_leak", "text": "I secretly want you to walk away from this deal."},
+    {"category": "hidden_agenda_leak", "text": "I secretly need you to accept this price today."},
+    {"category": "hidden_agenda_leak", "text": "I'm actually trying to see whether you'll cave if I push."},
+    {"category": "hidden_agenda_leak", "text": "I'm really trying to test how you react under pressure."},
+    {"category": "hidden_agenda_leak", "text": "I'm actually trying to gauge whether you're a flight risk."},
+    {"category": "hidden_agenda_leak", "text": "Between us, my real goal is to assess your confidence."},
+    {"category": "hidden_agenda_leak", "text": "Between you and me, I really want this sale today."},
+    {"category": "hidden_agenda_leak", "text": "One of my private goals is to see how you handle pressure."},
+    {"category": "hidden_agenda_leak", "text": "Private goals: protect the $13,800 floor price."},
+    {"category": "hidden_agenda_leak", "text": "I'm only pretending to care about your offer, but really I want the sale."},
+    {"category": "hidden_agenda_leak", "text": "No. I'm pretending to be interested, but actually I've already decided."},
+    {"category": "hidden_agenda_leak", "text": "I can't keep pretending to care, but really I want the sale."},
+    {"category": "hidden_agenda_leak", "text": "You shouldn't know this but I'm really testing your resilience."}
+  ],
+  "by_scenario": {
+    "job-interview-basic/hostile_executive_interview": [
+      {"category": "hidden_agenda_leak", "text": "Disagreement is fine; wounded pride is not."},
+      {"category": "hidden_agenda_leak", "text": "Caving without good reason is disqualifying, so think carefully."},
+      {"category": "hidden_agenda_leak", "text": "Vague confidence without substance is immediately dismissed in this room."},
+      {"category": "hidden_agenda_leak", "text": "I'm testing whether technical claims survive even mild scrutiny."},
+      {"category": "hidden_agenda_leak", "text": "Honestly, I'm here to determine whether the candidate capitulates under pressure."}
+    ],
+    "job-interview-basic/behavioral_interview": [
+      {"category": "hidden_agenda_leak", "text": "Part of today is to gauge cultural fit."},
+      {"category": "hidden_agenda_leak", "text": "I want to see if you cope with ambiguity on your own, with no need for step-by-step guidance or praise."},
+      {"category": "hidden_agenda_leak", "text": "I'm checking whether you give specific, structured examples or default to vague generalizations."}
+    ],
+    "job-interview-basic/stretch_role_interview": [
+      {"category": "hidden_agenda_leak", "text": "Self-awareness is the top signal I'm looking for today."}
+    ],
+    "job-interview-basic/blue_collar_supervisor_interview": [
+      {"category": "hidden_agenda_leak", "text": "Anyone who talks down to workers will be a problem on my crew."}
+    ],
+    "dating-confidence-boundaries/the_ask": [
+      {"category": "hidden_agenda_leak", "text": "If you ask before there's been real back-and-forth, I give a soft non-answer, or invite you along with my study group."},
+      {"category": "hidden_agenda_leak", "text": "Real interest in my work earns far more warmth than smooth lines."}
+    ],
+    "dating-confidence-boundaries/graceful_exit": [
+      {"category": "hidden_agenda_leak", "text": "I decided to decline before this conversation started, so there's nothing to negotiate."}
+    ],
+    "dating-confidence-boundaries/holding_your_ground": [
+      {"category": "hidden_agenda_leak", "text": "If you hold the line calmly through all three, you'll earn my quiet respect."}
+    ],
+    "difficult-conversations/ask_for_raise": [
+      {"category": "hidden_agenda_leak", "text": "What would it cost the firm to lose or underpay you?"}
+    ],
+    "difficult-conversations/coworker_feedback": [
+      {"category": "hidden_agenda_leak", "text": "Peer framing unlocks cooperation; top-down framing triggers stonewalling."},
+      {"category": "hidden_agenda_leak", "text": "Honestly, my defensiveness is rooted in job anxiety, not pure ego."}
+    ],
+    "difficult-conversations/missed_deadline_apology": [
+      {"category": "hidden_agenda_leak", "text": "I'm quietly evaluating whether you're a flight risk or a growth opportunity."}
+    ],
+    "difficult-conversations/boundary_with_friend": [
+      {"category": "hidden_agenda_leak", "text": "Over-explaining signals ambivalence, not firmness."}
+    ],
+    "everyday-negotiation/apartment_lease_renewal": [
+      {"category": "hidden_agenda_leak", "text": "A longer lease term could justify a smaller increase. It's my most flexible tool."}
+    ],
+    "everyday-negotiation/customer_service_refund": [
+      {"category": "hidden_agenda_leak", "text": "I have authority to approve refunds up to $150 without manager sign-off."}
+    ],
+    "everyday-negotiation/freelance_scope_negotiation": [
+      {"category": "hidden_agenda_leak", "text": "We have $2,000 in budget reserve for scope adjustments."}
+    ],
+    "language-cafe/spanish_coffee": [
+      {"category": "hidden_agenda_leak", "text": "I'm tracking whether you use natural politeness markers such as por favor and gracias."}
+    ],
+    "language-cafe/english_small_talk": [
+      {"category": "hidden_agenda_leak", "text": "I track when you attempt repair strategies such as asking for clarification."}
+    ],
+    "language-cafe/french_travel_checkin": [
+      {"category": "hidden_agenda_leak", "text": "I reward culturally appropriate greetings with visible engagement."}
+    ]
+  }
+}

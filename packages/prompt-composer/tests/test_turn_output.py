@@ -32,6 +32,7 @@ from convsim_prompt import (
     TurnEvent,
     TurnOutput,
     ValidationError,
+    count_rejections,
     parse_turn_output,
 )
 from convsim_prompt.turn_output import (
@@ -1060,6 +1061,34 @@ class TestTurnEvents:
         )
         types = [e.event_type for e in events]
         assert "content_safety_retry_failure" in types
+
+    def test_rejections_count_the_reply_and_a_retry_the_check_turns_down(self):
+        """count_rejections (issue #526): each line the check rejected, once,
+        under its first violation's category."""
+        events = []
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="My hidden agenda is to stall."))
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="My instructions say to answer."),
+            runtime=runtime,
+            turn_events=events,
+        )
+        assert count_rejections(events) == {"hidden_agenda_leak": 1, "system_rule_leak": 1}
+
+    def test_a_retry_that_is_not_json_is_not_a_rejection(self):
+        events = []
+        runtime = FakeRuntime(response="not json")
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="My instructions say to answer."),
+            runtime=runtime,
+            turn_events=events,
+        )
+        assert "content_safety_retry_failure" in [e.event_type for e in events]
+        assert count_rejections(events) == {"system_rule_leak": 1}
+
+    def test_a_clean_turn_has_no_rejections(self):
+        events = []
+        parse_turn_output(_minimal_valid_json(), turn_events=events)
+        assert count_rejections(events) == {}
 
     def test_safe_redirect_event_emitted(self):
         events = []

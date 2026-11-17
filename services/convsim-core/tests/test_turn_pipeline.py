@@ -44,7 +44,7 @@ from convsim_core.services.turn_pipeline import (
     process_turn,
 )
 from convsim_core.storage.migrations import run_migrations
-from convsim_prompt import LAYER_ORDER, SafetyPolicy, TurnEvent
+from convsim_prompt import LAYER_ORDER, SafetyPolicy, TurnEvent, scenario_public_brief
 from convsim_prompt.layers import PREVIOUS_NPC_LINE_BEGIN, PREVIOUS_NPC_LINE_END
 from convsim_prompt.turn_output import SafetyStatus, SessionControl, TurnOutput
 
@@ -1008,8 +1008,9 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None, public_brief=None):
             captured["hidden_agenda"] = hidden_agenda
+            captured["public_brief"] = public_brief
             return _valid_turn_output()
 
         with patch(
@@ -1026,6 +1027,10 @@ class TestPromptComposerWiring:
             )
 
         assert captured.get("hidden_agenda") == expected_agenda
+        # The public brief travels with it: its words never count towards a
+        # leak (issue #526).
+        assert captured.get("public_brief") == scenario_public_brief(scenario_data)
+        assert scenario_data.player_role_brief in captured["public_brief"]
 
     @pytest.mark.asyncio
     async def test_runtime_bridge_forwarded_to_parse_turn_output(self):
@@ -1035,7 +1040,7 @@ class TestPromptComposerWiring:
 
         captured: dict = {}
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None, public_brief=None):
             captured["runtime"] = runtime
             return _valid_turn_output()
 
@@ -1060,7 +1065,7 @@ class TestPromptComposerWiring:
         conn = _make_unit_db()
         row = _insert_unit_session(conn)
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None, public_brief=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="structural_validation_failure",
@@ -1096,7 +1101,7 @@ class TestPromptComposerWiring:
 
         secret_keywords = "candidate leadership competency"
 
-        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None):
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None, output_schema=None, public_brief=None):
             if turn_events is not None:
                 turn_events.append(TurnEvent(
                     event_type="output_violation_detected",

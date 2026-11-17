@@ -37,8 +37,11 @@ from .layers import (
     UNTRUSTED_CONTENT_END,
 )
 from .output_validator import (
+    AgendaLeak,
     OutputValidationResult,
     OutputViolation,
+    find_agenda_leak,
+    scenario_public_brief,
     validate_npc_output,
 )
 from .rubric import RubricIdMatcher, normalize_dimension_id
@@ -60,6 +63,7 @@ from .turn_output import (
     TurnEvent,
     TurnOutput,
     ValidationError,
+    count_rejections,
     filter_rubric_observations,
     parse_turn_output,
 )
@@ -137,6 +141,7 @@ __all__ = [
     "parse_turn_output",
     "TurnOutput",
     "TurnEvent",
+    "count_rejections",
     "RubricObservation",
     "SafetyStatus",
     "SessionControl",
@@ -149,6 +154,9 @@ __all__ = [
     "validate_npc_output",
     "OutputValidationResult",
     "OutputViolation",
+    "AgendaLeak",
+    "find_agenda_leak",
+    "scenario_public_brief",
     # Repetition guard (issue #580)
     "asks_for_repeat",
     "check_repetition",

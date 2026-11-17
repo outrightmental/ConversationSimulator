@@ -382,6 +382,8 @@ class TestRetryRequest:
         # The turn's parse may repair; the retry's gets no model call of its own.
         assert turn["runtime"] is not None and retry["runtime"] is None
         assert turn["hidden_agenda"] == retry["hidden_agenda"]
+        # And the same public brief, whose words the check ignores (issue #526).
+        assert turn["public_brief"] and turn["public_brief"] == retry["public_brief"]
 
 
 # ---------------------------------------------------------------------------
