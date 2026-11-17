@@ -74,7 +74,7 @@ export const en = {
         workbench: 'The Creator Workbench: write and share your own scenarios, characters, and rubrics',
         models: 'Model tiers, Ollama, and your own GGUF files for higher-quality characters',
       },
-      cta: 'View the full game on Steam',
+      cta: 'View the full game on {{store}}',
       carryOver:
         'Your downloaded model, sessions, and logbook stay on this computer and are picked up by the full version.',
     },

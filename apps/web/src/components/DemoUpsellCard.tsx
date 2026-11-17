@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // The demo edition's one upsell (issue #495): a single card that says what the
-// full version adds and links to the paid base app on Steam. Everything the
+// full version adds and links to the paid base app in the store this build is
+// sold through (Steam, the Microsoft Store or the App Store). Everything the
 // demo hides is "disabled with upsell" through this card rather than through
 // greyed-out controls scattered across the UI, so the demo reads as a complete
 // small product rather than a crippled large one.
 import type { MouseEvent } from 'react'
 import { useTranslation } from '../i18n'
-import { FULL_APP_STEAM_APP_ID, FULL_APP_STEAM_URL } from '../edition'
+import { FULL_APP_STEAM_APP_ID, buildStore, fullAppLink } from '../edition'
 import { isDesktopShell, openExternal } from '../lib/openExternal'
 
 type TauriInvoke = <T>(cmd: string, args?: unknown) => Promise<T>
@@ -16,12 +17,13 @@ type TauriWindow = { __TAURI__?: { core?: { invoke?: TauriInvoke } } }
 /**
  * Open the full game's store page. Under Steam the overlay's store view keeps
  * the player inside the demo (Valve's recommended demo → wishlist/purchase
- * path); anywhere else — the overlay disabled, not launched through Steam, or
- * a plain browser — the page opens in the default browser instead.
+ * path); anywhere else — the overlay disabled, not launched through Steam, a
+ * build for another store, or a plain browser — the page opens in the default
+ * browser instead.
  */
 export async function openFullAppStorePage(): Promise<void> {
   const invoke = (window as TauriWindow).__TAURI__?.core?.invoke
-  if (invoke) {
+  if (invoke && buildStore() === 'steam') {
     try {
       const shown = await invoke<boolean>('steam_open_store_page', { appId: FULL_APP_STEAM_APP_ID })
       if (shown) return
@@ -29,7 +31,7 @@ export async function openFullAppStorePage(): Promise<void> {
       // Not a Steam build (command missing) — fall through to the browser.
     }
   }
-  await openExternal(FULL_APP_STEAM_URL)
+  await openExternal(fullAppLink().url)
 }
 
 interface DemoUpsellCardProps {
@@ -39,6 +41,7 @@ interface DemoUpsellCardProps {
 
 export default function DemoUpsellCard({ compact = false }: DemoUpsellCardProps) {
   const { t } = useTranslation()
+  const full = fullAppLink()
   // Voice is not one of them: the demo has it too (issue #464).
   const bullets = ['library', 'workbench', 'models'] as const
 
@@ -95,7 +98,7 @@ export default function DemoUpsellCard({ compact = false }: DemoUpsellCardProps)
         </ul>
       )}
       <a
-        href={FULL_APP_STEAM_URL}
+        href={full.url}
         target="_blank"
         rel="noreferrer"
         data-testid="demo-upsell-link"
@@ -111,7 +114,7 @@ export default function DemoUpsellCard({ compact = false }: DemoUpsellCardProps)
           textDecoration: 'none',
         }}
       >
-        {t('demo.upsell.cta')}
+        {t('demo.upsell.cta', { store: full.storeName })}
       </a>
       <p style={{ margin: '0.6rem 0 0', fontSize: '0.75rem', color: '#71717a' }}>
         {t('demo.upsell.carryOver')}

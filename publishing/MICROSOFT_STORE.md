@@ -23,6 +23,28 @@ tax: add the payout and tax profiles, without which Partner Center will not
 charge money; (2) the submission → Age ratings: review the IARC preview, tick
 the IARC Terms of Use and Save; (3) **Submit for certification**.
 
+## The demo
+
+The free demo is its own Store product, as on Steam: the demo edition (five
+curated conversations, one model download), packed the same way from a demo
+Release run (`microsoft-store.yml -f edition=demo`, chained after every demo
+build).
+
+| | |
+|---|---|
+| Partner Center product | *Conversation Simulator Demo*, MSIX or PWA app, reserved 2026-11-17 |
+| Store ID | `9NNGXLM2HZZM` (repository variable `MSSTORE_DEMO_PRODUCT_ID`) |
+| Package identity | `OutrightMental.ConversationSimulatorDemo` (`MSSTORE_DEMO_IDENTITY_NAME`); publisher as the full app |
+| Price | **Free** |
+| Markets, category, privacy, age rating | as the full app. The demo's five include *The Coffee Cart* (the Dating pack's first ask), so the IARC dating answer stays yes; the wine-bar first date is not in the demo, so its alcohol answer is no |
+| Logos | `microsoft-store/Assets-demo/`, from the demo icon with its DEMO ribbon |
+| Screenshots | `assets/screenshots/demo/` (1920 × 1080), captured from the demo |
+| Upsell | *Get the full game* opens the full app's Store page (`VITE_CONVSIM_STORE=microsoft-store`), never Steam |
+
+Demo listing text: the short description and the body of
+`STEAM_STORE_PAGE.md` → *Demo short description* / *Demo long description*,
+without the Steam-specific lines (it must not name Steam or other stores).
+
 ## What the Store edition is
 
 - **The full edition**, the same as Steam's: every official pack, the Creator

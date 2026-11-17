@@ -79,7 +79,7 @@ export const de: LocaleMessages = {
         workbench: 'Die Creator-Werkbank: eigene Szenarien, Figuren und Bewertungsraster schreiben und teilen',
         models: 'Modellstufen, Ollama und eigene GGUF-Dateien für hochwertigere Figuren',
       },
-      cta: 'Vollversion auf Steam ansehen',
+      cta: 'Vollversion ansehen ({{store}})',
       carryOver:
         'Ihr heruntergeladenes Modell, Ihre Sitzungen und Ihr Logbuch bleiben auf diesem Computer und werden von der Vollversion übernommen.',
     },

@@ -185,6 +185,7 @@ jobs:
           VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
           VITE_CONVSIM_EDITION: full
           CONVSIM_EDITION: full
+          VITE_CONVSIM_STORE: mac-app-store
         run: |
           set -euo pipefail
           # No APPLE_SIGNING_IDENTITY: the store signature is made afterwards,

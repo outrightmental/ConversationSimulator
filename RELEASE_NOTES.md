@@ -1,4 +1,31 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.11 — Release Notes
+
+> **Patch release (2026-11-17).** Two more stores.
+
+## What's new in v0.4.11
+
+### The Microsoft Store (Windows)
+
+Conversation Simulator is coming to the Microsoft Store: the full app at
+$9.99, the same price as on Steam, and the demo for free. The Store edition
+is the same software as Steam's, installed and updated by the Store, without
+Steam's achievements, Workshop and DLC. In the Store's demo, *Get the full
+game* opens the full app in the Microsoft Store.
+
+### The Mac App Store (macOS)
+
+The build for the Mac App Store is ready: the full app, built for Apple's App
+Sandbox. Inside the sandbox an app may not download programs, so the speech
+engine that voice downloads on other builds is not available there yet; every
+conversation works in text.
+
+## Upgrade notes
+
+- No database migration. Nothing changes for Steam players.
+
+---
+
 # Conversation Simulator v0.4.10 — Release Notes
 
 > **Patch release (2026-11-16).** Your graphics card writes the replies.

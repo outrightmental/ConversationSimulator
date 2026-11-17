@@ -14,7 +14,11 @@
     * The Steam-only files are left out: steam_api64.dll, installscript.vdf
       and the WebView2 bootstrapper it runs. Windows 10 2004 and later already
       carry the WebView2 runtime, and a Store app cannot run an installer.
-    * AppxManifest.xml and its three logos, from publishing/microsoft-store/.
+    * AppxManifest.xml and its three logos, from publishing/microsoft-store/
+    (Assets-demo/ for the demo, whose icon says DEMO).
+
+  -Edition demo packs the free demo (publishing/MICROSOFT_STORE.md, "The
+  demo") from the demo release's depot; its identity is the demo product's.
 
   The package is not signed here: the Store signs what it publishes. Every
   binary inside already carries the studio's Authenticode signature.
@@ -39,12 +43,19 @@ param(
   [string]$Layout = (Join-Path ([System.IO.Path]::GetTempPath()) 'convsim-msix-layout'),
   # Assemble the layout and stop: for registering it locally with
   # Add-AppxPackage -Register (Developer Mode) to try the packaged app.
-  [switch]$LayoutOnly
+  [switch]$LayoutOnly,
+  # Which product: the paid full app, or the free demo.
+  [ValidateSet('full', 'demo')][string]$Edition = 'full'
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $storeDir = Join-Path $repo 'publishing\microsoft-store'
+$editions = @{
+  full = @{ Name = 'Conversation Simulator'; Description = 'Rehearse real conversations with simulated characters, on your own computer.'; Assets = 'Assets' }
+  demo = @{ Name = 'Conversation Simulator Demo'; Description = 'Try five real conversations with simulated characters, on your own computer.'; Assets = 'Assets-demo' }
+}
+$product = $editions[$Edition]
 
 foreach ($pair in @(@('IdentityName', $IdentityName), @('Publisher', $Publisher), @('PublisherDisplayName', $PublisherDisplayName))) {
   if (-not $pair[1]) { throw "$($pair[0]) is empty: pass -$($pair[0]) or set the matching MSSTORE_ variable (publishing/MICROSOFT_STORE.md)." }
@@ -72,16 +83,17 @@ Get-ChildItem -Path $Depot -Force | Where-Object { $steamOnly -notcontains $_.Na
   Copy-Item -Path $_.FullName -Destination $Layout -Recurse -Force
 }
 Copy-Item -Path $Exe -Destination (Join-Path $Layout 'ConversationSimulator.exe') -Force
-Copy-Item -Path (Join-Path $storeDir 'Assets') -Destination $Layout -Recurse -Force
+Copy-Item -Path (Join-Path $storeDir $product.Assets) -Destination (Join-Path $Layout 'Assets') -Recurse -Force
 
 $manifest = Get-Content -Raw -Path (Join-Path $storeDir 'AppxManifest.xml')
 $manifest = $manifest.Replace('__IDENTITY_NAME__', $IdentityName).Replace('__PUBLISHER_DISPLAY_NAME__', $PublisherDisplayName).Replace('__PUBLISHER__', $Publisher).Replace('__VERSION__', $version)
+$manifest = $manifest.Replace('__DISPLAY_NAME__', $product.Name).Replace('__DESCRIPTION__', $product.Description)
 if ($manifest -match '__[A-Z_]+__') { throw "AppxManifest.xml still has the placeholder $($Matches[0]) in it." }
 [System.IO.File]::WriteAllText((Join-Path $Layout 'AppxManifest.xml'), $manifest, (New-Object System.Text.UTF8Encoding($false)))
 
 $files = @(Get-ChildItem -Path $Layout -Recurse -File)
 $mb = [math]::Round((($files | Measure-Object -Property Length -Sum).Sum) / 1MB, 1)
-Write-Host "Layout: $Layout ($($files.Count) files, $mb MB), version $version"
+Write-Host "Layout: $Layout ($($files.Count) files, $mb MB), $($product.Name) $version"
 if ($LayoutOnly) { return }
 
 $makeappx = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter makeappx.exe -ErrorAction SilentlyContinue |

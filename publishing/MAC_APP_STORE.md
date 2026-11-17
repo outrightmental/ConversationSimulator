@@ -42,6 +42,18 @@ the engine includes eSpeak NG, licensed GPL-3.0-or-later**, and distributing
 GPL-3.0 code through the App Store is widely held to conflict with the store's
 terms. That is a licensing decision for Outright Mental, not a build step.
 
+### The demo
+
+Not as its own app here. App Review guideline 2.2: *"Demos, betas, and trial
+versions of your app don't belong on the App Store — use TestFlight instead."*
+Apple's accepted shape for "try before you buy" is one free app that unlocks
+the full edition with an in-app purchase (a non-consumable, optionally
+presented as a free trial, guideline 3.1.1). That would mean a StoreKit
+purchase in the shell and the demo edition becoming the app's locked state —
+work not done yet, and a pricing decision (free download + $9.99 unlock
+instead of a $9.99 app). Until then the Mac App Store carries the full app
+only; the Steam and Microsoft Store demos are unaffected.
+
 ## The steps that are a person's
 
 Done once, in this order. Nothing here can be done from CI.
