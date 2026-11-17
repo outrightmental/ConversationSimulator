@@ -318,6 +318,10 @@ export default function Conversation() {
   const ttsEnabledRef = useRef(false)
   // Ids of the `tts_audio_chunk` events already queued for playback.
   const ttsPlayedEventIdsRef = useRef<Set<number>>(new Set())
+  // Audio addresses already queued. A sentence announced on the socket as it
+  // streams (issue #544) is listed again in the turn's REST response at the
+  // same address; it is played once, from whichever arrived first.
+  const ttsQueuedUrlsRef = useRef<Set<string>>(new Set())
   // True from the moment a turn is sent until its first sentence is heard, so
   // time-to-first-audio is recorded once per turn.
   const ttsAwaitingFirstAudioRef = useRef(false)
@@ -503,11 +507,21 @@ export default function Conversation() {
           : typeof cachePath === 'string' && cachePath !== ''
           ? ttsAudioUrl(cachePath)
           : null
-      if (!url) continue
+      if (!url || ttsQueuedUrlsRef.current.has(url)) continue
+      ttsQueuedUrlsRef.current.add(url)
       const pause = event.payload['thinking_pause_ms']
       const pauseLeft = typeof pause === 'number' ? Math.max(0, pause - waitedMs) : undefined
       _enqueueTtsUrl(url, pauseLeft)
     }
+  }
+
+  // A sentence announced on the socket while the reply is still being written
+  // (issue #544). The core has already taken the wait off its thinking pause.
+  function _enqueueStreamedSentence(audioPath: string, thinkingPauseMs?: number) {
+    const url = speechAudioUrl(audioPath)
+    if (!url || ttsQueuedUrlsRef.current.has(url)) return
+    ttsQueuedUrlsRef.current.add(url)
+    _enqueueTtsUrl(url, thinkingPauseMs)
   }
 
   function _enqueueTtsChunk(cachePath: string, thinkingPauseMs?: number) {
@@ -844,7 +858,9 @@ export default function Conversation() {
             ])
             break
           case 'tts.audio_chunk':
-            if (event.payload.cache_path) {
+            if (event.payload.audio_path) {
+              _enqueueStreamedSentence(event.payload.audio_path, event.payload.thinking_pause_ms)
+            } else if (event.payload.cache_path) {
               _enqueueTtsChunk(
                 event.payload.cache_path,
                 event.payload.thinking_pause_ms,

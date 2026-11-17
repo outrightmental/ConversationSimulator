@@ -2302,6 +2302,90 @@ describe('Conversation screen', () => {
       spy.mockRestore()
     })
 
+    // ── Spoken while it streams (issue #544) ─────────────────────────────────
+    // The core announces each sentence on the socket as it is released, long
+    // before the turn commits; the turn's response then lists the same
+    // sentences at the same addresses.
+
+    function streamedSentence(index: number, pauseMs?: number): WsEvent {
+      return {
+        type: 'tts.audio_chunk',
+        seq: 10 + index,
+        session_id: SESSION_ID,
+        ts: '2026-07-01T00:00:01Z',
+        payload: {
+          chunk_index: index,
+          turn_number: 1,
+          text: `Sentence ${index + 1}.`,
+          voice_id: 'af_heart',
+          cache_path: null,
+          error: null,
+          pending: true,
+          audio_path: `/sessions/${SESSION_ID}/speech/1/${index}`,
+          ...(pauseMs != null ? { thinking_pause_ms: pauseMs } : {}),
+        },
+      }
+    }
+
+    it('starts speaking a sentence as soon as the socket announces it', async () => {
+      const { created, spy } = spyOnAudio()
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      act(() => wsCallback?.(streamedSentence(0, 0)))
+
+      expect(created.map((c) => c.url)).toEqual([`/api/sessions/${SESSION_ID}/speech/1/0`])
+      expect(created[0].el.play).toHaveBeenCalled()
+      spy.mockRestore()
+    })
+
+    it('plays a streamed sentence once when the turn response lists it again', async () => {
+      const { created, spy } = spyOnAudio()
+      let answer: (value: unknown) => void = () => {}
+      mockApi.submitTurn.mockImplementation(
+        () => new Promise((resolve) => { answer = resolve }) as never,
+      )
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'I have five years of experience.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      // Both sentences are announced while the turn is still being written.
+      act(() => {
+        wsCallback?.(streamedSentence(0, 0))
+        wsCallback?.(streamedSentence(1))
+      })
+      expect(created).toHaveLength(1)
+
+      // Then the turn commits and its response lists them both, plus a third.
+      await act(async () => {
+        answer({
+          ok: true,
+          data: {
+            ...turnResponse,
+            events: [
+              ...turnResponse.events,
+              pendingChunk(20, 1, 0, 3),
+              pendingChunk(21, 1, 1, 3),
+              pendingChunk(22, 1, 2, 3),
+            ],
+          },
+        })
+        await Promise.resolve()
+      })
+      act(() => created[0].el.onended?.())
+      act(() => created[1].el.onended?.())
+
+      expect(created.map((c) => c.url)).toEqual([
+        `/api/sessions/${SESSION_ID}/speech/1/0`,
+        `/api/sessions/${SESSION_ID}/speech/1/1`,
+        `/api/sessions/${SESSION_ID}/speech/1/2`,
+      ])
+      spy.mockRestore()
+    })
+
     async function sendTurnAnsweredAfter(ms: number, pauseMs: number) {
       mockApi.submitTurn.mockImplementation(async () => {
         await new Promise((resolve) => setTimeout(resolve, ms))

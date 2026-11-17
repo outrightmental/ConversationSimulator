@@ -124,6 +124,14 @@ class FakeChatRuntime(ChatRuntime):
     def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         return self._stream(request)
 
+    async def prewarm(self, request: ChatRequest) -> bool:
+        # Every prewarm request, in order (issue #525), for tests to inspect.
+        # Kept on the instance on first use, so subclasses with an __init__ of
+        # their own need not call this class's.
+        requests: list[ChatRequest] = self.__dict__.setdefault("prewarm_requests", [])
+        requests.append(request)
+        return True
+
     async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         if request.json_schema is not None:
             # Return the debrief narrative response when the debrief schema is detected.

@@ -308,6 +308,11 @@ class _ScriptedRuntime(FakeChatRuntime):
     def system_prompts(self) -> List[str]:
         return [r.messages[0].content for r in self.requests]
 
+    def prompts(self) -> List[str]:
+        """Each request's whole prompt: the system message, then the user turn,
+        which carries what changes per turn (issue #524)."""
+        return ["\n".join(m.content for m in r.messages) for r in self.requests]
+
 
 def _unit_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
@@ -362,12 +367,15 @@ class TestTheTurnRequest:
         assert delta["required"] == names and list(delta["properties"]) == names
         assert delta["additionalProperties"] is False
         assert delta["properties"]["firmness"] == {"type": "integer"}
-        system = request.messages[0].content
-        assert system.index("--- LAYER:STATE_VARIABLES ---") < system.index("--- LAYER:CURRENT_STATE ---")
+        system, user = request.messages[0].content, request.messages[1].content
+        # What the variables mean is stable and sits in the system prompt; their
+        # values now ride in the user turn (issue #524).
+        assert "--- LAYER:STATE_VARIABLES ---" in system
+        assert "--- LAYER:CURRENT_STATE ---" in user
         assert "  - leverage (0-100, ±20 a turn): " in system
         assert "  - firmness (0-100, ±12 a turn)" in system
         # CURRENT_STATE leaves out the baselines the scenario never reads.
-        current = system.split("--- LAYER:CURRENT_STATE ---")[1].split("--- LAYER:")[0]
+        current = user.split("--- LAYER:CURRENT_STATE ---")[1].split("--- LAYER:")[0]
         assert "trust" not in current and "  leverage: 30" in current
         # The schema the prompt quotes is the one sent.
         assert json.dumps(request.json_schema, indent=2) in system
@@ -399,7 +407,7 @@ class TestEventsBeforeTheTurn:
         runtime = _ScriptedRuntime({"state_delta": {"mood": 15}})
         results, conn = await _play(info, runtime, 3)
         assert [r.triggered_scenario_events for r in results] == [[], ["warm"], []]
-        prompts = runtime.system_prompts()
+        prompts = runtime.prompts()
         assert "LAYER:SCENARIO_EVENTS" not in prompts[0]
         assert "--- LAYER:SCENARIO_EVENTS ---\n" in prompts[1]
         assert "  - Warm up noticeably." in prompts[1]
@@ -435,7 +443,7 @@ class TestEventsBeforeTheTurn:
         )
         results, _ = await _play(info, runtime, 4)
         assert [r.triggered_scenario_events for r in results] == [[], ["push"], ["push"], []]
-        assert ["  - Hold your ground." in p for p in runtime.system_prompts()] == [False, True, True, False]
+        assert ["  - Hold your ground." in p for p in runtime.prompts()] == [False, True, True, False]
 
     @pytest.mark.asyncio
     async def test_a_flag_event_reads_the_flags_of_the_reply_before(self):
@@ -464,7 +472,7 @@ class TestEventsBeforeTheTurn:
         runtime = _ScriptedRuntime({})
         [result], _ = await _play(info, runtime, 1)
         assert result.triggered_scenario_events == ["b", "a"]
-        prompt = runtime.system_prompts()[0]
+        prompt = runtime.prompts()[0]
         assert prompt.index("  - Second.") < prompt.index("  - First?")
 
 

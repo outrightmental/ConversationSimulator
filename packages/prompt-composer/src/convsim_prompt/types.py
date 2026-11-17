@@ -177,6 +177,13 @@ class TranscriptEntry:
 
 
 # Canonical structured output schema for NPC turns (SPEC §6.4).
+# How much rubric bookkeeping a turn may write (issue #543): at most this many
+# observations, each one sentence of about this many words, with a grammar cap
+# in characters about 1.5 times as long (a cap cuts mid-word).
+MAX_OBSERVATIONS = 2
+OBSERVATION_WORDS = 15
+OBSERVATION_MAX_CHARS = 140
+
 # Adapters may pass this to native JSON-mode APIs (Ollama, llama.cpp grammar)
 # in addition to embedding it in the prompt.
 NPC_TURN_OUTPUT_SCHEMA: Dict[str, Any] = {
@@ -211,14 +218,21 @@ NPC_TURN_OUTPUT_SCHEMA: Dict[str, Any] = {
             },
         },
         "event_flags": {"type": "array", "items": {"type": "string"}},
+        # Bounded (issue #543): only the debrief reads these, and every token
+        # written is time the player waits; on a laptop processor three
+        # 25-word observations were most of a turn's 20 s of bookkeeping.
+        # The prompt asks for one short sentence (OBSERVATION_WORDS words);
+        # the grammar's character cap is a backstop about 1.5 times that,
+        # since it cuts mid-word.
         "rubric_observations": {
             "type": "array",
+            "maxItems": MAX_OBSERVATIONS,
             "items": {
                 "type": "object",
                 "required": ["rubric_id", "observation"],
                 "properties": {
                     "rubric_id": {"type": "string"},
-                    "observation": {"type": "string"},
+                    "observation": {"type": "string", "maxLength": OBSERVATION_MAX_CHARS},
                     "score_delta": {
                         "type": "integer",
                         "minimum": -3,
@@ -312,13 +326,15 @@ def build_npc_turn_output_schema(
     ``_state_delta_schema``). Without either (a scenario with no rubric and
     no state of its own) the result equals NPC_TURN_OUTPUT_SCHEMA.
 
-    The schema is constant for a session, and it is the last system layer,
-    after the per-turn state and transcript, so making it per scenario costs
-    the prompt cache nothing (issue #524).
+    The schema is constant for a session, and it is the last layer of the
+    system prompt, which nothing per turn is part of, so making it per
+    scenario costs the prompt cache nothing (issue #524).
 
     Only keywords both converters handle are used: ``type``, ``properties``,
-    ``required``, ``enum`` of strings, ``items``, ``additionalProperties``
-    and integer ``minimum``/``maximum``.
+    ``required``, ``enum`` of strings, ``items``, ``additionalProperties``,
+    integer ``minimum``/``maximum``, and the ``maxItems``/``maxLength``
+    bounds on the rubric observations (issue #543; the pinned llama.cpp
+    build enforces both).
     """
     schema = copy.deepcopy(NPC_TURN_OUTPUT_SCHEMA)
     ids = list(dict.fromkeys(i for i in (rubric_ids or ()) if isinstance(i, str) and i))
@@ -390,7 +406,12 @@ class PromptComposerInput:
     memory_summary: Optional[str] = None
     relationship_recap: Optional[Dict[str, Any]] = None
     max_transcript_turns: int = 6
-    token_budget: int = 4096
+    # Estimated tokens (characters / 4) before the transcript window halves.
+    # 4,352 since the transcript moved into the user turn with a frame of its
+    # own (issue #524): the frame's two lines took the demo scenarios' full
+    # window just over 4,096. Their real prompts are 3,400-3,700 tokens, well
+    # inside the engine's 8,192 with room for the reply's 1,024.
+    token_budget: int = 4352
     # The npc_instruction of each scenario event that fired for this turn, in
     # the scenario's event order (issue #580): the SCENARIO_EVENTS layer.
     scenario_event_instructions: List[str] = field(default_factory=list)

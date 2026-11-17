@@ -87,10 +87,13 @@ class TestInterviewPromptSnapshot:
         bundle = compose_turn_prompt(make_interview_input())
         assert "nsfw_sexual_content" in bundle.system_prompt
 
-    def test_state_variables_in_system_prompt(self):
+    def test_state_values_in_the_user_turn(self):
+        # The values change every turn, so they ride in the user turn and the
+        # system prompt stays the same from turn to turn (issue #524).
         bundle = compose_turn_prompt(make_interview_input())
-        assert "trust: 50" in bundle.system_prompt
-        assert "patience: 75" in bundle.system_prompt
+        assert "trust: 50" in bundle.user_prompt
+        assert "patience: 75" in bundle.user_prompt
+        assert "trust: 50" not in bundle.system_prompt
 
     def test_difficulty_in_system_prompt(self):
         bundle = compose_turn_prompt(make_interview_input())
@@ -102,15 +105,16 @@ class TestInterviewPromptSnapshot:
             TranscriptEntry(speaker="player", text="I have five years in product.", turn_number=0),
         ]
         bundle = compose_turn_prompt(make_interview_input(transcript=transcript))
-        assert "Tell me about yourself" in bundle.system_prompt
-        assert "five years in product" in bundle.system_prompt
+        assert "Tell me about yourself" in bundle.user_prompt
+        assert "five years in product" in bundle.user_prompt
+        assert "five years in product" not in bundle.system_prompt
 
     def test_memory_summary_included_when_provided(self):
         from convsim_prompt import PromptComposerInput
         inp = make_interview_input()
         inp.memory_summary = "Player demonstrated strong STAR method usage in turn 3."
         bundle = compose_turn_prompt(inp)
-        assert "STAR method" in bundle.system_prompt
+        assert "STAR method" in bundle.user_prompt
         assert "STAR method" in bundle.layer_map["MEMORY_SUMMARY"]
 
     def test_bundle_is_deterministic(self):
@@ -172,10 +176,21 @@ class TestLayerOrdering:
         sp = bundle.system_prompt
         assert _layer_pos(sp, "NPC_PUBLIC_PERSONA") < _layer_pos(sp, "OUTPUT_SCHEMA")
 
-    def test_output_schema_after_recent_transcript(self):
+    def test_per_turn_layers_are_in_the_user_turn(self):
+        # Issue #524: what changes per turn never sits in the system prompt,
+        # in front of stable text, where it would make the engine re-read
+        # everything after it.
         bundle = compose_turn_prompt(make_interview_input())
-        sp = bundle.system_prompt
-        assert _layer_pos(sp, "RECENT_TRANSCRIPT") < _layer_pos(sp, "OUTPUT_SCHEMA")
+        for name in ("RECENT_TRANSCRIPT", "MEMORY_SUMMARY", "CURRENT_STATE"):
+            assert f"LAYER:{name}" in bundle.user_prompt
+            assert f"LAYER:{name}" not in bundle.system_prompt
+        up = bundle.user_prompt
+        assert (
+            _layer_pos(up, "RECENT_TRANSCRIPT")
+            < _layer_pos(up, "MEMORY_SUMMARY")
+            < _layer_pos(up, "CURRENT_STATE")
+            < _layer_pos(up, "PLAYER_UTTERANCE")
+        )
 
     def test_player_utterance_is_user_turn_not_system(self):
         bundle = compose_turn_prompt(make_interview_input())
@@ -189,9 +204,9 @@ class TestLayerOrdering:
 
     def test_only_the_optional_layers_can_be_missing(self):
         """A scenario with no rubric and no state of its own (the hardcoded
-        catalog), on a turn no event fired, has no RUBRIC, STATE_VARIABLES or
-        SCENARIO_EVENTS layer; every other system layer is always there."""
-        assert OPTIONAL_SYSTEM_LAYERS == {"RUBRIC", "STATE_VARIABLES", "SCENARIO_EVENTS"}
+        catalog) has no RUBRIC or STATE_VARIABLES layer; every other system
+        layer is always there."""
+        assert OPTIONAL_SYSTEM_LAYERS == {"RUBRIC", "STATE_VARIABLES"}
         bundle = compose_turn_prompt(make_interview_input())
         for name in SYSTEM_LAYER_ORDER:
             if name in OPTIONAL_SYSTEM_LAYERS:
@@ -310,7 +325,7 @@ class TestNpcHiddenAgenda:
         sp = bundle.system_prompt
         private_start = _layer_pos(sp, "NPC_PRIVATE_PERSONA")
         # Slice to the next layer to scope the check.
-        next_pos = _layer_pos(sp, "CURRENT_STATE")
+        next_pos = _layer_pos(sp, "RELATIONSHIP_MEMORY")
         private_section = sp[private_start:next_pos]
         assert "NEVER reveal" in private_section or "never state this aloud" in private_section
 
@@ -552,8 +567,8 @@ class TestPromptBudget:
         inp = make_interview_input(transcript=transcript)
         inp.max_transcript_turns = 0
         bundle = compose_turn_prompt(inp)
-        assert "Tell me about yourself" not in bundle.system_prompt
-        assert "No previous turns" in bundle.system_prompt
+        assert "Tell me about yourself" not in bundle.system_prompt + bundle.user_prompt
+        assert "No previous turns" in bundle.user_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -665,11 +680,13 @@ class TestRelationshipMemoryLayer:
         rm = bundle.layer_map["RELATIONSHIP_MEMORY"]
         assert "5" in rm
 
-    def test_relationship_memory_after_memory_summary(self):
-        """RELATIONSHIP_MEMORY must come after MEMORY_SUMMARY in the system prompt."""
+    def test_relationship_memory_is_in_the_stable_system_prompt(self):
+        """RELATIONSHIP_MEMORY changes only between sessions, so it sits with
+        the stable layers in the system prompt (issue #524), after the personas."""
         bundle = compose_turn_prompt(make_interview_input())
         sp = bundle.system_prompt
-        assert _layer_pos(sp, "MEMORY_SUMMARY") < _layer_pos(sp, "RELATIONSHIP_MEMORY")
+        assert _layer_pos(sp, "NPC_PRIVATE_PERSONA") < _layer_pos(sp, "RELATIONSHIP_MEMORY")
+        assert "LAYER:RELATIONSHIP_MEMORY" not in bundle.user_prompt
 
     def test_relationship_memory_before_response_style(self):
         """RELATIONSHIP_MEMORY must come before RESPONSE_STYLE in the system prompt."""

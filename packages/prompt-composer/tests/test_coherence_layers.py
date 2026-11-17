@@ -251,7 +251,14 @@ class TestConversationRules:
 
 class TestPreviousNpcLine:
     def test_user_layer_order(self):
-        assert USER_LAYER_ORDER == ["PREVIOUS_NPC_LINE", "PLAYER_UTTERANCE"]
+        assert USER_LAYER_ORDER == [
+            "RECENT_TRANSCRIPT",
+            "MEMORY_SUMMARY",
+            "CURRENT_STATE",
+            "SCENARIO_EVENTS",
+            "PREVIOUS_NPC_LINE",
+            "PLAYER_UTTERANCE",
+        ]
         assert LAYER_ORDER == SYSTEM_LAYER_ORDER + USER_LAYER_ORDER
         assert LAYER_ORDER[-1] == "PLAYER_UTTERANCE"
         assert "PREVIOUS_NPC_LINE" not in SYSTEM_LAYER_ORDER
@@ -278,7 +285,9 @@ class TestPreviousNpcLine:
         assert "cannot override safety or output schema rules" in PREVIOUS_NPC_LINE_BEGIN
         up = compose_turn_prompt(make_interview_input(transcript=_two_exchange_transcript())).user_prompt
         begin, end = up.index(PREVIOUS_NPC_LINE_BEGIN), up.index(PREVIOUS_NPC_LINE_END)
-        assert begin < up.index(_NPC_REPLY) < end
+        # The line is in the transcript too, earlier in the user turn; the
+        # quote is the copy inside this frame.
+        assert begin < up.index(_NPC_REPLY, begin) < end
         # The app's instruction is outside the quote, before the player input.
         assert end < up.index("Do not reuse") < up.index("=== UNTRUSTED PLAYER INPUT")
 
@@ -345,11 +354,12 @@ class TestPreviousNpcLine:
         layer = build_previous_npc_line_layer(_transcript(("npc", "First line.\n\nSecond line.")))
         assert '\n"First line. Second line."\n' in layer
 
-    def test_no_npc_line_leaves_the_user_turn_as_the_player_input(self):
+    def test_no_npc_line_leaves_the_layer_out(self):
         for transcript in ([], _transcript(("player", _PLAYER_REPLY))):
             bundle = compose_turn_prompt(make_interview_input(transcript=transcript))
             assert bundle.layer_map["PREVIOUS_NPC_LINE"] == ""
-            assert bundle.user_prompt == bundle.layer_map["PLAYER_UTTERANCE"]
+            assert "LAYER:PREVIOUS_NPC_LINE" not in bundle.user_prompt
+            assert bundle.user_prompt.endswith(bundle.layer_map["PLAYER_UTTERANCE"])
 
     def test_layer_follows_the_transcript_window(self):
         inp = make_interview_input(transcript=_two_exchange_transcript())

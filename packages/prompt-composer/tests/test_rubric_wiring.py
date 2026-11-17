@@ -119,7 +119,7 @@ class TestTurnSchema:
         of non-strings would not be a rubric id."""
         allowed = {
             "type", "properties", "required", "enum", "items", "additionalProperties",
-            "minimum", "maximum", "description",
+            "minimum", "maximum", "description", "maxItems", "maxLength",
         }
 
         def walk(node, path):
@@ -165,7 +165,8 @@ class TestRubricLayer:
         assert layer.splitlines() == [
             "--- LAYER:RUBRIC ---",
             "Rubric — what the player is practising. Put rubric_observations only under these ids, "
-            "and only about the player's latest line, never about your own:",
+            "and only about the player's latest line, never about your own. At most two, each "
+            "observation one short sentence of at most 15 words:",
             "  - specificity: Specific examples with context, action, and result",
             "  - self_awareness: Owns mistakes and explains growth",
             "Give score_delta above 0 when the player's line looks like this, "
@@ -187,8 +188,9 @@ class TestRubricLayer:
         sp = compose_turn_prompt(make_rubric_interview_input()).system_prompt
         rubric = sp.index("--- LAYER:RUBRIC ---")
         assert sp.index(UNTRUSTED_CONTENT_BEGIN) < sp.index("--- LAYER:NPC_PRIVATE_PERSONA ---") < rubric
-        # Ahead of the first per-turn layer, so a prompt cache reuses it (issue #524).
-        assert rubric < sp.index("--- LAYER:CURRENT_STATE ---")
+        # In the system prompt, which no per-turn layer is part of, so a prompt
+        # cache reuses it (issue #524).
+        assert "--- LAYER:CURRENT_STATE ---" not in sp
         assert rubric < sp.index(UNTRUSTED_CONTENT_END) < sp.index("--- LAYER:OUTPUT_SCHEMA ---")
 
     def test_does_not_change_from_turn_to_turn(self):
@@ -199,9 +201,8 @@ class TestRubricLayer:
         a, b = compose_turn_prompt(first), compose_turn_prompt(later)
         assert a.layer_map["RUBRIC"] == b.layer_map["RUBRIC"]
         assert a.layer_map["OUTPUT_SCHEMA"] == b.layer_map["OUTPUT_SCHEMA"]
-        # Everything up to CURRENT_STATE is byte-identical: the cacheable prefix.
-        cut = a.system_prompt.index("--- LAYER:CURRENT_STATE ---")
-        assert a.system_prompt[:cut] == b.system_prompt[:cut]
+        # The whole system prompt is byte-identical: the cacheable prefix.
+        assert a.system_prompt == b.system_prompt
 
     def test_authored_text_cannot_start_a_line(self):
         scenario = make_interview_scenario()
@@ -360,3 +361,24 @@ class TestParseTurnOutputFiltersRubricIds:
             RubricObservation(rubric_id="specificity", observation="a", score_delta=1),
         ]
         assert filter_rubric_observations(observations, None) == observations
+
+
+class TestBoundedBookkeeping:
+    """Issue #543: only the debrief reads the rubric observations, and every
+    token written is time the player waits, so the grammar bounds them."""
+
+    def test_at_most_two_observations_of_bounded_length(self):
+        from convsim_prompt.types import MAX_OBSERVATIONS, OBSERVATION_MAX_CHARS, OBSERVATION_WORDS
+
+        schema = turn_output_schema_for(make_rubric_interview_input().scenario)
+        observations = schema["properties"]["rubric_observations"]
+        assert observations["maxItems"] == MAX_OBSERVATIONS == 2
+        assert observations["items"]["properties"]["observation"]["maxLength"] == OBSERVATION_MAX_CHARS
+        # The cap is a backstop well past what the prompt asks for, since it cuts mid-word.
+        assert OBSERVATION_MAX_CHARS >= OBSERVATION_WORDS * 8
+
+    def test_the_spoken_line_is_never_bounded_and_stays_first(self):
+        schema = turn_output_schema_for(make_rubric_interview_input().scenario)
+        assert list(schema["properties"])[0] == "npc_utterance"
+        assert schema["required"][0] == "npc_utterance"
+        assert "maxLength" not in schema["properties"]["npc_utterance"]

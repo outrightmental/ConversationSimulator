@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from .composer import SYSTEM_LAYER_ORDER
+from .composer import SYSTEM_LAYER_ORDER, USER_LAYER_ORDER
 from .types import PromptBundle
 
 _REDACTED_PLACEHOLDER = "[REDACTED BY INSPECTOR]"
@@ -70,11 +70,15 @@ class PromptInspector:
             section = _REDACTED_PLACEHOLDER if name in redact_set else content
             lines.append(f"\n[Layer: {name}]\n{section}")
 
-        lines += [
-            "",
-            "--- USER PROMPT ---",
-            bundle.user_prompt,
-            "",
-            "=== END INSPECTION REPORT ===",
-        ]
+        # The user turn carries the per-turn layers (issue #524); a layer the
+        # turn left out (no event fired, no NPC line yet) is not listed.
+        lines += ["", "--- USER PROMPT (by layer) ---"]
+        for name in USER_LAYER_ORDER:
+            content = bundle.layer_map.get(name, "")
+            if not content:
+                continue
+            section = _REDACTED_PLACEHOLDER if name in redact_set else content
+            lines.append(f"\n[Layer: {name}]\n{section}")
+
+        lines += ["", "=== END INSPECTION REPORT ==="]
         return "\n".join(lines)

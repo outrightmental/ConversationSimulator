@@ -379,6 +379,32 @@ def run_smoke(
                         f"(budget {budget_ms} ms × {ci_hardware_factor} × {REGRESSION_TOLERANCE})"
                     )
 
+            # The debrief scores the scenario against its own rubric (issue
+            # #578): every scorecard row is a dimension the rubric declares.
+            # Before, the model invented the ids turn by turn and the debrief
+            # scored whatever it had invented.
+            _post_json(f"{base}/sessions/{session_id}/end", {})
+            debrief = _post_json(
+                f"{base}/sessions/{session_id}/debrief", {}, timeout=turn_timeout_s
+            )
+            declared = set(debrief.get("dimension_names") or {})
+            scored = set(debrief.get("scores") or {})
+            results["debrief"] = {
+                "declared": sorted(declared),
+                "scored": sorted(scored),
+                "used_fallback": debrief.get("used_fallback"),
+            }
+            print(f"[smoke] Debrief scored {sorted(scored)} of the rubric's {sorted(declared)}.")
+            if not declared:
+                failures.append(
+                    "the debrief named no rubric dimensions: the scenario's rubric did not load"
+                )
+            elif not scored <= declared:
+                failures.append(
+                    "the debrief scored dimensions the rubric does not declare: "
+                    f"{sorted(scored - declared)}"
+                )
+
             results["failures"] = failures
             results["verdict"] = "pass" if not failures else "fail"
 
@@ -409,12 +435,15 @@ def run_smoke(
         print(f"\n[smoke] Report written to {report_path}")
 
     if results["failures"]:
-        print("\n[smoke] FAILED — latency budget regression detected:")
+        print("\n[smoke] FAILED — a latency budget or the rubric check failed:")
         for f in results["failures"]:
             print(f"  ✗ {f}")
         return False
 
-    print(f"\n[smoke] PASSED — all latency budgets met on model {model_id}.")
+    print(
+        f"\n[smoke] PASSED — latency budgets met and the debrief scored only its "
+        f"rubric, on model {model_id}."
+    )
     return True
 
 
