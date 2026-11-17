@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from convsim_core.edition import require_demo_model_path
 from convsim_core.errors import ConvsimError
 from convsim_core.runtime.active import player_gpu_layers
-from convsim_core.runtime.engine_variant import start_engine
+from convsim_core.runtime.engine_variant import find_engine_builds, start_engine
 from convsim_core.runtime.launch import resolve_launch_config
 from convsim_core.runtime.llama_cpp_download import (
     DownloadProgress,
@@ -198,6 +198,10 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
         or body.context_length is not None
         or body.threads is not None
     )
+    builds = None if explicit else find_engine_builds()
+    if builds is not None and builds.default is None and builds.vulkan is None:
+        # Nothing to choose between: start() reports the missing engine itself.
+        explicit = True
     try:
         if explicit:
             await sidecar.start(
@@ -221,6 +225,7 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
                     conn=conn,
                     startup_timeout=body.startup_timeout,
                     gpu_layers=body.gpu_layers if body.gpu_layers is not None else player_gpu_layers(conn),
+                    builds=builds,
                 )
     except (RuntimeError, TimeoutError) as exc:
         raise ConvsimError(

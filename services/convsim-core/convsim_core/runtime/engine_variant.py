@@ -696,6 +696,8 @@ async def start_engine(
             executable=build.executable,
             variant=build.variant,
             launch=launch,
+            # The launch configuration decides the context (#523).
+            context_length=None,
             gpu_layers=gpu_layers,
             threads=threads,
             startup_timeout=startup_timeout,

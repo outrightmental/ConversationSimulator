@@ -262,7 +262,9 @@ def _compute_warnings(
         if tokens_per_sec < 1.0:
             warnings.append(
                 f"Very slow generation ({tokens_per_sec:.1f} tok/s). "
-                "Try a smaller model."
+                "The model is probably running on the processor (CPU) alone. "
+                "Try a smaller model; Settings › Graphics card shows whether "
+                "your graphics card is in use."
             )
         elif tokens_per_sec < 3.0:
             warnings.append(
