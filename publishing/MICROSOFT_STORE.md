@@ -14,6 +14,15 @@ and how a build gets there.
 | Listing | https://apps.microsoft.com/detail/9NTNF4X3GQ95 (live once the first submission passes certification) |
 | Publisher | Outright Mental (company account, seller ID in Account settings → Legal info) |
 
+**Where it stands (2026-11-16).** Submission 1 is a complete draft: pricing
+and markets, properties, the v0.4.10 package (validated; built by
+microsoft-store.yml run 44035015351), the English listing with five
+screenshots, the certification notes and the `runFullTrust` justification.
+Three steps are left, and each is a person's: (1) Account settings → Payout and
+tax: add the payout and tax profiles, without which Partner Center will not
+charge money; (2) the submission → Age ratings: review the IARC preview, tick
+the IARC Terms of Use and Save; (3) **Submit for certification**.
+
 ## What the Store edition is
 
 - **The full edition**, the same as Steam's: every official pack, the Creator
@@ -43,13 +52,14 @@ capability the manifest declares, and voice installation.
 | Pricing | **$9.99 USD** base price, no free trial, no sale |
 | Markets | All markets **except China**: the PRC rules for anthropomorphic AI interaction (publishing/PRC_AI_ANTHROPOMORPHIC_INTERACTION_MEASURES.md) are why the Steam apps are not sold there either |
 | Discoverability | Make this product available and discoverable in the Microsoft Store |
-| Category | **Education** (subcategory Language learning if asked) — the Store's closest fit for a practice tool; Steam files it under Simulation |
+| Category | **Education → Language**, secondary **Entertainment**. An app product has no Games category; Steam files it under Simulation |
 | Privacy policy URL | https://docs.conversationsimulator.com/trust/privacy/ |
 | Website | https://www.conversationsimulator.com/ |
 | Support contact | https://docs.conversationsimulator.com/start/troubleshooting/ |
-| Product declarations | It does **not** collect personal information or send it anywhere; the microphone audio is transcribed on the device |
-| System requirements | Minimum: 8 GB memory, x64; Recommended: 16 GB memory, a graphics card with Vulkan support |
-| Age rating | the IARC questionnaire, answered as for Steam (publishing/STEAM_REVIEW_SUBMISSION.md §6): mild language, no violence, no sexual content, no gambling, no user interaction, no online features, and **no** in-app purchases (the Store edition has no DLC) |
+| Personal information | **Yes**, with the privacy policy above: the app records the microphone and stores transcripts, all on the device |
+| Product declarations | Uses generative AI: yes. Install to alternate drives: yes. OneDrive backup of app data: **no** (conversations stay on the device). Broadcast clips: no |
+| System requirements | Minimum: keyboard, 8 GB memory, a 64-bit 4-core processor, no graphics card needed. Recommended: microphone, 16 GB memory, a Vulkan graphics card with 4 GB |
+| Age rating | the IARC questionnaire, as type *Game*: no violence, fear, gambling, crude humour, digital purchases (the Store edition has no DLC), user interaction or location sharing; **yes** to dating (the Dating pack, not a strong focus), minor profanity (rarely, from the model) and alcohol use (rarely: the first date is at a wine bar). Result, 2026-11-16: ESRB Everyone 10+, PEGI 3, USK 12, IARC 3+. Saving it means accepting the IARC Terms of Use, which a person does |
 | Restricted capability `runFullTrust` | *"Conversation Simulator is a Win32 desktop app (a Tauri shell with a local engine and llama.cpp runtimes) packaged as MSIX. It runs as a full-trust desktop application to start its local engine processes and uses no other restricted capability."* |
 
 ## The package
@@ -181,9 +191,22 @@ No account, no subscription, no telemetry
 Free and open source; this edition is the ready-to-run package
 ```
 
-### Search terms (up to seven)
+### Keywords (up to seven, 21 words in all)
 
-conversation practice, interview practice, negotiation, language learning, public speaking, social skills, AI roleplay
+conversation simulator, conversation practice app, simulated conversations, role play conversations, interview practice software, job interview simulator, negotiation practice tool
+
+(Partner Center's own suggestions for this description. Its keyword box drops
+spaces typed into it, so pick suggestions rather than typing.)
+
+### Short description
+
+```
+Rehearse job interviews, negotiations, difficult talks and language practice with simulated characters who have their own agendas. Type or talk out loud: everything runs on your computer and works offline.
+```
+
+### Copyright and developer
+
+`© 2024–2026 Outright Mental. Open source: the engine is Apache-2.0 and the official scenario packs are CC BY 4.0.` · Developed by `Outright Mental`
 
 ### Screenshots
 
