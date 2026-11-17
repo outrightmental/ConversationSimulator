@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Mac App Store — builds the sandboxed Mac App Store edition of a release,
 # signs it, packs the installer package and sends it to TestFlight for Mac.
+# Two apps, as on Steam: the paid full app (edition full,
+# com.outrightmental.convsim) and the free demo (edition demo,
+# com.outrightmental.convsim.demo, built with tauri.demo.conf.json).
 # publishing/MAC_APP_STORE.md is the reference.
 #
 # It is not Steam's macOS build with a different signature: the store takes
@@ -46,6 +49,14 @@ on:
         required: false
         default: ''
         type: string
+      edition:
+        description: 'full (the $9.99 app) or demo (the free demo app)'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - demo
       upload:
         description: 'Upload to TestFlight (when the signing secrets are set)'
         required: false
@@ -60,6 +71,10 @@ on:
         required: false
         default: ''
         type: string
+      edition:
+        required: false
+        default: 'full'
+        type: string
       upload:
         required: false
         default: true
@@ -70,11 +85,15 @@ permissions:
 
 jobs:
   build:
-    name: Mac App Store build
+    name: Mac App Store build (${{ inputs.edition || 'full' }})
     runs-on: macos-latest
     timeout-minutes: 75
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      EDITION: ${{ inputs.edition || 'full' }}
+      BUNDLE_ID: ${{ inputs.edition == 'demo' && 'com.outrightmental.convsim.demo' || 'com.outrightmental.convsim' }}
+      ARTIFACT_STEM: ${{ inputs.edition == 'demo' && 'mac-app-store-demo' || 'mac-app-store' }}
+      PACKAGE_NAME: ${{ inputs.edition == 'demo' && 'conversation-simulator-demo' || 'conversation-simulator' }}
       LC_ALL: en_US.UTF-8
       LANG: en_US.UTF-8
     steps:
@@ -97,7 +116,7 @@ jobs:
              && [ -n "$MATCH_PASSWORD" ] && [ -n "$MATCH_GIT_BASIC_AUTHORIZATION" ]; then
             echo "sign=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Mac App Store signing skipped: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, MATCH_PASSWORD and MATCH_GIT_BASIC_AUTHORIZATION are not all set. The unsigned app is kept as the mac-app-store-app artifact."
+            echo "::notice::Mac App Store signing skipped: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, MATCH_PASSWORD and MATCH_GIT_BASIC_AUTHORIZATION are not all set. The unsigned app is kept as the $ARTIFACT_STEM-app artifact."
             echo "sign=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -183,16 +202,27 @@ jobs:
         shell: bash
         env:
           VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
-          VITE_CONVSIM_EDITION: full
-          CONVSIM_EDITION: full
+          VITE_CONVSIM_EDITION: ${{ inputs.edition || 'full' }}
+          CONVSIM_EDITION: ${{ inputs.edition || 'full' }}
           VITE_CONVSIM_STORE: mac-app-store
+          # The demo's "Get the full game": the full app's App Store page once
+          # its record exists (repository variable), the site until then.
+          VITE_FULL_APP_URL: ${{ vars.MAC_APP_STORE_FULL_APP_URL }}
         run: |
           set -euo pipefail
           # No APPLE_SIGNING_IDENTITY: the store signature is made afterwards,
           # inside out, by scripts/sign-mac-app-store.sh.
           unset APPLE_SIGNING_IDENTITY
+          # The demo overlay (its name, identifier and icons, as on Steam)
+          # comes before the store overlay, which only adds the category and
+          # turns the updater off.
+          EDITION_CONFIG=()
+          if [ "$EDITION" = "demo" ]; then
+            EDITION_CONFIG=(--config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.demo.conf.json")
+          fi
           pnpm --filter @convsim/desktop exec tauri build --bundles app \
             --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json" \
+            "${EDITION_CONFIG[@]}" \
             --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.appstore.conf.json"
           APP="$(find apps/desktop/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -n1)"
           test -n "$APP"
@@ -200,6 +230,11 @@ jobs:
           CORE="$(find "$APP/Contents/Resources" -path '*bin/convsim-core/convsim-core' -type f | head -n1)"
           test -n "$CORE" || { echo "::error::the one-folder engine is not in the app"; exit 1; }
           /usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$APP/Contents/Info.plist"
+          BUILT_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
+          if [ "$BUILT_ID" != "$BUNDLE_ID" ]; then
+            echo "::error::built $BUILT_ID, expected $BUNDLE_ID for the $EDITION edition"
+            exit 1
+          fi
           echo "Built $APP; engine at ${CORE#"$APP/"}"
 
       - name: Keep the unsigned app
@@ -207,15 +242,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ditto -c -k --keepParent "$APP" mac-app-store-app.zip
-          ls -lh mac-app-store-app.zip
+          ditto -c -k --keepParent "$APP" "$ARTIFACT_STEM-app.zip"
+          ls -lh "$ARTIFACT_STEM-app.zip"
 
       - name: Upload the unsigned app
         if: steps.plan.outputs.sign != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: mac-app-store-app
-          path: mac-app-store-app.zip
+          name: ${{ env.ARTIFACT_STEM }}-app
+          path: ${{ env.ARTIFACT_STEM }}-app.zip
           retention-days: 30
 
       # ── Sign, pack, upload ─────────────────────────────────────────────────
@@ -241,14 +276,15 @@ jobs:
         run: |
           bundle exec fastlane mac store \
             app:"$APP" \
-            pkg:"$GITHUB_WORKSPACE/conversation-simulator-$RELEASE_TAG-mac-app-store.pkg" \
+            bundle_id:"$BUNDLE_ID" \
+            pkg:"$GITHUB_WORKSPACE/$PACKAGE_NAME-$RELEASE_TAG-mac-app-store.pkg" \
             upload:"$UPLOAD"
 
       - name: Keep the package
         if: steps.plan.outputs.sign == 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: mac-app-store-pkg
-          path: conversation-simulator-${{ inputs.tag }}-mac-app-store.pkg
+          name: ${{ env.ARTIFACT_STEM }}-pkg
+          path: ${{ env.PACKAGE_NAME }}-${{ inputs.tag }}-mac-app-store.pkg
           if-no-files-found: error
           retention-days: 90

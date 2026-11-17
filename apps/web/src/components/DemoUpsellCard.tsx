@@ -116,9 +116,13 @@ export default function DemoUpsellCard({ compact = false }: DemoUpsellCardProps)
       >
         {t('demo.upsell.cta', { store: full.storeName })}
       </a>
-      <p style={{ margin: '0.6rem 0 0', fontSize: '0.75rem', color: '#71717a' }}>
-        {t('demo.upsell.carryOver')}
-      </p>
+      {/* On the Mac App Store the demo and the full app are separate sandboxed
+          apps with separate containers, so nothing carries over there. */}
+      {buildStore() !== 'mac-app-store' && (
+        <p style={{ margin: '0.6rem 0 0', fontSize: '0.75rem', color: '#71717a' }}>
+          {t('demo.upsell.carryOver')}
+        </p>
+      )}
     </section>
   )
 }

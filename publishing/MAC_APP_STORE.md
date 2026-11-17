@@ -44,15 +44,25 @@ terms. That is a licensing decision for Outright Mental, not a build step.
 
 ### The demo
 
-Not as its own app here. App Review guideline 2.2: *"Demos, betas, and trial
-versions of your app don't belong on the App Store — use TestFlight instead."*
-Apple's accepted shape for "try before you buy" is one free app that unlocks
-the full edition with an in-app purchase (a non-consumable, optionally
-presented as a free trial, guideline 3.1.1). That would mean a StoreKit
-purchase in the shell and the demo edition becoming the app's locked state —
-work not done yet, and a pricing decision (free download + $9.99 unlock
-instead of a $9.99 app). Until then the Mac App Store carries the full app
-only; the Steam and Microsoft Store demos are unaffected.
+The free demo is its own app, as on Steam and the Microsoft Store:
+*Conversation Simulator Demo*, bundle ID `com.outrightmental.convsim.demo`,
+the demo edition (five conversations, one model download) built with
+`tauri.demo.conf.json` by the same lane (`-f edition=demo`). Its *Get the full
+game* opens the full app's App Store page, from the repository variable
+`MAC_APP_STORE_FULL_APP_URL` (`https://apps.apple.com/app/id<Apple ID>`, set
+once the full app's record exists; the site until then).
+
+Two things differ from the other stores, and the demo's listing must say
+neither otherwise:
+
+- **Nothing carries over.** Each sandboxed app has its own container, so the
+  demo's model and sessions are not seen by the full app; the upsell card
+  leaves out its carry-over line in Mac App Store builds.
+- **Review risk.** App Review guideline 2.2 says demos and trials "don't
+  belong on the App Store"; Apple's own route is one free app with an in-app
+  unlock. Outright Mental chose two separate apps anyway (2026-11-17), with no
+  unlock built. If review rejects the demo under 2.2, that route is the
+  fallback.
 
 ## The steps that are a person's
 
@@ -61,13 +71,21 @@ Done once, in this order. Nothing here can be done from CI.
 1. **Agreements, tax and banking.** App Store Connect → Business: the *Paid
    Applications* agreement accepted, with tax forms and a bank account. A
    $9.99 app cannot be priced without it.
-2. **The bundle identifier.** developer.apple.com → Certificates, Identifiers
-   & Profiles → Identifiers → **+** → App IDs → App → description
-   *Conversation Simulator*, explicit bundle ID `com.outrightmental.convsim`,
-   no capabilities beyond the defaults.
-3. **The app record.** App Store Connect → Apps → **+** → New App → platform
-   **macOS**, name *Conversation Simulator*, primary language English (U.S.),
-   bundle ID `com.outrightmental.convsim`, SKU `convsim-mac`, full access.
+2. **The bundle identifiers**, one per app. developer.apple.com →
+   Certificates, Identifiers & Profiles → Identifiers → **+** → App IDs → App:
+   *Conversation Simulator*, explicit `com.outrightmental.convsim`; and
+   *Conversation Simulator Demo*, explicit `com.outrightmental.convsim.demo`.
+   No capabilities beyond the defaults.
+3. **The app records**, one per app. App Store Connect → Apps → **+** → New
+   App → platform **macOS**, primary language English (U.S.), full access:
+   *Conversation Simulator*, bundle ID `com.outrightmental.convsim`, SKU
+   `convsim-mac`, **$9.99**; and *Conversation Simulator Demo*, bundle ID
+   `com.outrightmental.convsim.demo`, SKU `convsim-demo-mac`, **Free**. Then
+   point the demo at the full app:
+
+   ```bash
+   gh variable set MAC_APP_STORE_FULL_APP_URL --repo outrightmental/ConversationSimulator --body "https://apps.apple.com/app/id<Apple ID of the full app>"
+   ```
 4. **The signing secrets**, the same values UmlautHero has (its
    `docs/CONTINUOUS_INTEGRATION.md`):
 
@@ -113,8 +131,15 @@ the secrets it still builds the app and keeps it, unsigned, as the
 ```bash
 gh workflow run mac-app-store.yml --repo outrightmental/ConversationSimulator -f tag=vX.Y.Z
 ```
+```bash
+gh workflow run mac-app-store.yml --repo outrightmental/ConversationSimulator -f tag=vX.Y.Z -f edition=demo
+```
 
-Releases run it on their own once `MAC_APP_STORE` is `true`. The tag must
+The demo comes out as `conversation-simulator-demo-vX.Y.Z-mac-app-store.pkg`
+(`mac-app-store-demo-pkg`, or `mac-app-store-demo-app` unsigned).
+
+Releases run it on their own once `MAC_APP_STORE` is `true`: the full app
+after a full release, the demo after a demo build. The tag must
 contain this lane (v0.4.11 or later). Sending a build for review is a click in
 App Store Connect.
 
@@ -132,7 +157,7 @@ Signing, inside out (never `--deep`):
 
 | Setting | Value |
 |---|---|
-| Price | **$9.99 USD** (the matching tier), one-time |
+| Price | **$9.99 USD** (the matching tier), one-time; the demo app **Free** |
 | Availability | every country or region **except China mainland** (as on Steam and the Microsoft Store: publishing/PRC_AI_ANTHROPOMORPHIC_INTERACTION_MEASURES.md) |
 | Categories | primary **Education**, secondary **Entertainment** |
 | Age rating | Infrequent/Mild: profanity or crude humour; alcohol, tobacco or drug use or references; mature or suggestive themes (the Dating pack). Everything else None. No unrestricted web access, no user-generated content shared with others |
@@ -195,3 +220,47 @@ interview,practice,negotiation,conversation,roleplay,language,speaking,social sk
 **Screenshots** — the five in
 [`assets/screenshots/mac-app-store/`](assets/screenshots/mac-app-store),
 2560 × 1600, 16:10 frames of the full-edition captures in docs/screenshots.md.
+
+## The demo's listing (English (U.S.))
+
+**Subtitle**
+
+```
+Five real conversations, free
+```
+
+**Description**
+
+```
+Try five real conversations — a job interview, a car negotiation, asking for a raise, a first ask, and Spanish at a café — with simulated characters who have their own background, stakes and agenda, and who will not hand you the win.
+
+Each one is simulated from what they want, what they worry about and what they know; a language model running on your Mac gives them their words, but it never drives. Download the demo's model once (about 2.5 GB) and everything runs on your Mac, offline. No account.
+
+WHAT IS IN THE DEMO
+• The Behavioral Interview — a final-round interview with an engineering manager who probes vague answers.
+• The Used Car Deal — negotiate a price with a sales rep who has a number he will not tell you.
+• Making the Case — ask your manager for the raise you have earned, with evidence.
+• The Coffee Cart — start a conversation with a classmate and read the room before you ask.
+• Coffee at Café Sol — order and make small talk in Spanish with a patient barista.
+
+Every conversation ends with a debrief: rubric scores, strengths, missed opportunities, and what to try next time. Replay any of them at four difficulty levels, as often as you like.
+
+The full Conversation Simulator adds the complete library of 20 conversations, the Creator Workbench for writing your own, and model tiers for higher-quality characters.
+
+Conversations, transcripts and scores are stored only on your Mac. No tracking.
+
+Conversation Simulator is a practice tool, not therapy, counselling, medical, legal or financial advice.
+
+Requires a Mac with Apple silicon.
+```
+
+**Keywords**
+
+```
+interview,practice,negotiation,conversation,roleplay,language,speaking,social skills,demo,free
+```
+
+**Screenshots** — the five in
+[`assets/screenshots/mac-app-store-demo/`](assets/screenshots/mac-app-store-demo),
+1440 × 900: the demo captures in `assets/screenshots/demo/` scaled to the
+width, on the app's own background.

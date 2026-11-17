@@ -1948,16 +1948,20 @@ jobs:
   # Builds the sandboxed Mac App Store edition from the tag, signs it with the
   # store certificates and sends it to TestFlight for Mac
   # (publishing/MAC_APP_STORE.md). Submitting it for review is a person's click.
-  # On once the repository variable MAC_APP_STORE is "true".
+  # Both apps: the full one after a full release, the free demo after a demo
+  # build (whose release job is skipped by design). On once the repository
+  # variable MAC_APP_STORE is "true".
   mac-app-store:
-    name: Mac App Store
+    name: Mac App Store (${{ github.event.inputs.edition || 'full' }})
     needs: [build-desktop, release]
     if: >-
-      ${{ !cancelled() && needs.build-desktop.result == 'success' &&
-          needs.release.result == 'success' && vars.MAC_APP_STORE == 'true' }}
+      ${{ !cancelled() && needs.build-desktop.result == 'success' && vars.MAC_APP_STORE == 'true' &&
+          (needs.release.result == 'success' ||
+           (needs.release.result == 'skipped' && github.event.inputs.edition == 'demo')) }}
     uses: ./.github/workflows/mac-app-store.yml
     with:
       tag: ${{ github.event.inputs.tag || github.ref_name }}
+      edition: ${{ github.event.inputs.edition || 'full' }}
     secrets: inherit
 
   # ── Microsoft Defender for Storage malware scan (Windows) ──────────────────
