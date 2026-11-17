@@ -639,10 +639,13 @@ def test_ask_for_raise_plays_its_own_state_and_events(app) -> None:
         ]
         assert "--- LAYER:STATE_VARIABLES ---" in request.messages[0].content
     probe = next(e for e in yaml.safe_load(
-        (_PACKS / "official/difficult-conversations/scenarios/ask_for_raise.yaml").read_text()
+        (_PACKS / "official/difficult-conversations/scenarios/ask_for_raise.yaml").read_text(encoding="utf-8")
     )["events"] if e["id"] == "vague_claim_probe")
     probe_line = "  - " + " ".join(probe["npc_instruction"].split())
-    assert [probe_line in r.messages[0].content for r in turns] == [False, True, True]
+    # The event's direction rides in the user turn, with the other per-turn
+    # layers (issue #524); the system prompt never carries it.
+    assert [probe_line in r.messages[1].content for r in turns] == [False, True, True]
+    assert not any(probe_line in r.messages[0].content for r in turns)
     assert [p["triggered_scenario_events"] for p in payloads] == [[], ["vague_claim_probe"], ["vague_claim_probe"]]
     # The baseline the scenario never reads stays where it started, and
     # has no meter.
