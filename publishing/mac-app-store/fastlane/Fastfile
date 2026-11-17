@@ -3,7 +3,10 @@
 # The Mac App Store lane (publishing/MAC_APP_STORE.md), run by
 # .github/workflows/mac-app-store.yml from publishing/mac-app-store/:
 #
-#   bundle exec fastlane mac store app:<path to .app> pkg:<path to .pkg> upload:true
+#   bundle exec fastlane mac store app:<path to .app> bundle_id:<id> pkg:<path to .pkg> upload:true
+#
+# bundle_id is com.outrightmental.convsim (the $9.99 app, the default) or
+# com.outrightmental.convsim.demo (the free demo app).
 #
 # Signing material is the studio's, shared with UmlautHero (same Apple team):
 # match keeps the Apple Distribution and Mac Installer Distribution
@@ -12,7 +15,7 @@
 
 default_platform(:mac)
 
-BUNDLE_ID = "com.outrightmental.convsim"
+DEFAULT_BUNDLE_ID = "com.outrightmental.convsim"
 
 platform :mac do
   def api_key
@@ -29,6 +32,7 @@ platform :mac do
     app = File.expand_path(options.fetch(:app))
     pkg = File.expand_path(options.fetch(:pkg))
     upload = options[:upload].to_s == "true"
+    bundle_id = (options[:bundle_id] || DEFAULT_BUNDLE_ID).to_s
     key = api_key
     setup_ci if is_ci
 
@@ -38,12 +42,12 @@ platform :mac do
     match(
       type: "appstore",
       platform: "macos",
-      app_identifier: BUNDLE_ID,
+      app_identifier: bundle_id,
       additional_cert_types: ["mac_installer_distribution"],
       readonly: false,
       api_key: key,
     )
-    profile = ENV.fetch("sigh_#{BUNDLE_ID}_appstore_macos_profile-path")
+    profile = ENV.fetch("sigh_#{bundle_id}_appstore_macos_profile-path")
 
     identities = sh("security", "find-identity", "-v", log: false)
     app_identity = identities[/"((?:Apple Distribution|3rd Party Mac Developer Application): [^"]+)"/, 1]
@@ -55,10 +59,10 @@ platform :mac do
       if upload
         begin
           latest_testflight_build_number(
-            api_key: key, app_identifier: BUNDLE_ID, platform: "osx", initial_build_number: 0,
+            api_key: key, app_identifier: bundle_id, platform: "osx", initial_build_number: 0,
           ) + 1
         rescue => e
-          UI.user_error!("App Store Connect has no macOS app for #{BUNDLE_ID} yet " \
+          UI.user_error!("App Store Connect has no macOS app for #{bundle_id} yet " \
                          "(publishing/MAC_APP_STORE.md §3): #{e.message}")
         end
       else

@@ -4,7 +4,7 @@
 // one model and five conversations. These tests cover the edition module
 // itself and the demo-specific rendering of the screens it trims.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { HealthResponse, ScenarioInfo } from '@convsim/shared'
 
@@ -362,6 +362,15 @@ describe('DemoUpsellCard', () => {
       const link = screen.getByTestId('demo-upsell-link')
       expect(link).toHaveAttribute('href', 'https://apps.apple.com/app/id1234567890')
       expect(link).toHaveTextContent('View the full game on App Store')
+    })
+
+    it('promises carry-over to the full version everywhere but the Mac App Store', () => {
+      render(<DemoUpsellCard />)
+      expect(screen.getByText(/picked up by the full version/i)).toBeInTheDocument()
+      cleanup()
+      vi.stubEnv('VITE_CONVSIM_STORE', 'mac-app-store')
+      render(<DemoUpsellCard />)
+      expect(screen.queryByText(/picked up by the full version/i)).not.toBeInTheDocument()
     })
 
     it('treats an unknown store as Steam', () => {
