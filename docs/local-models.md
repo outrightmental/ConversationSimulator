@@ -72,9 +72,25 @@ reads **File name** and shows the file name alone.
 
 **CPU fallback:** any model can run on CPU without a GPU, but inference is significantly slower — expect anywhere from 30 seconds to a few minutes per turn instead of 1–5 seconds, most of it spent reading the prompt back in. The app waits for a slow turn rather than failing it; see [performance](performance.md#timeout-errors). The Qwen3 4B starter model is the only practical choice for CPU-only machines.
 
-**Partial VRAM fit:** if you have less VRAM than the minimum, llama.cpp can still run the model with a reduced number of GPU-offloaded layers. Inference will be slower but may be acceptable. The app passes no `--n-gpu-layers` to the engine it starts, so the engine's own default decides the split; the **GPU layers** field in **Settings → AI engine** (under **Show advanced engine settings**) is saved but not applied to that engine at this release. See [troubleshooting](troubleshooting.md#low-vram-or-slow-inference).
+**Partial VRAM fit:** if you have less VRAM than the minimum, llama.cpp can still run the model with some of its layers on the graphics card and the rest on the processor. Inference will be slower but may be acceptable. The app passes no `--n-gpu-layers` to the engine it starts, so the engine fits the layers to the card's free memory itself, sized for the explicit context the app passes. A number in the **GPU layers** field (**Settings → AI engine**, under **Show advanced engine settings**) is passed the next time the engine starts and turns that fit off. See [troubleshooting](troubleshooting.md#low-vram-or-slow-inference).
 
 The engine the app starts runs with one slot, the context size from the model's registry entry (8 192 tokens unless the entry says otherwise), a 256-token batch and a 1 GiB prompt cache. See [runtime-adapters.md](runtime-adapters.md) for how those settings are passed and overridden.
+
+### Graphics card
+
+Windows and Linux builds ship two llama.cpp engines: the CPU build and the Vulkan build, which runs on NVIDIA, AMD and Intel graphics through the driver's own Vulkan support (issue #530). **Settings → Graphics card** says which one is writing the replies and offers three choices:
+
+| Choice | What it does |
+|---|---|
+| **Automatic** (default) | Asks the Vulkan engine which devices it can use (`llama-server --list-devices`) and uses the graphics card when it lists a separate (discrete) one. Built-in graphics alone, or no card, uses the processor: built-in chips speed up reading the conversation but not reliably writing the reply. |
+| **Graphics card** | Uses the Vulkan engine on any card it lists, built-in graphics included. |
+| **Processor only** | Never starts the Vulkan engine. The CPU engine never loads the Vulkan backend or touches the graphics driver. |
+
+A choice takes effect at once: the AI model restarts with it. On macOS there is one engine, which uses Metal, so the section only says so.
+
+**When the graphics card fails, the processor takes over.** The app falls back to the CPU engine when the Vulkan engine cannot list its devices, cannot load the model, fails a short check request, gives the wrong answer to it (the check asks it to continue *1, 2, …, 8,* at temperature 0 with no grammar, because a broken driver can load and run and still produce garbage), or stops during a conversation — in which case the turn in flight is sent again to the processor and recorded once, as long as none of its words had reached the screen yet. The app then says so once, in a strip at the top of the window, and remembers the failure against the graphics card, its driver version and the engine, so it does not try the card again at every start. Updating the graphics driver clears the record by itself; **Try the graphics card again** in **Settings → Graphics card** clears it at once and restarts the AI model on the card.
+
+On this project's reference laptop (RTX 4080 Laptop GPU, Core i9-14900HX), the starter model read a 3 000-token prompt at about 3 500 tokens/s on the Vulkan engine against about 100 on the CPU engine, and wrote at about 92 tokens/s against 15. The very first reply after the Vulkan engine's first-ever start is slower, because the graphics driver compiles the engine's shaders once (about 12 seconds on that laptop) and keeps them for later starts. Measurements on more hardware are tracked in #532.
 
 ---
 

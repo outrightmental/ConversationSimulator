@@ -115,7 +115,7 @@ turns are slow on your hardware, these are the levers:
 ### NPC response is slow
 
 - **Try a smaller model.** A 4 B-parameter model runs 2–4× faster than an 8 B model on the same hardware. See the Model Manager for size-categorised options.
-- **Increase GPU layers.** If you have a GPU, set GPU Layers to `-1` (all layers to GPU) in Runtime Settings.
+- **Check the graphics card.** **Settings → Graphics card** says whether your graphics card or your processor is writing the replies. The app uses a separate graphics card by itself when it can (Windows and Linux); if it fell back to the processor after the card failed, update the graphics driver or press **Try the graphics card again**. See [local-models.md](local-models.md#graphics-card).
 - **Reduce context length.** Shorter context = faster KV-cache fill. Try 2048 or 4096 instead of the model default.
 
 ### Full response is very slow (> 10 s)

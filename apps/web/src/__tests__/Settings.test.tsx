@@ -43,6 +43,11 @@ vi.mock('../api/client', () => ({
     putCloudSettings: vi.fn(),
     // NPC relationship memory
     listRelationshipMemory: vi.fn(),
+    // Graphics card or processor (issue #531)
+    getEngineStatus: vi.fn(),
+    markEngineNoticeSeen: vi.fn(),
+    restartEngine: vi.fn(),
+    retryGraphicsCard: vi.fn(),
   },
 }))
 
@@ -90,6 +95,17 @@ const STUB_RUNTIME_SETTINGS = {
     reply_speed: 'balanced' as const,
   },
   requires_restart: false,
+}
+
+const STUB_ENGINE_STATUS = {
+  setting: 'auto' as const,
+  running: 'cpu' as const,
+  available: ['cpu' as const, 'vulkan' as const],
+  device: null,
+  reason: null,
+  devices: [],
+  gpu_failure: { rung: 'load' as const, detail: 'ErrorDeviceLost', device: 'GPU', at: '2026-11-16T10:00:00Z' },
+  notice_pending: false,
 }
 
 const STUB_FOLDERS = {
@@ -182,6 +198,7 @@ beforeEach(() => {
   mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH })
   mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD })
   mockApi.listRelationshipMemory.mockResolvedValue({ ok: true, data: { recaps: [], total: 0 } })
+  mockApi.getEngineStatus.mockResolvedValue({ ok: true, data: STUB_ENGINE_STATUS })
   // Stub navigator.permissions so tests don't hang on browser API
   Object.defineProperty(navigator, 'permissions', {
     value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
@@ -1221,6 +1238,15 @@ describe('demo edition', () => {
   it('keeps the wording control, which is readability rather than full-app depth', async () => {
     await renderDemoSettings()
     expect(screen.getByTestId('settings-wording-section')).toBeInTheDocument()
+  })
+
+  it('keeps the graphics-card section and its "Try the graphics card again" action (issue #531)', async () => {
+    // The demo's first reply is where the card matters most, and a demo
+    // player whose card failed needs the same way back as everyone else.
+    await renderDemoSettings()
+    await waitFor(() => expect(screen.getByTestId('settings-graphics-card-section')).toBeInTheDocument())
+    expect(screen.getByRole('heading', { name: /^graphics card$/i })).toBeInTheDocument()
+    expect(screen.getByTestId('graphics-card-retry')).toHaveTextContent('Try the graphics card again')
   })
 
   it('says that clearing local data also clears the full version, which shares the folder', async () => {

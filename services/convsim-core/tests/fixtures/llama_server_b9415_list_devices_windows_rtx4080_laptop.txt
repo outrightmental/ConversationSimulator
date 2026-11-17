@@ -1,0 +1,3 @@
+Available devices:
+  Vulkan0: NVIDIA GeForce RTX 4080 Laptop GPU (11995 MiB, 11227 MiB free)
+  Vulkan1: Intel(R) RaptorLake-S Mobile Graphics Controller (32629 MiB, 48107 MiB free)

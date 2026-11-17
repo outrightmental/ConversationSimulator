@@ -100,6 +100,13 @@ export const de: LocaleMessages = {
       },
     },
   },
+  // Der eine Hinweis nach dem Wechsel von der Grafikkarte zum Prozessor (Issue #531).
+  engineNotice: {
+    message:
+      'Ihre Grafikkarte hat mit der App nicht mehr funktioniert, deshalb kommen die Antworten jetzt von Ihrem Prozessor. Sie dauern länger. In den Einstellungen können Sie die Grafikkarte erneut versuchen.',
+    openSettings: 'Einstellungen öffnen',
+    dismiss: 'OK',
+  },
   // "Gespräch läuft" (Issue #501 §1).
   resume: {
     label: 'Gespräch läuft.',
@@ -345,6 +352,44 @@ export const de: LocaleMessages = {
         label: 'Ausführliche Antworten',
         detail: 'Längere Antworten, längere Wartezeit',
       },
+    },
+    // Grafikkarte oder Prozessor (Issue #531).
+    graphicsCard: {
+      heading: 'Grafikkarte',
+      description:
+        'Antworten kommen viel schneller, wenn Ihre Grafikkarte die Arbeit übernimmt. Die App nutzt sie von selbst, wenn sie kann.',
+      choiceLabel: 'Was die Antworten schreibt',
+      statusGpu: 'Ihre Grafikkarte schreibt die Antworten ({{device}}).',
+      statusGpuUnnamed: 'Ihre Grafikkarte schreibt die Antworten.',
+      statusMetal: 'Der Grafikchip Ihres Mac schreibt die Antworten.',
+      statusCpu: 'Ihr Prozessor schreibt die Antworten.',
+      statusCpuNoCard:
+        'Ihr Prozessor schreibt die Antworten. Die App hat auf diesem Computer keine eigene Grafikkarte gefunden, die sie nutzen kann.',
+      statusCpuAfterFailure:
+        'Ihr Prozessor schreibt die Antworten. Ihre Grafikkarte hat mit der App nicht mehr funktioniert, deshalb ist die App zum Prozessor gewechselt.',
+      statusNotRunning: 'Das KI-Modell läuft noch nicht. Es nutzt diese Auswahl, sobald es startet.',
+      processorOnlyBuild: 'Diese Version der App führt das KI-Modell auf Ihrem Prozessor aus.',
+      auto: {
+        label: 'Automatisch',
+        detail: 'Die Grafikkarte, wenn sie funktioniert, sonst der Prozessor',
+      },
+      vulkan: {
+        label: 'Grafikkarte',
+        detail: 'Die Grafikkarte nutzen, auch eine eingebaute',
+      },
+      cpu: {
+        label: 'Nur Prozessor',
+        detail: 'Langsamer, berührt aber nie den Grafiktreiber',
+      },
+      applying: 'Das KI-Modell wird neu gestartet…',
+      applied: 'Fertig. Das KI-Modell wurde mit Ihrer Auswahl neu gestartet.',
+      saved: 'Gespeichert. Das KI-Modell nutzt dies beim nächsten Start.',
+      retry: 'Grafikkarte erneut versuchen',
+      retrying: 'Die Grafikkarte wird versucht…',
+      retryWorked: 'Es hat funktioniert: Ihre Grafikkarte schreibt die Antworten wieder.',
+      retryFailed:
+        'Die Grafikkarte hat wieder nicht funktioniert, deshalb schreibt der Prozessor die Antworten. Ein aktueller Grafiktreiber kann helfen.',
+      retryLater: 'Die App versucht die Grafikkarte beim nächsten Start des KI-Modells.',
     },
     wording: {
       heading: 'Wortwahl',

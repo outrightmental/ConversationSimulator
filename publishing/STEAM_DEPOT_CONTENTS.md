@@ -59,14 +59,18 @@ tarball into `steam-content/windows/`.
 ConversationSimulator.exe         # Tauri shell — main app entry point (Authenticode-signed)
 steam_api64.dll                   # Steam Client API (Valve-signed; from steamworks-sys, v0.2.8+) — see below
 vcruntime140.dll                  # App-local VC++ runtime for the bundled inference binaries
-vcruntime140_1.dll                #   (also copied into resources/runtimes/)
-msvcp140.dll
+vcruntime140_1.dll                #   (also copied into resources/runtimes/ and
+msvcp140.dll                      #    resources/runtimes/vulkan/)
 *.dll                             # Other Tauri / WebView2 support DLLs (if any)
 resources/
   bin/
     convsim-core.exe              # PyInstaller-bundled Python backend (Authenticode-signed)
   runtimes/
-    llama-server.exe              # llama.cpp inference server (LLM)
+    llama-server.exe              # llama.cpp inference server (LLM), CPU build
+    ggml*.dll, llama*.dll, …      #   its DLLs — never ggml-vulkan.dll (asserted in CI)
+    vulkan/
+      llama-server.exe            # llama.cpp, Vulkan build of the same pinned tag (issue #530)
+      ggml-vulkan.dll, …          #   its DLLs, including the Vulkan backend
     whisper-cli.exe               # Whisper.cpp speech-to-text binary
     sherpa-onnx-offline-tts.exe   # Kokoro TTS via sherpa-onnx
   packs/
@@ -207,7 +211,11 @@ resources/
   bin/
     convsim-core                  # PyInstaller-bundled Python backend
   runtimes/
-    llama-server                  # llama.cpp inference server
+    llama-server                  # llama.cpp inference server, CPU build
+    lib*.so*                      #   its libraries — never libggml-vulkan.so (asserted in CI)
+    vulkan/
+      llama-server                # llama.cpp, Vulkan build of the same pinned tag (issue #530)
+      lib*.so*                    #   its libraries, including libggml-vulkan.so
     whisper-cli                   # Whisper.cpp STT binary
     sherpa-onnx-offline-tts       # Kokoro TTS via sherpa-onnx
   packs/
@@ -227,6 +235,39 @@ NOTICE                            # Third-party licence notices
 | `*.pt` | PyTorch model checkpoints — compliance rule MD-04 |
 | `*.pth` | PyTorch model checkpoints — compliance rule MD-04 |
 | `*.ckpt` | Model checkpoints — compliance rule MD-04 |
+
+### The two llama.cpp engines and what they cost (issue #530)
+
+The Windows and Linux depots ship two builds of the pinned llama.cpp tag
+(`runtimes/llama_cpp/pin.json`, b9415 at this release): the CPU build in
+`resources/runtimes/`, exactly as before, and the Vulkan build in
+`resources/runtimes/vulkan/`. The Vulkan archive is the CPU archive plus one
+library, the Vulkan backend; every other file is byte-identical. The two are
+kept in separate directories so that the CPU build never loads the Vulkan
+backend or touches the graphics driver: a machine with a broken Vulkan driver
+starts the CPU engine as it always has. The app picks between them at each
+engine start (issue #531). The macOS depot ships one build, which uses Metal.
+
+Every archive is verified against the SHA-256 in the pin before it is
+bundled; a missing or mismatched digest fails the release build.
+
+Size cost of the Vulkan build, measured from the pinned archives:
+
+| | Windows (`win-vulkan-x64`) | Linux (`ubuntu-vulkan-x64`) |
+|---|---|---|
+| CPU engine directory, before and after | 48.2 MB | 40.1 MB |
+| Added on disk: `runtimes/vulkan/` | **+106.2 MB** (+0.7 MB VC++ runtime copies) | **+98.8 MB** |
+| The Vulkan backend library alone | 58.0 MB (16.4 MB compressed) | 58.7 MB (17.7 MB compressed) |
+| Added to the download, upper bound (the whole Vulkan archive) | +33.1 MB | +32.2 MB |
+| Added to the download, expected | about +16 MB | about +18 MB |
+
+The expected figure assumes SteamPipe's chunk de-duplication: the 48 MB and
+40 MB of files the Vulkan directory shares byte for byte with the CPU
+directory produce the same chunks, which a depot stores and a client downloads
+once, leaving the compressed Vulkan backend library as the real addition. The
+upper bound is what the download grows by if they are not shared. The macOS
+depot is unchanged. The `steam-depot-windows.tar.gz` build artifact grows by
+about 33 MB.
 
 ### Premium scenario-pack DLC depot (`depot_dlc_scenariopacks.vdf.tpl`)
 

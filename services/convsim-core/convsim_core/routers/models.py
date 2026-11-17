@@ -256,16 +256,18 @@ def _compute_warnings(
             "tokens/sec estimate may not reflect real-world performance."
         )
     else:
+        # The app already uses a graphics card it can use (issue #531), so the
+        # one thing left to the player is the model: no advice to "enable" a
+        # card the app may have no way to drive.
         if tokens_per_sec < 1.0:
             warnings.append(
                 f"Very slow generation ({tokens_per_sec:.1f} tok/s). "
-                "The model may be running on CPU only. "
-                "Enable GPU acceleration or try a smaller model."
+                "Try a smaller model."
             )
         elif tokens_per_sec < 3.0:
             warnings.append(
                 f"Slow generation ({tokens_per_sec:.1f} tok/s). "
-                "Consider enabling GPU acceleration or using a smaller model."
+                "A smaller model would answer sooner."
             )
     if context_length is not None and context_length > 32768:
         warnings.append(

@@ -342,14 +342,16 @@ additional tooling).
 | CPU | 64-bit x86 processor, 8+ cores (for faster CPU inference) |
 | RAM | 16 GB |
 | Disk | 20 GB free (for multiple models and session history) |
-| GPU | Not used in v0.4: the Steam build bundles llama.cpp's CPU `llama-server.exe` |
+| GPU | A separate (discrete) NVIDIA, AMD or Intel graphics card with a current driver. Used automatically through the bundled Vulkan engine |
 
-> **Note on GPU acceleration:** the v0.4 Steam build for Windows runs the model
-> on the CPU. Its bundled `llama-server.exe` is llama.cpp's CPU build
-> (`runtimes/llama_cpp/download-runtime.ps1` defaults to the `cpu` variant and
-> does not offer CUDA builds), and the app has no switch to a GPU build yet.
-> Bundling the Vulkan build, which accelerates NVIDIA, AMD and Intel GPUs, and
-> using the GPU by default are planned in #530 and #531.
+> **Note on GPU acceleration:** the Windows Steam build bundles two llama.cpp
+> engines: the CPU build and the Vulkan build, which runs on NVIDIA, AMD and
+> Intel graphics through the driver's own Vulkan support (#530). By default the
+> app uses the graphics card when the Vulkan engine lists a discrete one, and
+> the processor otherwise, falling back to the processor when the card fails
+> (#531); **Settings → Graphics card** shows which is in use. CUDA builds are
+> not offered: Vulkan accelerates NVIDIA cards too. See
+> [Choosing how to run the AI](/play/ai-engine/#graphics-card).
 
 #### Verified Steam client version
 

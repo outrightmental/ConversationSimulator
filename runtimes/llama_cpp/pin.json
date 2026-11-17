@@ -1,0 +1,15 @@
+{
+  "_about": "The one pin for the llama.cpp engine. download-runtime.sh, download-runtime.ps1, CI and the packaged core all read this file. Keep one key per line: download-runtime.sh reads it with sed. See runtimes/llama_cpp/README.md, 'Moving the pin'.",
+  "tag": "b9415",
+  "sha256": {
+    "llama-b9415-bin-macos-arm64.tar.gz": "edf417cd8dd148fd423ea758953caa43376df98d8f027b7748ea0399a9a8023f",
+    "llama-b9415-bin-macos-x64.tar.gz": "7c07ab8bb59e249340ed15afe03d5f164521242942a406661d6c499efc186a84",
+    "llama-b9415-bin-ubuntu-arm64.tar.gz": "bf01d2ce3ea74402c757fa992388ef10987a6cdc0231b0c43353c1e5722ae22c",
+    "llama-b9415-bin-ubuntu-vulkan-arm64.tar.gz": "74185030d98a3172093c1e9b342a3673afff5e1839ebf0e7ac9b63b1b2a153b9",
+    "llama-b9415-bin-ubuntu-vulkan-x64.tar.gz": "d5f8b2ade0d0d076124208c28bfbc5f81853c1378d33c06d7f40e90d9bb61780",
+    "llama-b9415-bin-ubuntu-x64.tar.gz": "df22e2447cd16dc2ae039d6dccd3b734efac109e315fa61ec8e1d5000bcbee00",
+    "llama-b9415-bin-win-cpu-arm64.zip": "3063203ed941fb3d5de7c87df7cc1158430cd24762afd673569b131e002104bd",
+    "llama-b9415-bin-win-cpu-x64.zip": "80b59b49573fc52fe56fbe4257779dc28754f12247152882edab6a01ec883c35",
+    "llama-b9415-bin-win-vulkan-x64.zip": "8166586217aa8c6c3b8eeab52de37be2aee61077c070e3dcbc338fe5592a86db"
+  }
+}

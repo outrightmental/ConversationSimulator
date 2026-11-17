@@ -61,7 +61,7 @@ export function BenchmarkStep({ flow, mode, onComplete }: BenchmarkStepProps) {
                 ))}
               </ul>
               <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem', color: '#a1a1aa' }}>
-                If generation is slow, try a smaller model or check that GPU acceleration is enabled in your engine settings.{' '}
+                If generation is slow, try a smaller model. Settings › Graphics card shows whether your graphics card is writing the replies.{' '}
                 <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">Setup docs</a>
               </p>
             </div>

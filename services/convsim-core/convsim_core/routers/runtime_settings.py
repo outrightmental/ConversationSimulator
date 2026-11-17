@@ -17,6 +17,13 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core.errors import ConvsimError
+from convsim_core.runtime.engine_variant import (
+    DEFAULT_ENGINE_VARIANT,
+    ENGINE_VARIANT_CHOICES,
+    clear_gpu_failure,
+    engine_status,
+    mark_gpu_notice_seen,
+)
 from convsim_core.services.reply_speed import DEFAULT_REPLY_SPEED, REPLY_SPEED_PROFILES
 
 router = APIRouter()
@@ -33,16 +40,23 @@ _SETTING_KEYS = (
     # Plain-language reply pacing (issue #501). Stored alongside the numeric
     # knobs so one Settings screen and one reset path cover all of them.
     "reply_speed",
+    # Graphics card or processor (issue #531): "auto" | "cpu" | "vulkan".
+    "engine_variant",
 )
 
 # Changing these requires restarting the llama-server sidecar to take effect.
 # reply_speed is deliberately not here: it is read per turn, so a change applies
 # to the player's very next message with no restart.
-_RESTART_REQUIRED = {"context_length", "gpu_layers"}
+_RESTART_REQUIRED = {"context_length", "gpu_layers", "engine_variant"}
 
 _INT_KEYS = {"context_length", "gpu_layers", "threads"}
 
-_STR_KEYS = {"reply_speed"}
+#: The named choices, and the values each may take.
+_STR_CHOICES: dict[str, tuple[str, ...]] = {
+    "reply_speed": tuple(REPLY_SPEED_PROFILES),
+    "engine_variant": ENGINE_VARIANT_CHOICES,
+}
+_STR_KEYS = set(_STR_CHOICES)
 
 
 class RuntimeSettings(BaseModel):
@@ -55,6 +69,8 @@ class RuntimeSettings(BaseModel):
     #: "fast" | "balanced" | "detailed". None means "never chosen", which the
     #: turn pipeline reads as the default.
     reply_speed: Optional[str] = None
+    #: "auto" | "cpu" | "vulkan". None means "never chosen": Auto.
+    engine_variant: Optional[str] = None
 
 
 class RuntimeSettingsResponse(BaseModel):
@@ -80,7 +96,7 @@ def load_runtime_settings(conn: sqlite3.Connection) -> RuntimeSettings:
         if key in _STR_KEYS:
             # A value a newer build wrote, or one hand-edited into the database,
             # must not surface as an option the UI cannot render.
-            values[key] = raw if raw in REPLY_SPEED_PROFILES else None
+            values[key] = raw if raw in _STR_CHOICES[key] else None
             continue
         try:
             values[key] = int(raw) if key in _INT_KEYS else float(raw)
@@ -134,6 +150,9 @@ def _validate(patch: dict[str, object]) -> list[str]:
     if "reply_speed" in patch and speed is not None and speed not in REPLY_SPEED_PROFILES:
         options = ", ".join(sorted(REPLY_SPEED_PROFILES))
         errors.append(f"Reply speed must be one of: {options}.")
+    variant = patch.get("engine_variant")
+    if "engine_variant" in patch and variant is not None and variant not in ENGINE_VARIANT_CHOICES:
+        errors.append(f"Engine variant must be one of: {', '.join(ENGINE_VARIANT_CHOICES)}.")
     return errors
 
 
@@ -143,6 +162,7 @@ def _recommended() -> RuntimeSettings:
     return RuntimeSettings(
         threads=max(1, (cpu or 2) // 2) if cpu else None,
         reply_speed=DEFAULT_REPLY_SPEED,
+        engine_variant=DEFAULT_ENGINE_VARIANT,
     )
 
 
@@ -173,6 +193,10 @@ async def update_runtime_settings(request: Request, body: RuntimeSettings) -> Ru
     requires_restart = any(
         key in patch and patch[key] != current[key] for key in _RESTART_REQUIRED
     )
+    # Choosing the engine again is a fresh attempt: a remembered
+    # graphics-card failure must not overrule the player's new choice.
+    if "engine_variant" in patch and patch["engine_variant"] != current["engine_variant"]:
+        clear_gpu_failure(conn)
     _save_runtime_settings(conn, patch)
 
     return RuntimeSettingsResponse(
@@ -191,3 +215,79 @@ async def reset_runtime_settings(request: Request) -> RuntimeSettingsResponse:
         recommended=_recommended(),
         requires_restart=True,
     )
+
+
+# ── Graphics card or processor (issue #531) ───────────────────────────────────
+
+
+class GpuFailureInfo(BaseModel):
+    rung: str
+    detail: str
+    device: Optional[str] = None
+    at: str
+
+
+class EngineDeviceInfo(BaseModel):
+    backend_id: str
+    name: str
+    total_mib: Optional[int] = None
+    free_mib: Optional[int] = None
+    kind: str
+
+
+class EngineStatusResponse(BaseModel):
+    """Which engine build answers, and whether the graphics card failed.
+
+    ``setting`` is the player's choice; ``running`` the build the managed
+    engine runs now (None when it is not running); ``available`` the builds
+    this install has (``cpu``, ``vulkan``, ``metal``). ``notice_pending`` is
+    true for a stored failure the player has not seen the notice for.
+    """
+
+    setting: str
+    running: Optional[str] = None
+    available: list[str]
+    device: Optional[str] = None
+    reason: Optional[str] = None
+    devices: list[EngineDeviceInfo] = []
+    gpu_failure: Optional[GpuFailureInfo] = None
+    notice_pending: bool = False
+
+
+def _engine_response(request: Request) -> EngineStatusResponse:
+    return EngineStatusResponse(**engine_status(request.app, request.app.state.db.connection()))
+
+
+@router.get("/api/runtime/engine", response_model=EngineStatusResponse)
+async def get_engine_status(request: Request) -> EngineStatusResponse:
+    return _engine_response(request)
+
+
+@router.post("/api/runtime/engine/notice-seen", response_model=EngineStatusResponse)
+async def engine_notice_seen(request: Request) -> EngineStatusResponse:
+    """The player has seen the fallback notice; it is not shown again."""
+    mark_gpu_notice_seen(request.app.state.db.connection())
+    return _engine_response(request)
+
+
+@router.post("/api/runtime/engine/restart", response_model=EngineStatusResponse)
+async def restart_engine(request: Request) -> EngineStatusResponse:
+    """Restart the managed engine so a changed choice takes effect now.
+
+    An engine that is not running is left alone: it starts with the new
+    choice when it is next needed.
+    """
+    from convsim_core.runtime.active import restart_llama_sidecar
+
+    await restart_llama_sidecar(request.app)
+    return _engine_response(request)
+
+
+@router.post("/api/runtime/engine/retry-graphics-card", response_model=EngineStatusResponse)
+async def retry_graphics_card(request: Request) -> EngineStatusResponse:
+    """Forget the stored graphics-card failure and try the card again now."""
+    from convsim_core.runtime.active import restart_llama_sidecar
+
+    clear_gpu_failure(request.app.state.db.connection())
+    await restart_llama_sidecar(request.app)
+    return _engine_response(request)

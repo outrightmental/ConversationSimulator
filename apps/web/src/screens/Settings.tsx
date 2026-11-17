@@ -10,6 +10,7 @@ import { useSteamStatus } from '../hooks/useSteamStatus'
 import { announceSessionsChanged } from '../hooks/useResumableSession'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import ReplySpeedPanel from '../components/ReplySpeedPanel'
+import GraphicsCardPanel from '../components/GraphicsCardPanel'
 import WordingPanel from '../components/WordingPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
@@ -501,6 +502,22 @@ export default function Settings() {
         </p>
         <ReplySpeedPanel />
       </section>
+
+      {/* Graphics card or processor (issue #531). In every edition, like reply
+          speed: the demo's first reply is where the card matters most, and a
+          demo player whose card failed needs "Try the graphics card again"
+          too. The panel renders the section, and none at all when the core
+          predates it. */}
+      <GraphicsCardPanel
+        header={
+          <>
+            <SectionHeading>{t('settings.graphicsCard.heading')}</SectionHeading>
+            <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+              {t('settings.graphicsCard.description')}
+            </p>
+          </>
+        }
+      />
 
       {/* Runtime settings */}
       {!isDemo && (

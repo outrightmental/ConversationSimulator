@@ -74,12 +74,30 @@ def build_command(
 
 
 _EXECUTABLE_ENV_VAR = "CONVSIM_LLAMA_CPP_EXECUTABLE"
+_VULKAN_EXECUTABLE_ENV_VAR = "CONVSIM_LLAMA_CPP_VULKAN_EXECUTABLE"
 _BUNDLED_RUNTIME_DIR_ENV_VAR = "CONVSIM_BUNDLED_RUNTIME_DIR"
 _BUNDLED_BINARY_NAME = "llama-server"
+#: The Vulkan build's directory, inside the bundled runtime directory and inside
+#: ~/.convsim/bin (issue #530). Kept apart so that the default build, which sits
+#: one level up, never finds the Vulkan backend library beside it.
+VULKAN_SUBDIR = "vulkan"
+
+
+def _binary_filename() -> str:
+    return f"{_BUNDLED_BINARY_NAME}{'.exe' if sys.platform == 'win32' else ''}"
+
+
+def user_install_dir() -> Path:
+    """Where ``download_binary()`` installs the default build by default."""
+    return Path.home() / ".convsim" / "bin"
+
+
+def _usable(candidate: Path) -> bool:
+    return candidate.is_file() and os.access(candidate, os.X_OK)
 
 
 def find_executable() -> str | None:
-    """Resolve the llama-server binary using the Steam bundling convention.
+    """Resolve the default (processor) llama-server build.
 
     Resolution order (first hit wins), matching docs/sidecar-bundling.md:
 
@@ -95,6 +113,9 @@ def find_executable() -> str | None:
        after an in-app install without requiring a PATH change or app restart.
     4. PATH lookup — ``shutil.which("llama-server")`` (developer builds).
 
+    On macOS this build uses Metal; on Windows and Linux it is the CPU build.
+    The Vulkan build is resolved separately by :func:`find_vulkan_executable`.
+
     Returns None when no candidate resolves.
     """
     override = os.environ.get(_EXECUTABLE_ENV_VAR)
@@ -103,17 +124,61 @@ def find_executable() -> str | None:
 
     bundled_dir = os.environ.get(_BUNDLED_RUNTIME_DIR_ENV_VAR)
     if bundled_dir:
-        suffix = ".exe" if sys.platform == "win32" else ""
-        candidate = Path(bundled_dir) / f"{_BUNDLED_BINARY_NAME}{suffix}"
-        if candidate.is_file() and os.access(candidate, os.X_OK):
+        candidate = Path(bundled_dir) / _binary_filename()
+        if _usable(candidate):
             return str(candidate)
 
-    suffix = ".exe" if sys.platform == "win32" else ""
-    user_installed = Path.home() / ".convsim" / "bin" / f"{_BUNDLED_BINARY_NAME}{suffix}"
-    if user_installed.is_file() and os.access(user_installed, os.X_OK):
+    user_installed = user_install_dir() / _binary_filename()
+    if _usable(user_installed):
         return str(user_installed)
 
     return shutil.which("llama-server") or shutil.which("llama_server")
+
+
+def find_vulkan_executable() -> str | None:
+    """Resolve the Vulkan llama-server build, or None (issue #531).
+
+    1. ``CONVSIM_LLAMA_CPP_VULKAN_EXECUTABLE``, verbatim.
+    2. None when ``CONVSIM_LLAMA_CPP_EXECUTABLE`` is set: an operator who pins
+       one engine gets that engine, never a second one beside it.
+    3. ``<CONVSIM_BUNDLED_RUNTIME_DIR>/vulkan/llama-server[.exe]`` (Steam builds).
+    4. ``~/.convsim/bin/vulkan/llama-server[.exe]`` (the in-app download and the
+       download scripts' default for ``-Variant vulkan``).
+
+    Each is looked up on its own, so a Vulkan build the player downloaded is
+    found even when a bundled CPU build exists. PATH is not searched: nothing
+    there says which build a ``llama-server`` is.
+    """
+    override = os.environ.get(_VULKAN_EXECUTABLE_ENV_VAR)
+    if override:
+        return override
+    if os.environ.get(_EXECUTABLE_ENV_VAR):
+        return None
+
+    bundled_dir = os.environ.get(_BUNDLED_RUNTIME_DIR_ENV_VAR)
+    if bundled_dir:
+        candidate = Path(bundled_dir) / VULKAN_SUBDIR / _binary_filename()
+        if _usable(candidate):
+            return str(candidate)
+
+    user_installed = user_install_dir() / VULKAN_SUBDIR / _binary_filename()
+    if _usable(user_installed):
+        return str(user_installed)
+    return None
+
+
+def executable_source(executable: str, *, vulkan: bool = False) -> str:
+    """Where *executable* was found: ``override``, ``bundled``, ``user`` or ``path``."""
+    override = os.environ.get(_VULKAN_EXECUTABLE_ENV_VAR if vulkan else _EXECUTABLE_ENV_VAR)
+    if override and executable == override:
+        return "override"
+    exe = Path(executable)
+    bundled_dir = os.environ.get(_BUNDLED_RUNTIME_DIR_ENV_VAR)
+    if bundled_dir and Path(bundled_dir) in exe.parents:
+        return "bundled"
+    if user_install_dir() in exe.parents:
+        return "user"
+    return "path"
 
 
 def _is_port_in_use(host: str, port: int) -> bool:
@@ -121,6 +186,23 @@ def _is_port_in_use(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.5)
         return sock.connect_ex((host, port)) == 0
+
+
+async def wait_for_port_release(host: str, port: int, timeout: float = 5.0) -> bool:
+    """Wait until nothing listens on host:port; True once it is free.
+
+    An engine that was just stopped can hold its port for a moment after its
+    process has exited (Windows releases it asynchronously), and the next
+    start would otherwise report a port conflict against its own predecessor.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        if not await asyncio.to_thread(_is_port_in_use, host, port):
+            return True
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(0.1)
 
 
 async def _wait_for_ready(
@@ -200,12 +282,47 @@ class LlamaCppSidecar(SidecarProcess):
         self._host: str = _DEFAULT_HOST
         self._port: int = _DEFAULT_PORT
         self._started_at: str | None = None
+        self._variant: str | None = None
+        #: Held by whoever is deciding which build to start (engine_variant.
+        #: start_engine), so two start requests cannot both launch one.
+        self.start_lock = asyncio.Lock()
+
+    @property
+    def variant(self) -> str | None:
+        """The build the managed process runs: ``cpu``, ``vulkan``, ``metal``, or None."""
+        return self._variant
+
+    @property
+    def host(self) -> str:
+        return self._host
+
+    @property
+    def port(self) -> int:
+        return self._port
+
+    @property
+    def model_path(self) -> str | None:
+        return self._model_path
+
+    async def wait_for_exit(self, timeout: float) -> bool:
+        """Wait up to *timeout* seconds for the process to exit; True if it has."""
+        process = self._process
+        if process is None:
+            return True
+        if process.returncode is not None:
+            return True
+        try:
+            await asyncio.wait_for(process.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return False
+        return True
 
     async def start(
         self,
         model_path: str,
         *,
         executable: str | None = None,
+        variant: str | None = None,
         host: str = _DEFAULT_HOST,
         port: int = _DEFAULT_PORT,
         context_length: int | None = None,
@@ -225,6 +342,13 @@ class LlamaCppSidecar(SidecarProcess):
         the command line as ``--ctx-size`` and wins over both
         ``launch.context_length`` and a ``LLAMA_ARG_CTX_SIZE`` pinned in the
         environment, which otherwise keeps the flag off the command line.
+
+        ``variant`` names the build ``executable`` is (``cpu``, ``vulkan`` or
+        ``metal``), for the status and the fallback ladder; which build to
+        start is decided in ``runtime/engine_variant.py``. The process runs
+        with its own directory as the working directory: ggml looks for its
+        backend libraries beside the executable and in the working directory,
+        and the CPU build must only ever find its own.
 
         Raises RuntimeError on port conflict, missing executable, or startup
         failure. Raises TimeoutError if startup_timeout elapses before /health
@@ -284,6 +408,7 @@ class LlamaCppSidecar(SidecarProcess):
         self._model_path = model_path
         self._host = host
         self._port = port
+        self._variant = variant
         self._started_at = datetime.now(timezone.utc).isoformat()
 
         # The effective LLAMA_ARG_* line is what lets a runtime.log excerpt
@@ -291,11 +416,15 @@ class LlamaCppSidecar(SidecarProcess):
         launch_vars = " ".join(f"{k}={env[k]}" for k in LAUNCH_ENV_VARS if k in env)
         header = (
             f"\n--- llama-server start {self._started_at} ---\n"
+            f"variant: {variant or 'unknown'}\n"
             f"cmd: {' '.join(cmd)}\n"
             f"env: {launch_vars}\n"
         ).encode()
         log_fh.write(header)
         log_fh.flush()
+
+        exe_dir = Path(exe).parent
+        cwd = str(exe_dir) if exe_dir.is_absolute() and exe_dir.is_dir() else None
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -304,6 +433,7 @@ class LlamaCppSidecar(SidecarProcess):
                 stderr=subprocess.STDOUT,
                 creationflags=CREATE_NO_WINDOW,
                 env=env,
+                cwd=cwd,
             )
         except OSError as exc:
             self._state = SidecarState.CRASHED
@@ -331,6 +461,7 @@ class LlamaCppSidecar(SidecarProcess):
             self._error = None
             self._model_path = None
             self._started_at = None
+            self._variant = None
             return
         await self._terminate_process()
         self._close_log()
@@ -338,6 +469,7 @@ class LlamaCppSidecar(SidecarProcess):
         self._error = None
         self._model_path = None
         self._started_at = None
+        self._variant = None
 
     @property
     def state(self) -> SidecarState:
@@ -371,6 +503,7 @@ class LlamaCppSidecar(SidecarProcess):
             "host": self._host,
             "port": self._port,
             "started_at": self._started_at,
+            "variant": self._variant,
         }
 
     async def _terminate_process(self) -> None:

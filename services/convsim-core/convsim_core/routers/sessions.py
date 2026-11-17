@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from starlette.requests import HTTPConnection
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -44,6 +45,7 @@ from convsim_core.runtime.active import (
     find_ready_model_path,
     unpinned_session_runtime_is_model_free,
 )
+from convsim_core.runtime.engine_variant import record_crash_and_fall_back
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.scenario_state import (
     build_variable_defs,
@@ -1188,6 +1190,38 @@ def _session_bus(request: Request) -> Optional[SessionEventBus]:
     return getattr(request.app.state, "session_bus", None)
 
 
+class _ReleaseWatchingStreamer:
+    """A turn streamer that remembers whether any of the line reached the client.
+
+    The turn path retries a turn on the processor engine when the graphics
+    card's engine dies mid-turn (issue #531), but only while nothing has been
+    released: released text is committed text (#538).
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self.released = False
+
+    @property
+    def output_tokens(self) -> int:
+        return self._inner.output_tokens
+
+    @output_tokens.setter
+    def output_tokens(self, value: int) -> None:
+        self._inner.output_tokens = value
+
+    async def progress(self, stage: str, prompt: Optional[Dict[str, Optional[int]]] = None) -> None:
+        await self._inner.progress(stage, prompt)
+
+    async def token(self, text: str) -> None:
+        self.released = True
+        await self._inner.token(text)
+
+    async def final(self, content: str) -> None:
+        self.released = True
+        await self._inner.final(content)
+
+
 def turn_timeout_message(*, demo: bool) -> str:
     """The TURN_TIMEOUT message, in words a player can act on.
 
@@ -1309,8 +1343,10 @@ async def _run_turn(
         else:
             streamer = SessionTurnStreamer(bus, session_id, clock)
 
-    try:
-        result = await process_turn(
+    watched = _ReleaseWatchingStreamer(streamer) if streamer is not None else None
+
+    async def _process() -> Any:
+        return await process_turn(
             session_row=row,
             player_text=body.content,
             scenario_data=scenario_data,
@@ -1324,9 +1360,32 @@ async def _run_turn(
             scenario_events=info.events,
             ending_conditions=info.ending_conditions,
             timing=timing,
-            streamer=streamer,
+            streamer=watched,
             config=config,
         )
+
+    try:
+        try:
+            result = await _process()
+        except (ConnectionError, httpx.TransportError) as exc:
+            # The graphics-card engine died with this turn in flight (issue
+            # #531): remember it, start the processor engine, and run the turn
+            # again. Nothing was committed — the pipeline writes only after the
+            # model answers — so the retry commits once. A turn whose words
+            # already reached the screen is not retried: released text is never
+            # withdrawn (#538), and the player's resend reaches the processor.
+            if (
+                getattr(runtime, "id", None) != "llama_cpp"
+                or (watched is not None and watched.released)
+                or not await record_crash_and_fall_back(request.app)
+            ):
+                raise
+            logger.warning(
+                "Graphics-card engine stopped during a turn for session %s (%s); "
+                "retrying it on the processor engine",
+                session_id, exc,
+            )
+            result = await _process()
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except TimeoutError as exc:
@@ -1341,9 +1400,10 @@ async def _run_turn(
             message=turn_timeout_message(demo=is_demo(request.app.state.service_config)),
             status_code=504,
         ) from exc
-    except ConnectionError as exc:
+    except (ConnectionError, httpx.TransportError) as exc:
         # The adapter could not reach the engine at all — including a connect
-        # timeout, which it reports here rather than as a stall. Without this the
+        # timeout, which it reports here rather than as a stall — or the engine
+        # dropped the connection mid-reply. Without this the
         # player got the same bare 500 that issue #489 complained about, for a
         # cause they can actually act on. The adapter's message names a CLI
         # invocation, so it is logged rather than shown.

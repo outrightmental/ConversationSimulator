@@ -420,8 +420,8 @@ class LlamaCppRuntime(ChatRuntime):
         except httpx.TimeoutException as exc:
             raise TimeoutError(
                 f"llama-server went quiet for more than {self._chat_timeout}s while "
-                "generating. Increase CONVSIM_LLAMA_CPP_CHAT_TIMEOUT, pick a smaller "
-                "model, or offload more layers to the GPU."
+                "generating. Increase CONVSIM_LLAMA_CPP_CHAT_TIMEOUT or pick a smaller "
+                "model."
             ) from exc
 
         if retry_without_extras:

@@ -31,7 +31,8 @@ from convsim_core.edition import (
 )
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.seeder import seed_official_packs
-from convsim_core.runtime.active import MODEL_FREE_RUNTIME_IDS
+from convsim_core.runtime.active import MODEL_FREE_RUNTIME_IDS, player_gpu_layers
+from convsim_core.runtime.engine_variant import find_engine_builds, start_engine
 from convsim_core.runtime.launch import resolve_launch_config
 from convsim_core.runtime.llama_cpp_download import DownloadProgress, download_binary
 from convsim_core.runtime.sidecar import LlamaCppSidecar, SidecarState, find_executable
@@ -459,13 +460,20 @@ async def _run_pipeline(
             # Same launch configuration as the autostart and the sidecar API
             # (issue #523): the model's registry context size, one slot, small
             # batches. The install record was marked ready above, so the path
-            # maps back to its registry row.
-            await sidecar.start(
-                model_path=model_file_path,
-                executable=exe,
-                launch=resolve_launch_config(model_file_path, conn),
-                startup_timeout=120.0,
-            )
+            # maps back to its registry row. Which build starts, and the fall
+            # back from the graphics card to the processor, is the same
+            # decision every start site makes (issue #531).
+            async with sidecar.start_lock:
+                await start_engine(
+                    app,
+                    sidecar,
+                    model_path=model_file_path,
+                    launch=resolve_launch_config(model_file_path, conn),
+                    conn=conn,
+                    startup_timeout=120.0,
+                    gpu_layers=player_gpu_layers(conn),
+                    builds=find_engine_builds(exe),
+                )
 
             # Quick 1-token probe to verify the model can generate output.
             try:
