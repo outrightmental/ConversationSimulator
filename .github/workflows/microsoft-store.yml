@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Microsoft Store — packs a release for the Microsoft Store and, once Partner
-# Center has an app submission to update, sends it there as a draft.
+# Center has an app submission to update, sends it there as a draft. Two
+# products: the paid full app (edition full) and the free demo (edition demo,
+# packed from a demo Release run's demo-desktop-Windows-x86_64 artifact, with
+# the demo's own identity: MSSTORE_DEMO_IDENTITY_NAME, MSSTORE_DEMO_PRODUCT_ID).
 #
 # The package (an MSIX) is the release's Windows files: the signed tree the
 # Windows build leg of release.yml assembled for Steam (steam-depot-windows.tar.gz
@@ -15,6 +18,7 @@
 #   * chained from release.yml after a full release (tag + that run's ID);
 #   * by hand, to package any release again:
 #       gh workflow run microsoft-store.yml -f tag=v0.4.10 -f run_id=<Release run ID>
+#     (-f edition=demo with the run ID of the demo Release run for the tag)
 #
 # Every run keeps the MSIX as the microsoft-store-msix artifact. Sending it to
 # Partner Center needs the MSSTORE_* secrets below, and leaves a DRAFT
@@ -45,6 +49,14 @@ on:
           artifact holds the signed Windows files.
         required: true
         type: string
+      edition:
+        description: 'full (the paid app) or demo (the free demo, from a demo Release run)'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - demo
       upload:
         description: 'Send the package to Partner Center as a draft submission (when the MSSTORE_ secrets are set)'
         required: false
@@ -57,6 +69,10 @@ on:
         type: string
       run_id:
         required: true
+        type: string
+      edition:
+        required: false
+        default: 'full'
         type: string
       upload:
         required: false
@@ -75,20 +91,24 @@ jobs:
     timeout-minutes: 60
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      EDITION: ${{ inputs.edition || 'full' }}
+      # The product this edition is: the paid app, or the free demo.
+      STORE_IDENTITY_NAME: ${{ inputs.edition == 'demo' && vars.MSSTORE_DEMO_IDENTITY_NAME || vars.MSSTORE_IDENTITY_NAME }}
+      STORE_PRODUCT_ID: ${{ inputs.edition == 'demo' && vars.MSSTORE_DEMO_PRODUCT_ID || vars.MSSTORE_PRODUCT_ID }}
       HAS_SIGNING: ${{ (secrets.GCP_SA_KEY_JSON != '' && secrets.GCP_KMS_KEY != '' && secrets.WINDOWS_CODESIGN_CERT != '') || secrets.WINDOWS_SIGN_CERT_PFX != '' }}
     steps:
       - name: Check the Microsoft Store identity and the tag
         id: identity
         shell: bash
         env:
-          IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          IDENTITY_NAME: ${{ env.STORE_IDENTITY_NAME }}
           PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
           PUBLISHER_DISPLAY_NAME: ${{ vars.MSSTORE_PUBLISHER_DISPLAY_NAME }}
         run: |
           # A Store package carries the identity Partner Center gave the app
           # when its name was reserved; without it there is nothing to pack.
           if [ -z "$IDENTITY_NAME" ] || [ -z "$PUBLISHER" ] || [ -z "$PUBLISHER_DISPLAY_NAME" ]; then
-            echo "::notice::Microsoft Store skipped: the repository variables MSSTORE_IDENTITY_NAME, MSSTORE_PUBLISHER and MSSTORE_PUBLISHER_DISPLAY_NAME are not all set (publishing/MICROSOFT_STORE.md)."
+            echo "::notice::Microsoft Store ($EDITION) skipped: the identity variables (MSSTORE_IDENTITY_NAME or, for the demo, MSSTORE_DEMO_IDENTITY_NAME; MSSTORE_PUBLISHER; MSSTORE_PUBLISHER_DISPLAY_NAME) are not all set (publishing/MICROSOFT_STORE.md)."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           # The Store's version is MAJOR.MINOR.BUILD.0: a pre-release tag has
           # no Store version, so it is not packed.
@@ -120,7 +140,7 @@ jobs:
         if: steps.identity.outputs.ready == 'true'
         uses: actions/download-artifact@v7
         with:
-          name: desktop-Windows-x86_64
+          name: ${{ inputs.edition == 'demo' && 'demo-desktop-Windows-x86_64' || 'desktop-Windows-x86_64' }}
           path: release-windows
           run-id: ${{ inputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -132,7 +152,7 @@ jobs:
           set -euo pipefail
           TARBALL="$(find release-windows -name steam-depot-windows.tar.gz | head -n1)"
           if [ -z "$TARBALL" ]; then
-            echo "::error::Run ${{ inputs.run_id }} has no steam-depot-windows.tar.gz in desktop-Windows-x86_64. Give the run ID of the full-edition Release run for $RELEASE_TAG."
+            echo "::error::Run ${{ inputs.run_id }} has no steam-depot-windows.tar.gz for the $EDITION edition. Give the run ID of the $EDITION Release run for $RELEASE_TAG."
             exit 1
           fi
           tar -xzf "$TARBALL"
@@ -203,12 +223,21 @@ jobs:
         shell: bash
         env:
           VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
-          VITE_CONVSIM_EDITION: full
-          CONVSIM_EDITION: full
+          VITE_CONVSIM_EDITION: ${{ inputs.edition || 'full' }}
+          CONVSIM_EDITION: ${{ inputs.edition || 'full' }}
+          # The demo's "Get the full game" goes to the full app in this store.
+          VITE_CONVSIM_STORE: microsoft-store
         run: |
           set -euo pipefail
+          # The demo overlay renames the product and gives it its own
+          # identifier and icons, exactly as release.yml builds it for Steam.
+          EDITION_CONFIG=()
+          if [ "$EDITION" = "demo" ]; then
+            EDITION_CONFIG=(--config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.demo.conf.json")
+          fi
           pnpm --filter @convsim/desktop exec tauri build --no-bundle \
-            --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json"
+            --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json" \
+            "${EDITION_CONFIG[@]}"
           ls -la apps/desktop/src-tauri/target/release/convsim-desktop.exe
 
       - name: Set up Java (jsign Authenticode signing)
@@ -248,20 +277,21 @@ jobs:
         if: steps.identity.outputs.ready == 'true'
         shell: pwsh
         env:
-          MSSTORE_IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          MSSTORE_IDENTITY_NAME: ${{ env.STORE_IDENTITY_NAME }}
           MSSTORE_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
           MSSTORE_PUBLISHER_DISPLAY_NAME: ${{ vars.MSSTORE_PUBLISHER_DISPLAY_NAME }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $package = "conversation-simulator-$env:RELEASE_TAG-windows.msix"
-          ./scripts/pack-msix.ps1 -Depot steam-depot-windows -Exe msstore\ConversationSimulator.exe -Tag $env:RELEASE_TAG -OutFile $package
+          $name = if ($env:EDITION -eq 'demo') { 'conversation-simulator-demo' } else { 'conversation-simulator' }
+          $package = "$name-$env:RELEASE_TAG-windows.msix"
+          ./scripts/pack-msix.ps1 -Edition $env:EDITION -Depot steam-depot-windows -Exe msstore\ConversationSimulator.exe -Tag $env:RELEASE_TAG -OutFile $package
           "PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Keep the package
         if: steps.identity.outputs.ready == 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: microsoft-store-msix
+          name: ${{ inputs.edition == 'demo' && 'microsoft-store-demo-msix' || 'microsoft-store-msix' }}
           path: ${{ env.PACKAGE }}
           if-no-files-found: error
           retention-days: 90
@@ -277,7 +307,7 @@ jobs:
           SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
           CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
-          PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+          PRODUCT_ID: ${{ env.STORE_PRODUCT_ID }}
         run: |
           if [ "$UPLOAD" = "false" ]; then
             echo "::notice::Partner Center upload skipped: this run was asked to package only. The MSIX is the microsoft-store-msix artifact."
@@ -304,7 +334,7 @@ jobs:
           SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
           CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
-          PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+          PRODUCT_ID: ${{ env.STORE_PRODUCT_ID }}
         run: |
           $ErrorActionPreference = 'Stop'
           msstore reconfigure --tenantId $env:TENANT_ID --sellerId $env:SELLER_ID --clientId $env:CLIENT_ID --clientSecret $env:CLIENT_SECRET
@@ -322,9 +352,9 @@ jobs:
           SENT: ${{ steps.store.outputs.ready }}
         run: |
           {
-            echo "### Microsoft Store — $RELEASE_TAG"
+            echo "### Microsoft Store ($EDITION) — $RELEASE_TAG"
             echo ""
-            echo "Package: \`$PACKAGE\` (artifact **microsoft-store-msix**)."
+            echo "Package: \`$PACKAGE\` (artifact **${{ inputs.edition == 'demo' && 'microsoft-store-demo-msix' || 'microsoft-store-msix' }}**)."
             if [ "$SENT" = "true" ]; then
               echo "A draft submission with it is waiting in Partner Center: review it and press **Submit to the Store**."
             else

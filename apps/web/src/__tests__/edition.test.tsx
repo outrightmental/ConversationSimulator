@@ -20,9 +20,12 @@ import {
   EDITION_POLL_INTERVAL_MS,
   EditionContext,
   EditionProvider,
+  FULL_APP_MSSTORE_URL,
   FULL_APP_STEAM_APP_ID,
   FULL_APP_STEAM_URL,
   buildEdition,
+  buildStore,
+  fullAppLink,
   reconcileEdition,
   useEdition,
   type EditionState,
@@ -323,6 +326,48 @@ describe('DemoUpsellCard', () => {
       render(<DemoUpsellCard />)
       fireEvent.click(screen.getByTestId('demo-upsell-link'))
       await waitFor(() => expect(invoke).toHaveBeenCalledWith('plugin:shell|open', { path: FULL_APP_STEAM_URL }))
+    })
+
+    it('in a Microsoft Store build, opens the full app in the Microsoft Store and never asks Steam', async () => {
+      vi.stubEnv('VITE_CONVSIM_STORE', 'microsoft-store')
+      const invoke = installTauri(true)
+      render(<DemoUpsellCard />)
+      fireEvent.click(screen.getByTestId('demo-upsell-link'))
+      await waitFor(() => expect(invoke).toHaveBeenCalledWith('plugin:shell|open', { path: FULL_APP_MSSTORE_URL }))
+      expect(invoke).not.toHaveBeenCalledWith('steam_open_store_page', expect.anything())
+      vi.unstubAllEnvs()
+    })
+  })
+
+  describe('in a build for another store', () => {
+    afterEach(() => vi.unstubAllEnvs())
+
+    it('names Steam by default', () => {
+      render(<DemoUpsellCard />)
+      expect(screen.getByTestId('demo-upsell-link')).toHaveTextContent('View the full game on Steam')
+    })
+
+    it('links to the full app in the Microsoft Store, and says so', () => {
+      vi.stubEnv('VITE_CONVSIM_STORE', 'microsoft-store')
+      render(<DemoUpsellCard />)
+      const link = screen.getByTestId('demo-upsell-link')
+      expect(link).toHaveAttribute('href', FULL_APP_MSSTORE_URL)
+      expect(link).toHaveTextContent('View the full game on Microsoft Store')
+    })
+
+    it('links to the App Store address the Mac lane passes in', () => {
+      vi.stubEnv('VITE_CONVSIM_STORE', 'mac-app-store')
+      vi.stubEnv('VITE_FULL_APP_URL', 'https://apps.apple.com/app/id1234567890')
+      render(<DemoUpsellCard />)
+      const link = screen.getByTestId('demo-upsell-link')
+      expect(link).toHaveAttribute('href', 'https://apps.apple.com/app/id1234567890')
+      expect(link).toHaveTextContent('View the full game on App Store')
+    })
+
+    it('treats an unknown store as Steam', () => {
+      vi.stubEnv('VITE_CONVSIM_STORE', 'itch')
+      expect(buildStore()).toBe('steam')
+      expect(fullAppLink().url).toBe(FULL_APP_STEAM_URL)
     })
   })
 })

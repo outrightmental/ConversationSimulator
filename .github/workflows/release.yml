@@ -1926,18 +1926,22 @@ jobs:
   # (publishing/MICROSOFT_STORE.md) and, once Partner Center can take updates
   # from CI, leaves it there as a DRAFT submission: sending it for
   # certification is a person's click, as setting a Steam build live is.
-  # Full releases only (the demo is a Steam app), and only when the Store
-  # identity variables are set: without them microsoft-store.yml skips.
+  # Both editions: the full app after a full release, and the free demo after
+  # a demo build (whose release job is skipped by design), each only when its
+  # Store identity is set (MSSTORE_IDENTITY_NAME / MSSTORE_DEMO_IDENTITY_NAME).
   microsoft-store:
-    name: Microsoft Store
+    name: Microsoft Store (${{ github.event.inputs.edition || 'full' }})
     needs: [build-desktop, release]
     if: >-
       ${{ !cancelled() && needs.build-desktop.result == 'success' &&
-          needs.release.result == 'success' && vars.MSSTORE_IDENTITY_NAME != '' }}
+          ((needs.release.result == 'success' && vars.MSSTORE_IDENTITY_NAME != '') ||
+           (needs.release.result == 'skipped' && github.event.inputs.edition == 'demo' &&
+            vars.MSSTORE_DEMO_IDENTITY_NAME != '')) }}
     uses: ./.github/workflows/microsoft-store.yml
     with:
       tag: ${{ github.event.inputs.tag || github.ref_name }}
       run_id: ${{ github.run_id }}
+      edition: ${{ github.event.inputs.edition || 'full' }}
     secrets: inherit
 
   # ── Mac App Store (macOS) ─────────────────────────────────────────────────────

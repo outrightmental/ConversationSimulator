@@ -29,6 +29,39 @@ export const FULL_APP_STEAM_APP_ID = 4963030
 export const FULL_APP_STEAM_URL =
   `https://store.steampowered.com/app/${FULL_APP_STEAM_APP_ID}/Conversation_Simulator/`
 
+/** The paid base app on the Microsoft Store (publishing/MICROSOFT_STORE.md). */
+export const FULL_APP_MSSTORE_PRODUCT_ID = '9NTNF4X3GQ95'
+export const FULL_APP_MSSTORE_URL = `https://apps.microsoft.com/detail/${FULL_APP_MSSTORE_PRODUCT_ID}`
+
+/**
+ * The store this build is sold through, baked in as VITE_CONVSIM_STORE by the
+ * store's build lane: Steam unless a lane says otherwise. A demo sold through
+ * one store must send players to the full game in that same store — a store
+ * does not accept a listing that points buyers at another.
+ */
+export type Store = 'steam' | 'microsoft-store' | 'mac-app-store'
+
+export function buildStore(): Store {
+  const raw = (import.meta.env.VITE_CONVSIM_STORE ?? '').toString().trim().toLowerCase()
+  if (raw === 'microsoft-store' || raw === 'mac-app-store') return raw
+  return 'steam'
+}
+
+/** Where the demo's "Get the full game" goes, and the store's name for the button. */
+export function fullAppLink(store: Store = buildStore()): { url: string; storeName: string } {
+  const override = (import.meta.env.VITE_FULL_APP_URL ?? '').toString().trim()
+  switch (store) {
+    case 'microsoft-store':
+      return { url: override || FULL_APP_MSSTORE_URL, storeName: 'Microsoft Store' }
+    case 'mac-app-store':
+      // The App Store address exists only once the app record does; the lane
+      // passes it in. Until then the site, which lists every store.
+      return { url: override || 'https://www.conversationsimulator.com/', storeName: 'App Store' }
+    default:
+      return { url: FULL_APP_STEAM_URL, storeName: 'Steam' }
+  }
+}
+
 /** Edition baked into this bundle, or null when the build did not say. */
 export function buildEdition(): Edition | null {
   const raw = (import.meta.env.VITE_CONVSIM_EDITION ?? '').toString().trim().toLowerCase()

@@ -58,6 +58,18 @@ Describe 'pack-msix.ps1' {
         $manifest.Package.Applications.Application.Executable | Should -Be 'ConversationSimulator.exe'
     }
 
+    It 'lays out the free demo with its own name and DEMO logos' {
+        $demo = $Identity.Clone(); $demo.IdentityName = 'OutrightMental.ConversationSimulatorDemo'
+        & $Script -Edition demo -Depot $depot -Exe $storeExe -Tag v0.4.11 -OutFile (Join-Path $work 'x.msix') -Layout $layout -LayoutOnly @demo
+
+        [xml]$manifest = Get-Content -Raw (Join-Path $layout 'AppxManifest.xml')
+        $manifest.Package.Identity.Name | Should -Be 'OutrightMental.ConversationSimulatorDemo'
+        $manifest.Package.Properties.DisplayName | Should -Be 'Conversation Simulator Demo'
+        $manifest.Package.Applications.Application.VisualElements.DisplayName | Should -Be 'Conversation Simulator Demo'
+        $demoLogo = Join-Path $PSScriptRoot '..' '..' 'publishing' 'microsoft-store' 'Assets-demo' 'StoreLogo.png'
+        (Get-FileHash (Join-Path $layout 'Assets' 'StoreLogo.png')).Hash | Should -Be (Get-FileHash $demoLogo).Hash
+    }
+
     It 'refuses the Steam build of the shell' {
         { & $Script -Depot $depot -Exe $steamExe -Tag v0.4.10 -OutFile (Join-Path $work 'x.msix') -Layout $layout -LayoutOnly @Identity } |
             Should -Throw '*steam_api64.dll*'
