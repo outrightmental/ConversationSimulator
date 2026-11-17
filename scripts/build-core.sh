@@ -109,14 +109,25 @@ echo "Build complete."
 BINARY_NAME="convsim-core"
 BUILT="$CORE_DIR/dist/$BINARY_NAME"
 
-if [[ ! -f "$BUILT" ]]; then
-    echo "ERROR: expected binary not found at $BUILT" >&2
-    exit 1
-fi
-
 mkdir -p "$OUT_DIR"
-cp -f "$BUILT" "$OUT_DIR/$BINARY_NAME"
-chmod +x "$OUT_DIR/$BINARY_NAME"
+rm -rf "${OUT_DIR:?}/$BINARY_NAME"
+if [[ "${CONVSIM_CORE_ONEDIR:-}" == "1" ]]; then
+    # One-folder build (Mac App Store edition): the folder holds the
+    # executable and its _internal/ libraries; the shell looks inside it.
+    if [[ ! -f "$BUILT/$BINARY_NAME" ]]; then
+        echo "ERROR: expected one-folder build not found at $BUILT/$BINARY_NAME" >&2
+        exit 1
+    fi
+    cp -R "$BUILT" "$OUT_DIR/$BINARY_NAME"
+    chmod +x "$OUT_DIR/$BINARY_NAME/$BINARY_NAME"
+else
+    if [[ ! -f "$BUILT" ]]; then
+        echo "ERROR: expected binary not found at $BUILT" >&2
+        exit 1
+    fi
+    cp -f "$BUILT" "$OUT_DIR/$BINARY_NAME"
+    chmod +x "$OUT_DIR/$BINARY_NAME"
+fi
 
 echo ""
 echo "Installed to : $OUT_DIR/$BINARY_NAME"

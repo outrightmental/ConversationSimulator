@@ -112,13 +112,19 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)  # noqa: F821
 # Single-file mode: all dependencies are packed into the executable and
 # extracted to a temporary directory on first launch.  The startup overhead
 # (~1–2 s) is acceptable for a long-running background service.
+#
+# CONVSIM_CORE_ONEDIR=1 builds one folder instead (convsim-core/convsim-core
+# beside its _internal/ libraries), for the Mac App Store edition: a one-file
+# build unpacks libraries into a temporary folder and loads them, and inside
+# the App Sandbox those unsigned, app-written files will not load. One folder
+# ships every library in the app, where each is signed.
+_ONEDIR = _os.environ.get('CONVSIM_CORE_ONEDIR') == '1'
+_exe_payload = [a.scripts] if _ONEDIR else [a.scripts, a.binaries, a.zipfiles, a.datas]
 exe = EXE(  # noqa: F821
     pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+    *_exe_payload,
     [],
+    exclude_binaries=_ONEDIR,
     name='convsim-core',
     debug=False,
     bootloader_ignore_signals=False,
@@ -135,3 +141,14 @@ exe = EXE(  # noqa: F821
     codesign_identity=_SIGNING_IDENTITY,
     entitlements_file=_ENTITLEMENTS,
 )
+
+if _ONEDIR:
+    coll = COLLECT(  # noqa: F821
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        name='convsim-core',
+    )

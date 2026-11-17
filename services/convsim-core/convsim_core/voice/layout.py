@@ -33,7 +33,18 @@ class VoiceLayout:
         self.root = Path(voice_root)
 
     def asset_dir(self, asset: VoiceAsset) -> Path:
+        if asset.id == "engine":
+            return self.engine_dir
         return self.root / asset.install_dir
+
+    @property
+    def engine_dir(self) -> Path:
+        """The engine the app shipped with, or else the downloaded one."""
+        bundled = catalog.bundled_engine_dir()
+        if bundled is not None:
+            return bundled
+        engine = catalog.engine_asset()
+        return self.root / (engine.install_dir if engine is not None else "engine")
 
     @property
     def staging_root(self) -> Path:
@@ -112,6 +123,4 @@ class VoiceLayout:
 
     def engine_program(self, program: str) -> Path:
         """Absolute path of an engine program in the installed engine."""
-        engine = catalog.engine_asset()
-        install_dir = engine.install_dir if engine is not None else "engine"
-        return self.root / install_dir / "bin" / catalog.engine_program_filename(program)
+        return self.engine_dir / "bin" / catalog.engine_program_filename(program)

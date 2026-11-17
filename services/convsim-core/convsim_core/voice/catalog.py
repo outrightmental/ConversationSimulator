@@ -26,9 +26,11 @@ every word. ``docs/voice-setup.md`` records the measurements.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 ENGINE_VERSION = "1.13.8"
@@ -193,8 +195,58 @@ def engine_program_filename(program: str, platform_key: Optional[str] = None) ->
     return f"{program}.exe" if key and key.startswith("win-") else program
 
 
+# A store build can ship the engine inside the app, under the bundled runtime
+# folder the shell points CONVSIM_BUNDLED_RUNTIME_DIR at, laid out exactly as
+# an install (bin/, lib/, and the install marker). See bundled_engine_dir().
+BUNDLED_ENGINE_SUBDIR = "voice-engine"
+
+
+def in_macos_app_sandbox() -> bool:
+    """True inside the macOS App Sandbox (the Mac App Store edition).
+
+    macOS sets APP_SANDBOX_CONTAINER_ID for every sandboxed process, and the
+    engine's child processes inherit it. A sandboxed app may not download
+    programs and run them: App Review forbids it (guideline 2.5.2) and the
+    sandbox quarantines what the app writes. There the engine either ships in
+    the app or voice is unavailable.
+    """
+    return sys.platform == "darwin" and bool(os.environ.get("APP_SANDBOX_CONTAINER_ID"))
+
+
+def bundled_engine_dir(platform_key: Optional[str] = None) -> Optional[Path]:
+    """The engine shipped in the app, when there is one of the pinned version."""
+    root = os.environ.get("CONVSIM_BUNDLED_RUNTIME_DIR")
+    asset = _engine_asset_for(platform_key)
+    if not root or asset is None:
+        return None
+    directory = Path(root) / BUNDLED_ENGINE_SUBDIR
+    try:
+        marker = json.loads((directory / INSTALL_MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(marker, dict) or marker.get("version") != asset.version:
+        return None
+    if not all((directory / rel).is_file() for rel in asset.required_files):
+        return None
+    return directory
+
+
 def engine_asset(platform_key: Optional[str] = None) -> Optional[VoiceAsset]:
-    """The engine asset for a platform, or None where no build is published."""
+    """The engine asset for a platform, or None where voice is not available.
+
+    None where no build is published, and inside the macOS App Sandbox unless
+    the app ships the engine (see in_macos_app_sandbox).
+    """
+    asset = _engine_asset_for(platform_key)
+    if asset is None:
+        return None
+    if in_macos_app_sandbox() and bundled_engine_dir(platform_key) is None:
+        return None
+    return asset
+
+
+def _engine_asset_for(platform_key: Optional[str] = None) -> Optional[VoiceAsset]:
+    """The pinned engine build for a platform, or None where none is published."""
     key = platform_key if platform_key is not None else detect_platform_key()
     if key is None or key not in _ENGINE_BUILDS:
         return None
