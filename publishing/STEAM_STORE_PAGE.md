@@ -564,11 +564,13 @@ Limit: **300 characters**.
 
 ```
 Try five real conversations — a job interview, a car negotiation, asking for
-a raise, a first ask, and Spanish at a café — with AI characters that run
-entirely on your computer. One model download, then everything works offline.
+a raise, a first ask, and Spanish at a café — with simulated characters who
+have their own agendas. Type or talk out loud: everything runs on your
+computer and works offline.
 ```
 
-Character count: 228. Within the 300-character limit.
+Character count: 251. Within the 300-character limit. Live on Steamworks
+since 2026-11-16 (the "simulated character" wording follows #595).
 
 ### Demo long description
 
@@ -577,9 +579,20 @@ Character count: 228. Within the 300-character limit.
 
 <p>
   The Conversation Simulator demo lets you rehearse five real-life
-  conversations with AI characters who have their own agendas — and who will
-  not hand you the win. Download one AI model (about 2.5 GB) and everything
+  conversations with simulated characters who have their own background,
+  stakes and agenda — and who will not hand you the win. Each one is
+  simulated from what they want, what they worry about and what they know; a
+  language model running on your computer gives them their words, but it
+  never drives. Download the demo's model once (about 2.5 GB) and everything
   runs on your own machine. No account, no internet needed during play.
+</p>
+
+<h2>Talk out loud, or type</h2>
+<p>
+  Voice is an optional extra download (about 560 MB), offered when you set
+  up: speak your side into your microphone and hear each character answer in
+  a voice of their own, all processed on your computer. Every conversation
+  works in text too.
 </p>
 
 <h2>What is in the demo</h2>
@@ -598,7 +611,7 @@ Character count: 228. Within the 300-character limit.
 
 <h2>What the full game adds</h2>
 <ul>
-  <li>The complete scenario library — every official scenario pack, plus premium scenario packs.</li>
+  <li>The complete scenario library — 20 conversations across five packs, plus premium scenario packs.</li>
   <li>The Creator Workbench: write and share your own scenarios, characters, and rubrics.</li>
   <li>Model tiers, Ollama, and your own GGUF files for higher-quality characters.</li>
 </ul>
@@ -610,9 +623,9 @@ Character count: 228. Within the 300-character limit.
 
 <h2>Private by design</h2>
 <p>
-  The demo makes exactly one network request: the model download you start
-  yourself. Conversations, transcripts, and scores are stored only on your
-  device. There is no telemetry.
+  The demo goes online only for the downloads you start yourself: the model,
+  and voice if you choose it. Conversations, transcripts, recordings, and
+  scores are stored only on your device. There is no telemetry.
 </p>
 
 <p>
