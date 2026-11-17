@@ -113,9 +113,9 @@ jobs:
       - name: Run PowerShell unit tests
         shell: pwsh
         run: |
-          Write-Host "Local: Invoke-Pester -Path tests/signing -Output Detailed"
+          Write-Host "Local: Invoke-Pester -Path tests/signing,tests/msix -Output Detailed"
           $cfg = New-PesterConfiguration
-          $cfg.Run.Path      = 'tests/signing'
+          $cfg.Run.Path      = @('tests/signing', 'tests/msix')
           $cfg.Run.Exit      = $true
           $cfg.Output.Verbosity = 'Detailed'
           Invoke-Pester -Configuration $cfg

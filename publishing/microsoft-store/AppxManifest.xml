@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Microsoft Store package's manifest (publishing/MICROSOFT_STORE.md).
+  scripts/pack-msix.ps1 fills in the four placeholders and packs it with the
+  release's Windows files into an MSIX.
+
+  __IDENTITY_NAME__, __PUBLISHER__ and __PUBLISHER_DISPLAY_NAME__ are the
+  identity Partner Center gave the app when its name was reserved (the app →
+  Product identity); they are the repository variables MSSTORE_IDENTITY_NAME,
+  MSSTORE_PUBLISHER and MSSTORE_PUBLISHER_DISPLAY_NAME, not secrets.
+  __VERSION__ is the release's version with a fourth part of 0, which the
+  store requires: v0.4.10 is 0.4.10.0.
+
+  The app is an ordinary desktop program (a Tauri shell that starts the local
+  engine and the AI runtimes beside it), so it runs with full trust. It asks
+  for one device: the microphone, for speaking your side of a conversation.
+  The audio is transcribed on the device and never leaves it.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity Name="__IDENTITY_NAME__" Publisher="__PUBLISHER__" Version="__VERSION__" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Conversation Simulator</DisplayName>
+    <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!-- 19041 (Windows 10 2004) is the oldest Windows the app supports
+         (docs/install.md, System requirements). -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="ConversationSimulator" Executable="ConversationSimulator.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Conversation Simulator"
+        Description="Rehearse real conversations with simulated characters, on your own computer."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>

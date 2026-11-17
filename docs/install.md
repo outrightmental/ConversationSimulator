@@ -8,9 +8,13 @@ Two install paths are available:
 - **Path A — build from source (free):** clone the repository at a release tag and build it yourself. This is the free path, and the only one served from GitHub.
 - **Path B — Steam ($9.99):** the same software, packaged and ready to run — code-signed, notarized, auto-updating, with the AI engine bundled.
 
-> **There are no installers to download from GitHub.** Steam is the only channel
-> that ships prebuilt binaries. The GitHub releases page carries release notes and
-> source tags only — no `.dmg`, `.exe`, `.msi`, `.deb`, or `AppImage`.
+On Windows the same packaged app is also sold on the **Microsoft Store** ($9.99),
+installed and updated by the Store, without Steam's achievements, Workshop and DLC.
+
+> **There are no installers to download from GitHub.** Steam and the Microsoft
+> Store are the only channels that ship prebuilt binaries. The GitHub releases
+> page carries release notes and source tags only — no `.dmg`, `.exe`, `.msi`,
+> `.msix`, `.deb`, or `AppImage`.
 
 ---
 

@@ -21,9 +21,10 @@ There are exactly **two ways to get it**:
 
 :::caution[There are no installers to download]
 Conversation Simulator does **not** publish `.dmg`, `.exe`, `.msi`, `.deb`, or
-`AppImage` downloads — not on GitHub, not on our website. Steam is the only
-channel that ships prebuilt binaries. If you find an installer for this app
-anywhere else, it did not come from us.
+`AppImage` downloads — not on GitHub, not on our website. Steam, and on Windows
+the Microsoft Store ($9.99, the same full edition without Steam's achievements,
+Workshop and DLC), are the only channels that ship prebuilt binaries. If you
+find an installer for this app anywhere else, it did not come from us.
 
 The GitHub releases page carries release notes and source tags only. To run the
 free version, build it from source at a release tag (below).
