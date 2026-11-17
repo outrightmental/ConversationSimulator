@@ -97,6 +97,17 @@ Done once, in this order. Nothing here can be done from CI.
    gh variable set MAC_APP_STORE --repo outrightmental/ConversationSimulator --body true
    ```
 
+## Where it stands (2026-11-17)
+
+The lane builds: an unsigned trial on `main` (run 44041318971) produced the
+app with the one-folder engine at
+`Contents/Resources/resources/bin/convsim-core/convsim-core`, llama-server and
+its Metal libraries, `LSApplicationCategoryType` education,
+`ITSAppUsesNonExemptEncryption` false and the microphone text; three programs
+and 104 libraries for the signing script. Not yet: signing, the `.pkg`, the
+TestFlight upload, and any run of the sandboxed app on a Mac. Those wait on
+the steps below, which are all a person's.
+
 ## Getting a build there
 
 [`.github/workflows/mac-app-store.yml`](../.github/workflows/mac-app-store.yml)
