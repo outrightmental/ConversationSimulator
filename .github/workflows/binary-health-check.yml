@@ -274,10 +274,18 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = Join-Path $env:RUNNER_TEMP "runtimes"
-          .\runtimes\llama_cpp\download-runtime.ps1 -Variant cpu -Dest $dir
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan -Dest "$dir\vulkan"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Reset $LASTEXITCODE before each script call: a .ps1 that ends
+          # without `exit` leaves it $null, and `$null -ne 0` is true, which
+          # ended this step with exit 0 before the Vulkan build was installed.
+          foreach ($variant in @('cpu', 'vulkan')) {
+            $target = if ($variant -eq 'cpu') { $dir } else { "$dir\vulkan" }
+            $global:LASTEXITCODE = 0
+            .\runtimes\llama_cpp\download-runtime.ps1 -Variant $variant -Dest $target
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          if (-not (Test-Path "$dir\vulkan\llama-server.exe")) {
+            Write-Error "FAIL: the Vulkan build was not installed"; exit 1
+          }
           if (Get-ChildItem $dir -File -Filter '*ggml-vulkan*') {
             Write-Error "FAIL: Vulkan backend library beside the CPU engine"; exit 1
           }
