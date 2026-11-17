@@ -6,6 +6,8 @@ import type { UseSetupFlowReturn } from '../useSetupFlow'
 import { SETUP_DOCS_URL } from '../docsUrls'
 import { useIsDemo } from '../../edition'
 import FamiliarityQuestion from '../../components/FamiliarityQuestion'
+import { useVoiceInstall } from '../../hooks/useVoiceInstall'
+import { formatDownloadSize } from '../../lib/voiceInstall'
 
 const cardBase: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
@@ -21,6 +23,22 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
   const isDemo = useIsDemo()
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+
+  // Voice with the first download (issue #464): talking out loud is the point
+  // of the thing, and installed later it was a second wait the player only met
+  // on a conversation's brief, below the fold. Offered pre-ticked, with its
+  // size; it downloads alongside the model.
+  const voice = useVoiceInstall()
+  const voiceDownload = voice.status?.supported ? voice.status.download_bytes : 0
+  const voiceOffered = voiceDownload > 0
+  const [includeVoice, setIncludeVoice] = useState(true)
+
+  async function handleSetMeUp() {
+    // Started first and awaited (it only queues the job), so the install
+    // screen that follows finds the voice job already running.
+    if (voiceOffered && includeVoice && !voice.installing) await voice.install()
+    flow.handleSetMeUp()
+  }
 
   return (
     <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
@@ -67,8 +85,8 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
       <div style={{ marginBottom: '1.5rem' }}>
         {/* Set me up — the single road to a real first conversation */}
         <button
-          onClick={() => flow.handleSetMeUp()}
-          disabled={flow.actionLoading}
+          onClick={() => void handleSetMeUp()}
+          disabled={flow.actionLoading || voice.busy}
           style={{
             ...cardBase,
             background: 'rgba(99,102,241,0.1)',
@@ -91,6 +109,31 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
             {isDemo ? t('demo.setup.badge') : t('setup.welcome.setMeUp.badge')}
           </span>
         </button>
+        {voiceOffered && (
+          <label
+            data-testid="welcome-voice-offer"
+            style={{
+              display: 'flex', gap: '0.6rem', alignItems: 'flex-start', marginTop: '0.75rem',
+              padding: '0 0.25rem', fontSize: '0.875rem', color: '#d4d4d8', cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={includeVoice}
+              onChange={(e) => setIncludeVoice(e.target.checked)}
+              style={{ marginTop: '0.2rem' }}
+            />
+            <span>
+              {t('setup.welcome.voiceOffer.label')}{' '}
+              <span style={{ color: '#a1a1aa' }}>
+                {t('setup.welcome.voiceOffer.size', { size: formatDownloadSize(voiceDownload) })}
+              </span>
+              <span style={{ display: 'block', marginTop: '0.15rem', fontSize: '0.8rem', color: '#71717a' }}>
+                {t('setup.welcome.voiceOffer.note')}
+              </span>
+            </span>
+          </label>
+        )}
       </div>
 
       {/* Privacy disclosure */}

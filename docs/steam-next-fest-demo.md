@@ -157,7 +157,7 @@ store page. Nothing is greyed out.
 | First-run wizard | "Set me up" only, one model, no Ollama / GGUF disclosure | Copy says "the demo's AI model"; badge says "Demo". |
 | Model Manager (`/model-manager`) | Reachable (it is the repair path for an incomplete install); shows the one model | Ollama / GGUF cards are not rendered. |
 | Settings | Language, transcript saving, local folders, sessions, clear local data | Runtime, voice, Steam Cloud, pack management, NPC memory, system health, advanced are full-app. Privacy controls (gate F-06) are never trimmed. |
-| Conversation brief | Unchanged, plus the optional voice install | See [Voice in the demo](#voice-in-the-demo). Voice is never part of first run; the brief offers it. |
+| Conversation brief | Unchanged, plus the optional voice install | See [Voice in the demo](#voice-in-the-demo). First run offers voice pre-ticked; the brief offers it to a player who left it out. |
 | Conversation | Unchanged | Voice controls fall back to text while voice is not installed. |
 | Debrief | Unchanged, plus the compact upsell; voice invite not shown; "back" goes to Home | |
 | Support | Unchanged | Crash bundles and the beta-report path are how Next Fest feedback reaches us. |
@@ -275,14 +275,24 @@ offers a second, optional one:
   engine and its two models (about 559 MB on Windows) with one press, shows
   progress, can be cancelled, and switches voice on for the conversation being
   set up. Each greyed-out voice control leads to that button.
-- Nothing about voice appears in first run. D-03's "no other choice being
-  offered" is unchanged.
+- **First run offers it too (2026-11-16, second pass).** The demo's target is
+  a player who sits down and, surprisingly soon, is talking out loud with a
+  believable character. Walking the demo from a fresh profile showed voice
+  arriving only on the brief, below the fold, as a second wait after the
+  first. So the Welcome screen carries an **Include voice** option beside
+  "Set me up", ticked, with its size; it downloads alongside the model and
+  the install screen shows its progress, or offers it again to a player who
+  unticked it. Nothing extra is required to proceed, so D-03's "no other
+  choice being offered" still holds: the player presses "Set me up" either
+  way.
 - The download follows the model download policy: size, source and licence
   are on the card before the button is pressed, and every file is checked
   against a pinned SHA-256.
 - The demo's Settings screen is still trimmed to the privacy controls, and
   Home still has no voice rows: both would lead to a voice panel the demo
-  does not show. The brief is the one place.
+  does not show. The Welcome option and the brief are the two places, and
+  the in-app upsell no longer lists voice as something only the full game
+  has.
 
 [`docs/voice-setup.md`](voice-setup.md) is the reference for the install
 itself. The Voice smoke workflow installs and round-trips speech on Linux,
@@ -309,7 +319,7 @@ own promise.
 |---------|-------|--------|----------------|
 | D-01 | Edition is enforced server-side | CI | `services/convsim-core/tests/test_edition.py` passes: the five curated conversations resolve to real official-pack files, the demo API serves exactly them, and hidden scenarios, other models, pack import and the Workbench are refused. |
 | D-02 | Edition is honoured in the UI | CI | `apps/web/src/__tests__/edition.test.tsx` and the demo cases in the Settings, Debrief and FirstRunWizard suites pass: no link to `/library`, `/workbench` or `/logbook` anywhere in the demo; the wizard has one road. |
-| D-03 | One-download first run | Manual, clean OS image, all three platforms | From a fresh Steam install: launch → "Set me up" → download completes → first conversation reachable without any other choice being offered. A stalled download resumes after relaunch. |
+| D-03 | One-download first run | Manual, clean OS image, all three platforms | From a fresh Steam install: launch → "Set me up" → download completes → first conversation reachable without any other choice being offered (the voice option is pre-ticked and needs no decision). A stalled download resumes after relaunch. |
 | D-04 | Five, and only five | Manual | The demo Home shows the five cards in the curated order; every card starts; typing `/library`, `/workbench` or `/logbook` lands on Home. |
 | D-05 | Coherent conversations | Manual, reference hardware | Each of the five, played to the debrief at `standard` difficulty: no incoherent NPC turn, every debrief has rubric scores (no template fallback), each turn within the documented latency budget. |
 | D-06 | Save data carries over | Manual | Install the demo, download the model, play one session; install the full app on the same machine: no model download is offered, the session appears in the Logbook. |

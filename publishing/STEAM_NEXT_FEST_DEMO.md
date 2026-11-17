@@ -241,8 +241,8 @@ Use the demo section of [`STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md#demo-edition
 verbatim. The rules that matter most:
 
 - Say exactly what the demo contains: **five conversations, one AI model
-  download (~2.5 GB), text by default with an optional voice download
-  (~560 MB), unlimited replay**.
+  download (~2.5 GB), an optional voice download (~560 MB) offered with it,
+  unlimited replay**.
 - Say what the full game adds, in the same words the in-app upsell uses.
 - No claim that the paid app is free; the open-source wording of the base page
   applies unchanged.

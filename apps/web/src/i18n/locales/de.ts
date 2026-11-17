@@ -78,7 +78,6 @@ export const de: LocaleMessages = {
         library: 'Die komplette Szenario-Bibliothek — 20 Gespräche in fünf Paketen, plus Premium-Szenariopakete',
         workbench: 'Die Creator-Werkbank: eigene Szenarien, Figuren und Bewertungsraster schreiben und teilen',
         models: 'Modellstufen, Ollama und eigene GGUF-Dateien für hochwertigere Figuren',
-        voice: 'Sprache: sprechen Sie Ihren Part und hören Sie die Antwort — alles auf Ihrem Rechner verarbeitet',
       },
       cta: 'Vollversion auf Steam ansehen',
       carryOver:
@@ -509,6 +508,11 @@ export const de: LocaleMessages = {
         descriptionLoading: 'Lädt das empfohlene KI-Modell herunter. Danach offline nutzbar.',
         badge: 'Empfohlen',
       },
+      voiceOffer: {
+        label: 'Mit Stimme: laut sprechen und die Antworten hören',
+        size: '+{{size}}',
+        note: 'Wird gleichzeitig heruntergeladen, damit Sie Ihr erstes Gespräch sprechen können. Danach offline nutzbar.',
+      },
       privacy: {
         summary: '🔒 Alles bleibt auf Ihrem Gerät.',
         toggle: 'Details',
@@ -558,6 +562,15 @@ export const de: LocaleMessages = {
       },
       missionsHeading: 'Ihre ersten Missionen',
       missionRole: 'Ihre Rolle: {{role}}',
+      voice: {
+        label: 'Stimme',
+        downloading: 'Wird heruntergeladen: {{done}} von {{total}}',
+        checking: 'Es wird geprüft, ob sie auf diesem Computer läuft…',
+        ready: 'Bereit. Halten Sie im Gespräch die Mikrofontaste oder die Leertaste gedrückt und sprechen Sie.',
+        failed: 'Die Stimme konnte nicht installiert werden: {{reason}} Sie können sie später im Briefing jedes Gesprächs hinzufügen.',
+        offer: 'Möchten Sie laut sprechen? Fügen Sie die Stimme ({{size}}) hinzu, während Sie warten.',
+        add: 'Stimme hinzufügen',
+      },
     },
     remediation: {
       details: 'Details',

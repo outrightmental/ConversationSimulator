@@ -73,7 +73,6 @@ export const en = {
         library: 'The complete scenario library — 20 conversations across five packs, plus premium scenario packs',
         workbench: 'The Creator Workbench: write and share your own scenarios, characters, and rubrics',
         models: 'Model tiers, Ollama, and your own GGUF files for higher-quality characters',
-        voice: 'Voice: speak your side and hear the reply, all processed on your machine',
       },
       cta: 'View the full game on Steam',
       carryOver:
@@ -524,6 +523,13 @@ export const en = {
         descriptionLoading: 'Downloads the recommended AI model. Works offline afterwards.',
         badge: 'Recommended',
       },
+      // Voice offered with the first download, so the first conversation can
+      // be spoken: talking out loud is the point of the thing.
+      voiceOffer: {
+        label: 'Include voice: talk out loud and hear the replies',
+        size: '+{{size}}',
+        note: 'Downloads alongside, so your first conversation can be spoken. Works offline afterwards.',
+      },
       privacy: {
         summary: '🔒 Everything stays on this machine.',
         toggle: 'Details',
@@ -573,6 +579,15 @@ export const en = {
       },
       missionsHeading: 'Your first missions',
       missionRole: 'You play: {{role}}',
+      voice: {
+        label: 'Voice',
+        downloading: 'Downloading: {{done}} of {{total}}',
+        checking: 'Checking it runs on this computer…',
+        ready: 'Ready. In a conversation, hold the mic button or the Space bar and talk.',
+        failed: 'Voice could not be installed: {{reason}} You can add it later from any conversation’s brief.',
+        offer: 'Want to talk out loud? Add voice ({{size}}) while you wait.',
+        add: 'Add voice',
+      },
     },
     remediation: {
       details: 'Details',
