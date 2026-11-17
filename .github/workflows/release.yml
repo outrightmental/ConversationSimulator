@@ -543,10 +543,17 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $dest = "apps\desktop\src-tauri\resources\runtimes"
           # CPU build flat in runtimes\, Vulkan build in runtimes\vulkan\ (issue #530).
-          .\runtimes\llama_cpp\download-runtime.ps1 -Variant cpu -Dest $dest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan -Dest "$dest\vulkan"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # A .ps1 that ends without `exit` leaves $LASTEXITCODE as it was, often
+          # $null, and `$null -ne 0` is true: the old check exited 0 right after
+          # the CPU download and the Vulkan build was never fetched. Reset it
+          # before each call and stop only on a real non-zero code; a failure
+          # inside the script throws anyway ($ErrorActionPreference = 'Stop').
+          foreach ($variant in @('cpu', 'vulkan')) {
+            $target = if ($variant -eq 'cpu') { $dest } else { "$dest\vulkan" }
+            $global:LASTEXITCODE = 0
+            .\runtimes\llama_cpp\download-runtime.ps1 -Variant $variant -Dest $target
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
           Get-Item "$dest\llama-server.exe", "$dest\vulkan\llama-server.exe", "$dest\vulkan\ggml-vulkan.dll" |
             Select-Object FullName, Length
 
