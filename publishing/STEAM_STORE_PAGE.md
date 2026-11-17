@@ -601,7 +601,6 @@ Character count: 228. Within the 300-character limit.
   <li>The complete scenario library — every official scenario pack, plus premium scenario packs.</li>
   <li>The Creator Workbench: write and share your own scenarios, characters, and rubrics.</li>
   <li>Model tiers, Ollama, and your own GGUF files for higher-quality characters.</li>
-  <li>Voice: speak your side and hear the reply, all processed on your machine.</li>
 </ul>
 <p>
   Everything you practise in the demo carries over: the downloaded model, your
@@ -624,11 +623,12 @@ Character count: 228. Within the 300-character limit.
 
 ### Demo copy rules
 
-- The demo is **text by default**. Voice is an optional ~560 MB download
-  offered on the conversation brief (decided 2026-11-16, see
-  `docs/steam-next-fest-demo.md`). Mention it only as optional and only with
-  its size, and not before demo gate D-11 has passed on the platform the copy
-  is for.
+- Voice is an optional ~560 MB download, offered pre-ticked beside "Set me
+  up" on first run and again on the conversation brief (decided 2026-11-16,
+  see `docs/steam-next-fest-demo.md`). Mention it only as optional and only
+  with its size, and not before demo gate D-11 has passed on the platform the
+  copy is for. Never list voice as something only the full game has: the
+  demo has it too.
 - Name the download size honestly (it is the registry starter model's size;
   update the number if `CONVSIM_DEMO_MODEL_ID` changes the model).
 - The upsell list must match the in-app card word for word

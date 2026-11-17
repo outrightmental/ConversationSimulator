@@ -39,7 +39,8 @@ interface DemoUpsellCardProps {
 
 export default function DemoUpsellCard({ compact = false }: DemoUpsellCardProps) {
   const { t } = useTranslation()
-  const bullets = ['library', 'workbench', 'models', 'voice'] as const
+  // Voice is not one of them: the demo has it too (issue #464).
+  const bullets = ['library', 'workbench', 'models'] as const
 
   function handleCtaClick(e: MouseEvent<HTMLAnchorElement>) {
     // In a browser the anchor itself is the right thing; only the desktop

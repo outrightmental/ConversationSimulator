@@ -5,6 +5,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import FirstRunWizard from '../screens/FirstRunWizard'
 import { SETUP_KEYS } from '../privacyPrefs'
 import type { ModelsResponse, BenchmarkResponse, PreflightCheck, SetupInstallJob } from '@convsim/shared'
+import { readyPlan, voiceJob, voicePlan } from './voiceFixtures'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -24,6 +25,10 @@ vi.mock('../api/client', () => ({
     cancelSetupInstall: vi.fn(),
     getFolders: vi.fn().mockResolvedValue({ ok: true, data: { data: '/srv/convsim', logs: '/srv/convsim/logs', models: '/srv/convsim/models/llm', packs: '/srv/convsim/packs', exports: '/srv/convsim/exports', cache: '/srv/convsim/cache', crash_bundles: '/srv/convsim/crashes' } }),
     listScenarios: vi.fn(),
+    getVoiceSetup: vi.fn(),
+    startVoiceInstall: vi.fn(),
+    getVoiceInstallJob: vi.fn(),
+    cancelVoiceInstall: vi.fn(),
     createSession: vi.fn().mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted', created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard', player_role_name: 'New Player', language: 'en', input_mode: 'text-only', tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } }),
   },
 }))
@@ -1401,5 +1406,72 @@ describe('FirstRunWizard install failure codes', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
     expect(screen.queryByRole('alert', { name: /network error/i })).not.toBeInTheDocument()
+  })
+})
+
+
+// Voice with the first download (issue #464): talking out loud is the point of
+// the thing, so the Welcome offers it pre-ticked and it downloads alongside.
+describe('FirstRunWizard — voice with the first download', () => {
+  beforeEach(() => {
+    mockApi.getVoiceSetup.mockResolvedValue({ ok: true, data: voicePlan() })
+    mockApi.startVoiceInstall.mockResolvedValue({ ok: true, data: voiceJob() })
+    mockApi.getVoiceInstallJob.mockResolvedValue({ ok: true, data: voiceJob() })
+  })
+
+  it('offers voice, ticked, with its size', async () => {
+    renderWizard()
+    const offer = await screen.findByTestId('welcome-voice-offer')
+    expect(offer).toHaveTextContent(/include voice: talk out loud and hear the replies/i)
+    expect(offer).toHaveTextContent('+559 MB')
+    expect(screen.getByRole('checkbox', { name: /include voice/i })).toBeChecked()
+  })
+
+  it('starts the voice download with the model, and shows it on the install screen', async () => {
+    mockApi.getVoiceSetup
+      .mockResolvedValueOnce({ ok: true, data: voicePlan() })
+      .mockResolvedValue({ ok: true, data: voicePlan({ job: voiceJob() }) })
+    renderWizard()
+    await screen.findByTestId('welcome-voice-offer')
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    expect(mockApi.startVoiceInstall).toHaveBeenCalledTimes(1)
+    expect(mockApi.startSetupInstall).toHaveBeenCalledWith('qwen3-4b-instruct-q4_k_m')
+    const row = await screen.findByTestId('voice-alongside')
+    await waitFor(() => expect(row).toHaveTextContent(/downloading: .* of .*MB/i))
+  })
+
+  it('leaves voice out when the player unticks it, and offers it again while they wait', async () => {
+    renderWizard()
+    fireEvent.click(await screen.findByRole('checkbox', { name: /include voice/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    expect(mockApi.startVoiceInstall).not.toHaveBeenCalled()
+    const row = await screen.findByTestId('voice-alongside')
+    expect(row).toHaveTextContent(/want to talk out loud\? add voice \(559 MB\)/i)
+    fireEvent.click(screen.getByRole('button', { name: /add voice/i }))
+    await waitFor(() => expect(mockApi.startVoiceInstall).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not offer voice that is already installed', async () => {
+    mockApi.getVoiceSetup.mockResolvedValue({ ok: true, data: readyPlan() })
+    renderWizard()
+    await waitFor(() => expect(mockApi.getVoiceSetup).toHaveBeenCalled())
+    await Promise.resolve()
+    expect(screen.queryByTestId('welcome-voice-offer')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    expect(mockApi.startVoiceInstall).not.toHaveBeenCalled()
+  })
+
+  it('does not offer voice where this computer cannot run it', async () => {
+    mockApi.getVoiceSetup.mockResolvedValue({
+      ok: true,
+      data: voicePlan({ supported: false, unsupported_reason: 'Voice is not available for this kind of computer yet.' }),
+    })
+    renderWizard()
+    await waitFor(() => expect(mockApi.getVoiceSetup).toHaveBeenCalled())
+    await Promise.resolve()
+    expect(screen.queryByTestId('welcome-voice-offer')).not.toBeInTheDocument()
   })
 })

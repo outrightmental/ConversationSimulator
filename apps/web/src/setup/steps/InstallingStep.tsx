@@ -10,6 +10,8 @@ import type { UseSetupFlowReturn } from '../useSetupFlow'
 import type { SetupInstallStage } from '@convsim/shared'
 import { SETUP_DOCS_URL } from '../docsUrls'
 import { useIsDemo } from '../../edition'
+import { useVoiceInstall } from '../../hooks/useVoiceInstall'
+import VoiceAlongside from '../../components/VoiceAlongside'
 
 // The scripted tutorial scenario is internal test/dev content (issue #473) —
 // never advertise it as an upcoming mission.
@@ -81,6 +83,8 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
   // built-in scenarios are served before any pack install completes, so this
   // renders early; on error the section simply stays hidden.
   const scenariosResult = useScenarios()
+  // Voice the player chose on the Welcome screen downloads at the same time.
+  const voice = useVoiceInstall()
 
   // Manager mode: return to confirm-install so ApiErrorView can show the error there
   useEffect(() => {
@@ -242,6 +246,9 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
       </div>
 
       {stages != null && <StageList stages={stages} />}
+
+      {/* Voice, downloading alongside the model (issue #464). */}
+      {mode === 'wizard' && <VoiceAlongside voice={voice} />}
 
       {/* While-you-wait — sell the real thing, never a facsimile (issue #473).
           The download window is the recruitment window: teach what makes these
