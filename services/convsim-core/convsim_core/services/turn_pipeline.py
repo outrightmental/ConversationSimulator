@@ -43,6 +43,7 @@ from convsim_prompt import (
     TurnEvent,
     TurnOutput,
     compose_closing_prompt,
+    compose_prewarm_prompt,
     compose_repetition_retry_prompt,
     compose_turn_prompt,
     filter_rubric_observations,
@@ -1099,6 +1100,161 @@ async def _guard_repetition(
         return None
 
 
+@dataclass
+class _TurnInputs:
+    """What a turn's prompt is built from, read from the session as it stands."""
+
+    session_id: str
+    state_vars: Dict[str, int]
+    fired_event_ids: Set[str]
+    turn_number: int
+    var_defs: Any
+    events: List[ScenarioEvent]
+    triggered_events: List[str]
+    recent_transcript: List[TranscriptEntry]
+    reply_speed: str
+    # The scenario with the player's reply speed applied.
+    scenario_data: ScenarioData
+    composer_input: PromptComposerInput
+
+
+def _gather_turn_inputs(
+    session_row: sqlite3.Row,
+    player_text: str,
+    scenario_data: ScenarioData,
+    conn: sqlite3.Connection,
+    *,
+    safety_policy_config: Optional[SafetyPolicyConfig],
+    state_variable_overrides: Optional[Dict[str, Any]],
+    scenario_events: Optional[List[ScenarioEvent]],
+) -> _TurnInputs:
+    """Read what the next turn's prompt is built from (steps 3–6 of a turn).
+
+    Everything here comes from the session as the last committed turn left
+    it, and nothing is written. So the same call made before the player
+    speaks, with no player text, yields the prompt a turn will send, up to
+    the player's words: that is what the read-ahead sends (issue #525).
+    """
+    # 3. Load session state.
+    session_id: str = session_row["session_id"]
+    state_vars: Dict[str, int] = json.loads(session_row["state_vars_json"] or "{}")
+    fired_event_ids: Set[str] = set(json.loads(session_row["fired_events_json"] or "[]"))
+    turn_number: int = int(session_row["turn_count"]) + 1
+
+    # If state_vars is empty (first turn), initialize from scenario variable defs.
+    var_defs = build_variable_defs(state_variable_overrides)
+    if not state_vars:
+        state_vars = initialize_state(var_defs)
+
+    # 3b. Scenario events (issue #580), on the state the previous turn left
+    #     and the flags its reply raised. Each event that fires puts its
+    #     npc_instruction into this turn's prompt, once for an event that fires
+    #     once and on every turn its condition holds for a repeating one, and
+    #     is recorded on this turn. Evaluated after the reply, as they were, no
+    #     instruction ever reached a prompt: the session had moved on.
+    events = scenario_events or []
+    triggered_events = evaluate_event_triggers(
+        state_vars,
+        turn_number,
+        events=events,
+        fired_event_ids=fired_event_ids,
+        active_flags=_previous_event_flags(session_id, conn),
+    )
+    event_instructions = _fired_event_instructions(events, triggered_events)
+
+    # 4. Get recent transcript.
+    recent_transcript = _load_recent_turns(session_id, conn)
+
+    # 5. Load cross-session relationship recap for this NPC (may be None on
+    #    the first session or when the feature is not yet populated).
+    #    pack_id falls back to scenario_id so builtin scenarios partition
+    #    their NPCs without requiring a pack row in the database.
+    npc_id: str = scenario_data.npc.npc_id
+    setup: Dict[str, Any] = json.loads(session_row["setup_json"] or "{}")
+    pack_id: str = setup.get("pack_id") or scenario_data.scenario_id
+    relationship_recap = get_relationship_recap(conn, npc_id, pack_id)
+
+    # 6. Build the prompt's input. The player's reply-speed preference (issue
+    #    #501) scales the NPC's word budget here and its token budget at step
+    #    7, so a choice made in Settings mid-scenario applies to this very turn.
+    reply_speed = load_reply_speed(conn)
+    scenario_data = _apply_reply_speed(scenario_data, reply_speed)
+    prompt_safety_policy = (
+        _safety_policy_config_to_prompt_policy(safety_policy_config)
+        if safety_policy_config is not None
+        else _DEFAULT_SAFETY_POLICY
+    )
+    composer_input = PromptComposerInput(
+        scenario=scenario_data,
+        session_state=PromptSessionState(
+            variables=state_vars,
+            turn_number=turn_number,
+        ),
+        safety_policy=prompt_safety_policy,
+        player_utterance=player_text,
+        recent_transcript=recent_transcript,
+        relationship_recap=relationship_recap,
+        scenario_event_instructions=event_instructions,
+    )
+    return _TurnInputs(
+        session_id=session_id,
+        state_vars=state_vars,
+        fired_event_ids=fired_event_ids,
+        turn_number=turn_number,
+        var_defs=var_defs,
+        events=events,
+        triggered_events=triggered_events,
+        recent_transcript=recent_transcript,
+        reply_speed=reply_speed,
+        scenario_data=scenario_data,
+        composer_input=composer_input,
+    )
+
+
+async def prewarm_next_turn(
+    session_row: sqlite3.Row,
+    scenario_data: ScenarioData,
+    runtime: ChatRuntime,
+    conn: sqlite3.Connection,
+    *,
+    safety_policy_config: Optional[SafetyPolicyConfig] = None,
+    state_variable_overrides: Optional[Dict[str, Any]] = None,
+    scenario_events: Optional[List[ScenarioEvent]] = None,
+) -> bool:
+    """Have the engine read the next turn's prompt before the player speaks (issue #525).
+
+    The prompt is the one the next turn will send, cut where the player's
+    words go (``compose_prewarm_prompt``): built from the session as the last
+    turn left it, by the same function the turn uses. The engine reads it and
+    generates nothing, so when the turn arrives it reads only the player's
+    words. The opening line of a scenario is authored, so without this the
+    first turn read the whole prompt cold: 32 s on a laptop processor for the
+    demo's Used Car Deal. Returns whether the engine read it. Never raises.
+    """
+    try:
+        inputs = _gather_turn_inputs(
+            session_row,
+            "",
+            scenario_data,
+            conn,
+            safety_policy_config=safety_policy_config,
+            state_variable_overrides=state_variable_overrides,
+            scenario_events=scenario_events,
+        )
+        prompt = compose_prewarm_prompt(inputs.composer_input)
+        request = ChatRequest(
+            messages=[
+                ChatMessage(role="system", content=prompt.system_prompt),
+                ChatMessage(role="user", content=prompt.user_prompt),
+            ],
+            max_tokens=0,
+        )
+    except Exception:  # noqa: BLE001 - reading ahead is an optimisation only
+        logger.info("Could not compose the read-ahead for session %s", session_row["session_id"], exc_info=True)
+        return False
+    return await runtime.prewarm(request)
+
+
 async def process_turn(
     session_row: sqlite3.Row,
     player_text: str,
@@ -1192,67 +1348,30 @@ async def process_turn(
 
     compose_started = time.perf_counter()
 
-    # 3. Load session state.
-    session_id: str = session_row["session_id"]
-    state_vars: Dict[str, int] = json.loads(session_row["state_vars_json"] or "{}")
-    fired_event_ids: Set[str] = set(json.loads(session_row["fired_events_json"] or "[]"))
-    turn_number: int = int(session_row["turn_count"]) + 1
-
-    # If state_vars is empty (first turn), initialize from scenario variable defs.
-    var_defs = build_variable_defs(state_variable_overrides)
-    if not state_vars:
-        state_vars = initialize_state(var_defs)
-
-    # 3b. Scenario events (issue #580), on the state the previous turn left
-    #     and the flags its reply raised. Each event that fires puts its
-    #     npc_instruction into this turn's prompt, once for an event that fires
-    #     once and on every turn its condition holds for a repeating one, and
-    #     is recorded on this turn. Evaluated after the reply, as they were, no
-    #     instruction ever reached a prompt: the session had moved on.
-    events = scenario_events or []
-    triggered_events = evaluate_event_triggers(
-        state_vars,
-        turn_number,
-        events=events,
-        fired_event_ids=fired_event_ids,
-        active_flags=_previous_event_flags(session_id, conn),
+    # 3–6. Load the session's state, events, transcript and recap, and build
+    #      the prompt. The read-ahead for this turn (issue #525) composed its
+    #      prompt through the same function, so the two agree up to the
+    #      player's words and the engine finds everything else in its cache.
+    inputs = _gather_turn_inputs(
+        session_row,
+        normalized,
+        scenario_data,
+        conn,
+        safety_policy_config=safety_policy_config,
+        state_variable_overrides=state_variable_overrides,
+        scenario_events=scenario_events,
     )
-    event_instructions = _fired_event_instructions(events, triggered_events)
-
-    # 4. Get recent transcript.
-    recent_transcript = _load_recent_turns(session_id, conn)
-
-    # 5. Load cross-session relationship recap for this NPC (may be None on
-    #    the first session or when the feature is not yet populated).
-    #    pack_id falls back to scenario_id so builtin scenarios partition
-    #    their NPCs without requiring a pack row in the database.
-    npc_id: str = scenario_data.npc.npc_id
-    setup: Dict[str, Any] = json.loads(session_row["setup_json"] or "{}")
-    pack_id: str = setup.get("pack_id") or scenario_data.scenario_id
-    relationship_recap = get_relationship_recap(conn, npc_id, pack_id)
-
-    # 6. Build prompt. The player's reply-speed preference (issue #501) scales
-    #    the NPC's word budget here and its token budget at step 7, so a choice
-    #    made in Settings mid-scenario applies to this very turn.
-    reply_speed = load_reply_speed(conn)
-    scenario_data = _apply_reply_speed(scenario_data, reply_speed)
-    prompt_safety_policy = (
-        _safety_policy_config_to_prompt_policy(safety_policy_config)
-        if safety_policy_config is not None
-        else _DEFAULT_SAFETY_POLICY
-    )
-    prompt = compose_turn_prompt(PromptComposerInput(
-        scenario=scenario_data,
-        session_state=PromptSessionState(
-            variables=state_vars,
-            turn_number=turn_number,
-        ),
-        safety_policy=prompt_safety_policy,
-        player_utterance=normalized,
-        recent_transcript=recent_transcript,
-        relationship_recap=relationship_recap,
-        scenario_event_instructions=event_instructions,
-    ))
+    session_id = inputs.session_id
+    state_vars = inputs.state_vars
+    fired_event_ids = inputs.fired_event_ids
+    turn_number = inputs.turn_number
+    var_defs = inputs.var_defs
+    events = inputs.events
+    triggered_events = inputs.triggered_events
+    recent_transcript = inputs.recent_transcript
+    reply_speed = inputs.reply_speed
+    scenario_data = inputs.scenario_data
+    prompt = compose_turn_prompt(inputs.composer_input)
 
     # 7. Call runtime. The model's registry entry sets the temperature and
     #    top_p when it declares them (issue #580); otherwise the request keeps

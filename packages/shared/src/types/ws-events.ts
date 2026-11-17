@@ -128,14 +128,29 @@ export interface WsSttFinalEvent extends WsEventBase {
   payload: { text: string; confidence: number };
 }
 
-/** A synthesized sentence chunk from the local TTS cache. */
+/**
+ * One sentence of the character's reply, to be spoken.
+ *
+ * With voice on, the core sends one of these as each sentence of a reply is
+ * released, while the rest of the turn is still being written (issue #544).
+ * `audio_path` says where the sentence's audio will be served from; a request
+ * there waits until it is synthesised. The turn's REST response lists the same
+ * sentences at the same addresses, so a client plays each address once,
+ * whichever delivers it first.
+ */
 export interface WsTtsAudioChunkEvent extends WsEventBase {
   type: 'tts.audio_chunk';
   payload: {
     /** Zero-based position of this chunk within the utterance. */
     chunk_index: number;
-    /** Total number of chunks for this utterance. */
-    total_chunks: number;
+    /** Total number of chunks for this utterance; absent while it is still being written. */
+    total_chunks?: number;
+    /** The turn the sentence belongs to (0 is the opening line). */
+    turn_number?: number;
+    /** Where the sentence's audio is served from, relative to `/api`. */
+    audio_path?: string;
+    /** True while the sentence is still being synthesised. */
+    pending?: boolean;
     /** Sentence text (always present; use as fallback when cache_path is null). */
     text: string;
     /** Voice used for synthesis. */

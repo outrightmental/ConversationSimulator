@@ -1895,7 +1895,8 @@ class TestScenarioStateIntegration:
         original = runtime._stream
 
         def _recording_stream(request):
-            prompts.append(request.messages[0].content)
+            # The whole prompt: the events ride in the user turn (issue #524).
+            prompts.append("\n".join(m.content for m in request.messages))
             return original(request)
 
         runtime._stream = _recording_stream
@@ -2326,7 +2327,9 @@ class TestNpcCoherencePromptLayers:
         )
         system, user = runtime.requests[0].messages
         assert (system.role, user.role) == ("system", "user")
-        assert f"{npc} (you): {opening}" in system.content
+        # The transcript rides in the user turn, ahead of the quote (issue #524).
+        assert f"{npc} (you): {opening}" in user.content
+        assert opening not in system.content
         assert f'{PREVIOUS_NPC_LINE_BEGIN}\n"{opening}"\n{PREVIOUS_NPC_LINE_END}' in user.content
         assert PREVIOUS_NPC_LINE_BEGIN not in system.content
         assert "That was your previous line" not in system.content
@@ -2347,7 +2350,9 @@ class TestNpcCoherencePromptLayers:
             conn=conn,
         )
         system, user = runtime.requests[1].messages
-        assert f"{player} (the player): I led our checkout rewrite." in system.content
-        assert f"{npc} (you): Hello there. I am a simulated NPC." in system.content
+        assert f"{player} (the player): I led our checkout rewrite." in user.content
+        assert f"{npc} (you): Hello there. I am a simulated NPC." in user.content
         assert '\n"Hello there. I am a simulated NPC."\n' in user.content
-        assert opening not in user.content
+        # The quote is the NPC's latest line, not the opening, which is only in
+        # the transcript ahead of it.
+        assert opening not in user.content.split("LAYER:PREVIOUS_NPC_LINE")[1]

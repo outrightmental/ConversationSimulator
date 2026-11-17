@@ -1252,20 +1252,38 @@ Do not build a full node graph in MVP. A node graph is attractive later, but YAM
 
 The runtime should build prompts from structured scenario pieces.
 
-Prompt layers:
+Prompt layers, in two messages. The system message holds only what is
+constant for a session, so it is identical on every turn and the engine's
+prompt cache keeps all of it; everything that changes per turn is in the user
+turn, after it (issue #524):
 
 ```text
-1. Global simulator rules
-2. Safety policy
-3. Scenario brief
-4. NPC public persona
-5. NPC private persona
-6. Current state
-7. Recent transcript
-8. Relevant memory summary
-9. Current player utterance
+System message (the same on every turn of a session)
+ 1. Global simulator rules
+ 2. Safety policy
+ 3. Scenario brief                    (untrusted region begins)
+ 4. NPC public persona
+ 5. NPC private persona
+ 6. Rubric dimensions
+ 7. What each state variable means
+ 8. Relationship memory from earlier sessions
+ 9. Response style                    (untrusted region ends)
 10. Required JSON output schema
+
+User turn (per turn)
+11. Recent transcript                 (framed as untrusted data)
+12. Memory summary
+13. Current state
+14. Scenario events that fired        (framed as authored direction)
+15. The NPC's previous line           (framed as untrusted data)
+16. Current player utterance          (framed as untrusted input; always last)
 ```
+
+Everything but the player's utterance is known as soon as the previous turn
+commits. The engine reads that prefix ahead, at session start and after each
+turn, while the player listens and answers (issue #525), so a turn reads only
+the player's words: on a laptop processor, the demo's first turn went from 32 s
+of prompt reading to about 1 s.
 
 ## 10.2 Runtime call sequence
 
@@ -1787,7 +1805,7 @@ Served by `convsim-core`. Every message is an envelope
 { "type": "error",                "payload": { "code": "SESSION_NOT_FOUND", "message": "..." } }
 { "type": "stt.partial",          "payload": { "text": "I think my strongest..." } }
 { "type": "stt.final",            "payload": { "text": "I think my strongest example is...", "confidence": 0.9 } }
-{ "type": "tts.audio_chunk",      "payload": { "chunk_index": 0, "total_chunks": 2, "text": "...", "voice_id": "af_heart", "cache_path": "...", "error": null } }
+{ "type": "tts.audio_chunk",      "payload": { "turn_number": 3, "chunk_index": 0, "text": "...", "voice_id": "af_heart", "audio_path": "/sessions/sess-…/speech/3/0", "pending": true, "cache_path": null, "error": null } }
 ```
 
 `npc.token` carries one checked sentence at a time; the sentences of a turn

@@ -69,7 +69,12 @@ from convsim_core.services.turn_timing import (
     persist_turn_timing,
     update_turn_timing_voice,
 )
-from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
+from convsim_core.services.turn_pipeline import (
+    MAX_TURN_CONTENT_CHARS,
+    TurnInputError,
+    prewarm_next_turn,
+    process_turn,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -469,6 +474,12 @@ def _begin_speech(
     language reads a Spanish reply as Spanish.
 
     ``on_done`` is called with the finished :class:`SpeechJob`, for timing.
+
+    A reply streamed over the session socket has been speaking since its
+    first sentence was released (issue #544, ``SpeakingTurnStreamer``). Those
+    sentences are the start of this one, so they are not synthesised again:
+    their events point at the audio already made or being made, and only the
+    sentences after them (a closing line, say) are added.
     """
     sentences = split_into_sentences(utterance)
     if not sentences:
@@ -522,17 +533,186 @@ def _begin_speech(
         except Exception:  # noqa: BLE001 - e.g. the session was deleted meanwhile
             logger.info("Could not record speech for session %s", session_id, exc_info=True)
 
-    _speech_registry(request).start(
-        session_id=session_id,
-        turn_number=turn_number,
-        sentences=sentences,
-        voice_id=voice_id,
-        language=language,
-        tts_worker=request.app.state.tts_worker,
-        on_sentence=_record,
-        on_done=on_done,
-    )
+    registry = _speech_registry(request)
+    job = registry.job(session_id, turn_number)
+    if job is None or job.finished or not job.matches(sentences, voice_id):
+        job = registry.open(
+            session_id=session_id,
+            turn_number=turn_number,
+            voice_id=voice_id,
+            language=language,
+            tts_worker=request.app.state.tts_worker,
+        )
+    for sentence in sentences[len(job.texts):]:
+        registry.add(job, sentence)
+    registry.on_each_sentence(job, _record, total=total)
+    registry.finish(job, on_done)
     return events
+
+
+class SpeakingTurnStreamer(SessionTurnStreamer):
+    """Streams a turn to the session socket and speaks it as it streams (issue #544).
+
+    The turn used to be spoken only once it committed, after the model had
+    written the reply's bookkeeping too (state change, flags, rubric notes):
+    on a laptop processor the words were done at 36 s and the voice started
+    at 57 s. Every sentence the streaming gate releases has passed the output
+    check and is committed text (#538), so it is safe to speak at once. Each
+    one is added to the turn's speech job as it is released, and the client
+    is told where its audio will be (a ``tts.audio_chunk`` event with
+    ``audio_path``), so the character is heard while the rest is written.
+    When the turn commits, ``_begin_speech`` finds these sentences in the job
+    and adds only what follows them.
+    """
+
+    def __init__(
+        self,
+        bus: SessionEventBus,
+        session_id: str,
+        clock: TurnClock,
+        *,
+        registry: SpeechRegistry,
+        tts_worker: Any,
+        voice_id: str,
+        language: Optional[str],
+        turn_number: int,
+        thinking_pause_ms: int = 0,
+    ) -> None:
+        super().__init__(bus, session_id, clock)
+        self._registry = registry
+        self._tts_worker = tts_worker
+        self._voice_id = voice_id
+        self._language = language
+        self._turn_number = turn_number
+        self._thinking_pause_ms = thinking_pause_ms
+        self._released = ""
+        self._job: Optional[SpeechJob] = None
+
+    async def token(self, text: str) -> None:
+        await super().token(text)
+        self._released += text
+        await self._speak(self._released)
+
+    async def final(self, content: str) -> None:
+        await super().final(content)
+        await self._speak(content)
+
+    async def _speak(self, text: str) -> None:
+        # The gate releases whole sentences only (it finds a boundary once the
+        # next sentence has begun), so every sentence here is complete.
+        sentences = split_into_sentences(text)
+        if not sentences:
+            return
+        if self._job is None:
+            self._job = self._registry.open(
+                session_id=self._session_id,
+                turn_number=self._turn_number,
+                voice_id=self._voice_id,
+                language=self._language,
+                tts_worker=self._tts_worker,
+                in_order=True,
+            )
+        job = self._job
+        if job.texts != sentences[: len(job.texts)]:
+            # The line changed under what was spoken; the commit speaks it.
+            return
+        for sentence in sentences[len(job.texts):]:
+            index = self._registry.add(job, sentence)
+            payload: Dict[str, Any] = {
+                "turn_number": self._turn_number,
+                "chunk_index": index,
+                "text": sentence,
+                "voice_id": self._voice_id,
+                "cache_path": None,
+                "error": None,
+                "pending": True,
+                "audio_path": f"/sessions/{self._session_id}/speech/{self._turn_number}/{index}",
+            }
+            if index == 0 and self._thinking_pause_ms > 0:
+                # A target, not an addition: the wait has used some of it.
+                left = self._thinking_pause_ms - self._clock.elapsed_ms()
+                payload["thinking_pause_ms"] = max(0, int(left))
+            await self._bus.broadcast(self._session_id, "tts.audio_chunk", payload)
+
+
+# How long the read-ahead waits for a reply's voice before it starts reading
+# (issue #525). On a machine where one processor runs both, the voice goes
+# first: the player hears the character sooner, and reads and answers while
+# the engine reads ahead.
+_PREWARM_AFTER_SPEECH_S = 30.0
+
+
+def _prewarm_tasks(request: Request) -> Dict[str, "asyncio.Task[None]"]:
+    tasks = getattr(request.app.state, "prewarm_tasks", None)
+    if tasks is None:
+        tasks = {}
+        request.app.state.prewarm_tasks = tasks
+    return tasks
+
+
+def _cancel_prewarm(request: Request, session_id: str) -> None:
+    """Stop a session's read-ahead (it ended, or was deleted)."""
+    task = _prewarm_tasks(request).pop(session_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+
+def _schedule_prewarm(request: Request, session_id: str, *, after_turn: Optional[int]) -> None:
+    """Read the session's next turn ahead, in the background (issue #525).
+
+    Called when a session starts and after each turn commits: the next turn's
+    prompt is known then, all but the player's words. ``after_turn`` names the
+    turn whose voice to let finish first. The read-ahead is skipped if a turn
+    is already running by the time it would start (that turn reads its own
+    prompt), and it never holds the turn lock: a turn sent meanwhile queues
+    behind it in the engine and then finds the cache warm.
+    """
+    tasks = _prewarm_tasks(request)
+    _cancel_prewarm(request, session_id)
+    app = request.app
+
+    async def _run() -> None:
+        if after_turn is not None:
+            job = _speech_registry(request).job(session_id, after_turn)
+            if job is not None and job.sentences:
+                await asyncio.wait(list(job.sentences), timeout=_PREWARM_AFTER_SPEECH_S)
+        if _turn_lock(request, session_id).locked():
+            return
+        conn = app.state.db.connection()
+        row = conn.execute(
+            "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        if row is None or row["flow_state"] not in _VALID_STATES_FOR_TURN:
+            return
+        setup = json.loads(row["setup_json"])
+        info = _resolve_scenario(request, row["scenario_id"])
+        if info is None:
+            return
+        started = time.perf_counter()
+        read = await prewarm_next_turn(
+            row,
+            info.get_scenario_data(setup.get("difficulty", "standard")),
+            _resolve_runtime(request, setup),
+            conn,
+            state_variable_overrides=info.state_variable_overrides,
+            scenario_events=info.events,
+        )
+        if read:
+            logger.info(
+                "read ahead for session %s turn %d in %.0f ms",
+                session_id, int(row["turn_count"]) + 1, (time.perf_counter() - started) * 1000.0,
+            )
+
+    task = asyncio.create_task(_run())
+    tasks[session_id] = task
+
+    def _forget(done: "asyncio.Task[None]") -> None:
+        if tasks.get(session_id) is done:
+            del tasks[session_id]
+        if not done.cancelled() and done.exception() is not None:
+            logger.info("read-ahead for session %s failed", session_id, exc_info=done.exception())
+
+    task.add_done_callback(_forget)
 
 
 def _row_to_response(row: Any) -> SessionResponse:
@@ -979,6 +1159,11 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
             language=setup.get("language"),
         )
 
+    # The opening line is authored, so no model call has read anything yet:
+    # read the first turn's prompt now, while the player hears and reads the
+    # opening (issue #525).
+    _schedule_prewarm(request, session_id, after_turn=0 if tts_events else None)
+
     return SessionStartResponse(
         session_id=session_id,
         state="PlayerTurnListening",
@@ -1094,13 +1279,35 @@ async def _run_turn(
         registry_model_id=_recorded_model_for(conn, runtime, setup, config),
     )
     # Stream the turn to whoever is listening on the session socket (#538).
-    # With no socket connected the pipeline runs exactly as before.
+    # With no socket connected the pipeline runs exactly as before. With the
+    # character's voice on, each released sentence is spoken as it streams
+    # (#544).
     bus = _session_bus(request)
-    streamer = (
-        SessionTurnStreamer(bus, session_id, clock)
-        if bus is not None and bus.has_listeners(session_id)
-        else None
-    )
+    tts_enabled = setup.get("tts_enabled", False)
+    voice_id = setup.get("tts_voice_id", _DEFAULT_TTS_VOICE_ID)
+    pause_ms = 0
+    if tts_enabled:
+        diff_settings = scenario_data.difficulty_settings
+        pause_ms = thinking_pause_ms_for_difficulty(
+            difficulty_settings_patience=diff_settings.patience if diff_settings else 50,
+            enabled=bool(setup.get("npc_thinking_pause_enabled", True)),
+        )
+    streamer: Optional[SessionTurnStreamer] = None
+    if bus is not None and bus.has_listeners(session_id):
+        if tts_enabled:
+            streamer = SpeakingTurnStreamer(
+                bus,
+                session_id,
+                clock,
+                registry=_speech_registry(request),
+                tts_worker=request.app.state.tts_worker,
+                voice_id=voice_id,
+                language=setup.get("language"),
+                turn_number=int(row["turn_count"] or 0) + 1,
+                thinking_pause_ms=pause_ms,
+            )
+        else:
+            streamer = SessionTurnStreamer(bus, session_id, clock)
 
     try:
         result = await process_turn(
@@ -1186,15 +1393,7 @@ async def _run_turn(
     # Row id of this turn's timing record, once written; the speech job fills
     # in the voice stage there when it finishes.
     timing_row: Dict[str, Optional[int]] = {"id": None}
-    tts_enabled = setup.get("tts_enabled", False)
     if tts_enabled and not result.used_fallback:
-        voice_id = setup.get("tts_voice_id", _DEFAULT_TTS_VOICE_ID)
-        npc_thinking_pause_enabled = setup.get("npc_thinking_pause_enabled", True)
-        diff_settings = scenario_data.difficulty_settings
-        pause_ms = thinking_pause_ms_for_difficulty(
-            difficulty_settings_patience=diff_settings.patience if diff_settings else 50,
-            enabled=bool(npc_thinking_pause_enabled),
-        )
         # The words go out now; the audio follows (issue #533). Synthesis has
         # not finished when this turn's record is written, so the record goes
         # out with the voice stage unknown and is completed when the last
@@ -1258,6 +1457,13 @@ async def _run_turn(
             "state_vars": result.visible_state,
             "ending_type": result.ending_type,
         })
+
+    # The next turn's prompt is known now, all but the player's words: read
+    # it while the player listens and answers (issue #525).
+    if result.new_flow_state in _VALID_STATES_FOR_TURN:
+        _schedule_prewarm(
+            request, session_id, after_turn=result.turn_number if tts_events else None
+        )
 
     return TurnResponse(
         session_id=session_id,
@@ -1357,6 +1563,7 @@ async def end_session(session_id: str, request: Request) -> SessionEndResponse:
         (ending_type, session_id),
     )
     conn.commit()
+    _cancel_prewarm(request, session_id)
 
     return SessionEndResponse(
         session_id=session_id,
@@ -1568,6 +1775,7 @@ async def delete_session(session_id: str, request: Request) -> None:
         conn.execute("DELETE FROM session_transcript_fts WHERE session_id = ?", (session_id,))
         conn.execute("DELETE FROM turn_sessions WHERE session_id = ?", (session_id,))
     _speech_registry(request).forget_session(session_id)
+    _cancel_prewarm(request, session_id)
 
 
 def _turns_from_rows(

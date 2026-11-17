@@ -1,9 +1,11 @@
 """Layered prompt composer for simulator NPC turns."""
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Dict, List, Sequence
 
 from .layers import (
+    PLAYER_INPUT_BEGIN,
     _one_line,
     build_current_state_layer,
     build_global_rules_layer,
@@ -40,14 +42,16 @@ _CHARS_PER_TOKEN = 4
 #     SCENARIO_BRIEF through RESPONSE_STYLE (every layer below between them,
 #     RELATIONSHIP_MEMORY and SCENARIO_EVENTS included), making the untrusted
 #     region verifiable by adapters.
-#   - RUBRIC and STATE_VARIABLES are constant for a session, so they sit with
-#     the stable layers, ahead of CURRENT_STATE, where a prompt cache can reuse
-#     them (issue #524). Everything from CURRENT_STATE on can change per turn.
-#   - SCENARIO_EVENTS changes per turn, so it sits after CURRENT_STATE, inside
-#     the untrusted region with the other authored text (issue #580).
-#   - RUBRIC, STATE_VARIABLES and SCENARIO_EVENTS are empty, and left out of
-#     the prompt, when there is nothing to say: no rubric, no state of the
-#     scenario's own, no event fired for this turn (OPTIONAL_SYSTEM_LAYERS).
+#   - The system prompt holds only what is constant for a session, so it is
+#     identical from one turn to the next and an engine's prompt cache keeps
+#     all of it (issue #524). RUBRIC, STATE_VARIABLES and RELATIONSHIP_MEMORY
+#     change only between sessions. Before this, CURRENT_STATE and the
+#     transcript sat in the middle of the system prompt, and every turn re-read
+#     everything after them: 1,411 of 3,266 tokens on the second turn of the
+#     demo's Used Car Deal, 16 s on a laptop processor.
+#   - RUBRIC and STATE_VARIABLES are empty, and left out of the prompt, when
+#     there is nothing to say: no rubric, no state of the scenario's own
+#     (OPTIONAL_SYSTEM_LAYERS).
 SYSTEM_LAYER_ORDER: List[str] = [
     "GLOBAL_RULES",
     "SAFETY_POLICY",
@@ -56,27 +60,38 @@ SYSTEM_LAYER_ORDER: List[str] = [
     "NPC_PRIVATE_PERSONA",
     "RUBRIC",                  # the scenario rubric's dimension ids (issue #578)
     "STATE_VARIABLES",         # what each variable means; update them every turn (issue #580)
-    "CURRENT_STATE",           # first per-turn layer
-    "RECENT_TRANSCRIPT",
-    "MEMORY_SUMMARY",
     "RELATIONSHIP_MEMORY",     # bounded cross-session player recap (issue #314)
-    "SCENARIO_EVENTS",         # instructions of the events that fired for this turn (issue #580)
     "RESPONSE_STYLE",          # untrusted region closes here (END sentinel appended by this layer)
     "OUTPUT_SCHEMA",           # always last in system prompt
 ]
 
 # System layers a prompt may leave out because they have nothing to say.
-OPTIONAL_SYSTEM_LAYERS = frozenset({"RUBRIC", "STATE_VARIABLES", "SCENARIO_EVENTS"})
+OPTIONAL_SYSTEM_LAYERS = frozenset({"RUBRIC", "STATE_VARIABLES"})
 
-# User-turn layer ordering. Text that changes every turn goes here, after every
-# system layer, so it never sits in front of stable text (issue #524).
-#   - PREVIOUS_NPC_LINE is empty, and left out of the user prompt, until the
-#     transcript window holds an NPC line.
+# User-turn layer ordering: everything that changes from turn to turn, after
+# every system layer, so it never sits in front of stable text (issue #524).
+# Every layer here except the last is known before the player speaks: the
+# transcript up to the NPC's latest line, the state that line left, the events
+# that state fires. So the engine reads all of it ahead, while the player
+# listens and answers (issue #525), and a turn reads only the player's words.
+#   - RECENT_TRANSCRIPT and SCENARIO_EVENTS quote text the player or a pack
+#     wrote; outside the system prompt's untrusted region, each has a frame of
+#     its own, like the player's input.
+#   - SCENARIO_EVENTS is empty, and left out, on a turn no event fired.
+#   - PREVIOUS_NPC_LINE is empty, and left out, until the transcript window
+#     holds an NPC line.
 #   - PLAYER_UTTERANCE is always last: it is the line the NPC answers.
 USER_LAYER_ORDER: List[str] = [
+    "RECENT_TRANSCRIPT",
+    "MEMORY_SUMMARY",
+    "CURRENT_STATE",
+    "SCENARIO_EVENTS",         # instructions of the events that fired for this turn (issue #580)
     "PREVIOUS_NPC_LINE",       # the NPC's own last line, not to be reused (issue #580)
     "PLAYER_UTTERANCE",        # always last
 ]
+
+# User layers a prompt may leave out because they have nothing to say.
+OPTIONAL_USER_LAYERS = frozenset({"SCENARIO_EVENTS", "PREVIOUS_NPC_LINE"})
 
 # Full ordering including the user turn.
 LAYER_ORDER: List[str] = SYSTEM_LAYER_ORDER + USER_LAYER_ORDER
@@ -180,12 +195,14 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
       explicit sentinel strings that adapters can verify.
     - OUTPUT_SCHEMA is always the final system-prompt section and cannot be
       displaced by scenario text or player input.
+    - The system prompt is the same on every turn of a session; everything
+      that changes per turn is in the user turn (issue #524).
     - PLAYER_UTTERANCE is always in the user turn, and last in it, kept
       separate from the system prompt so chat-format adapters can enforce the
-      boundary natively. The only other user-turn text is PREVIOUS_NPC_LINE,
-      which changes every turn and so must not sit in front of stable system
-      text (issue #524). Both quote untrusted text, each inside its own
-      sentinel frame that marks it as unable to override the rules.
+      boundary natively. The user-turn layers that quote untrusted text (the
+      transcript, the scenario's event directions, the NPC's previous line,
+      the player's line) each sit inside a sentinel frame of their own that
+      marks them as unable to override the rules.
 
     Token budget:
     - Estimates token count using a conservative chars-per-token heuristic.
@@ -217,6 +234,36 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
         layer_map=layers,
         estimated_token_count=estimated_tokens,
         was_truncated=was_truncated,
+    )
+
+
+def compose_prewarm_prompt(inp: PromptComposerInput) -> PromptBundle:
+    """The next turn's prompt, up to where the player's words will go (issue #525).
+
+    Everything in a turn's prompt but the player's line is known as soon as
+    the previous turn commits: the system prompt, the transcript up to the
+    NPC's latest line, the state that line left, the events it fired. An
+    engine that reads this ahead, while the player listens and answers, has
+    all of it in its cache when the turn arrives, and reads only the player's
+    words then.
+
+    The system prompt is the turn's own. The user prompt is the turn's, cut
+    just after the player-input frame opens, so it is an exact prefix of the
+    real turn's user prompt: composed from ``inp`` with the player's line in
+    place of ``inp.player_utterance``, the two agree up to the first character
+    of that line. (Unless that line tips the prompt over its token budget and
+    halves the transcript window; then the engine reads the rest, as before.)
+    """
+    bundle = compose_turn_prompt(replace(inp, player_utterance=""))
+    marker = PLAYER_INPUT_BEGIN + "\n"
+    cut = bundle.user_prompt.rindex(marker) + len(marker)
+    user_prompt = bundle.user_prompt[:cut]
+    return PromptBundle(
+        system_prompt=bundle.system_prompt,
+        user_prompt=user_prompt,
+        layer_map=bundle.layer_map,
+        estimated_token_count=_estimate_tokens(bundle.system_prompt + user_prompt),
+        was_truncated=bundle.was_truncated,
     )
 
 

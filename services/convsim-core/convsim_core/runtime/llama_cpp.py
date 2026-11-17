@@ -237,6 +237,35 @@ class LlamaCppRuntime(ChatRuntime):
     def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatChunk, None]:
         return self._stream(request)
 
+    async def prewarm(self, request: ChatRequest) -> bool:
+        """Read the prompt into llama-server's cache and generate nothing (issue #525).
+
+        ``max_tokens: 0`` evaluates the prompt and returns; the server keeps
+        what it read in the slot's cache, so the turn that follows with the
+        same prefix reads only what differs. (The pinned build still samples
+        one token; nothing reads it.) A server that rejects 0 is asked for
+        one token instead. With one slot (#523) a turn sent meanwhile queues
+        behind this and then finds the cache warm. Never raises.
+        """
+        model_id = request.model_id or self._model_id or "default"
+        payload: dict = {
+            "model": model_id,
+            "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+            "stream": False,
+            "max_tokens": 0,
+        }
+        timeout = httpx.Timeout(self._chat_timeout, connect=_CONNECT_TIMEOUT)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(f"{self._base_url}/v1/chat/completions", json=payload)
+                if resp.status_code == 400:
+                    payload["max_tokens"] = 1
+                    resp = await client.post(f"{self._base_url}/v1/chat/completions", json=payload)
+            return resp.is_success
+        except httpx.HTTPError as exc:
+            logger.debug("prewarm did not reach llama-server: %s", exc)
+            return False
+
     def _build_payload(self, request: ChatRequest, model_id: str, *, with_extras: bool) -> dict:
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
 

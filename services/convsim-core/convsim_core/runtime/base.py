@@ -53,3 +53,14 @@ class ChatRuntime(ABC):
     @abstractmethod
     async def health(self) -> RuntimeHealth:
         """Return a point-in-time health snapshot for this runtime."""
+
+    async def prewarm(self, request: ChatRequest) -> bool:
+        """Read ``request``'s prompt into the engine's cache, generating nothing.
+
+        Issue #525: everything in a turn's prompt but the player's words is
+        known before the player speaks, and an engine that reads it then has
+        only those words left to read when the turn arrives. Returns True when
+        the engine read the prompt. A runtime that cannot do this returns
+        False and nothing happens; that is the default. Never raises.
+        """
+        return False

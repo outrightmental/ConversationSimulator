@@ -4,11 +4,13 @@ from .composer import (
     LAYER_ORDER,
     EVENTS_BUDGET_ALLOWANCE,
     OPTIONAL_SYSTEM_LAYERS,
+    OPTIONAL_USER_LAYERS,
     CLOSING_USER_LAYER_ORDER,
     RETRY_USER_LAYER_ORDER,
     SYSTEM_LAYER_ORDER,
     USER_LAYER_ORDER,
     compose_closing_prompt,
+    compose_prewarm_prompt,
     compose_repetition_retry_prompt,
     compose_turn_prompt,
 )
@@ -24,7 +26,16 @@ from .debrief_output import (
     parse_debrief_narrative,
 )
 from .inspection import PromptInspector
-from .layers import UNTRUSTED_CONTENT_BEGIN, UNTRUSTED_CONTENT_END
+from .layers import (
+    PLAYER_INPUT_BEGIN,
+    PLAYER_INPUT_END,
+    SCENARIO_DIRECTION_BEGIN,
+    SCENARIO_DIRECTION_END,
+    TRANSCRIPT_BEGIN,
+    TRANSCRIPT_END,
+    UNTRUSTED_CONTENT_BEGIN,
+    UNTRUSTED_CONTENT_END,
+)
 from .output_validator import (
     OutputValidationResult,
     OutputViolation,
@@ -76,12 +87,20 @@ from .types import (
 )
 
 __all__ = [
+    "compose_prewarm_prompt",
     "compose_turn_prompt",
     "compose_closing_prompt",
     "compose_repetition_retry_prompt",
     "LAYER_ORDER",
     "EVENTS_BUDGET_ALLOWANCE",
     "OPTIONAL_SYSTEM_LAYERS",
+    "OPTIONAL_USER_LAYERS",
+    "PLAYER_INPUT_BEGIN",
+    "PLAYER_INPUT_END",
+    "SCENARIO_DIRECTION_BEGIN",
+    "SCENARIO_DIRECTION_END",
+    "TRANSCRIPT_BEGIN",
+    "TRANSCRIPT_END",
     "CLOSING_USER_LAYER_ORDER",
     "RETRY_USER_LAYER_ORDER",
     "SYSTEM_LAYER_ORDER",

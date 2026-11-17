@@ -359,6 +359,8 @@ class TestRetryPrompt:
         bundle = _bundle()
         retry = compose_repetition_retry_prompt(bundle, [_OPENING])
         for name in USER_LAYER_ORDER:
+            if name == "SCENARIO_EVENTS":
+                continue  # no event fired on this turn
             assert bundle.layer_map[name], name
             assert bundle.layer_map[name] in retry.user_prompt, name
 
@@ -376,7 +378,7 @@ class TestRetryPrompt:
 
     def test_the_normal_turn_has_no_retry_layer(self):
         assert "REPETITION_RETRY" not in LAYER_ORDER
-        assert USER_LAYER_ORDER == ["PREVIOUS_NPC_LINE", "PLAYER_UTTERANCE"]
+        assert "REPETITION_RETRY" not in USER_LAYER_ORDER
         bundle = _bundle()
         assert "REPETITION_RETRY" not in bundle.layer_map
         assert REPEATED_LINE_BEGIN not in bundle.user_prompt + bundle.system_prompt

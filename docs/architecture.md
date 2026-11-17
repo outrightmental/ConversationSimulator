@@ -347,6 +347,7 @@ re-fetch state via `GET /api/sessions/{id}`.
 | `scenario.event`        | A scenario narrative event fired                    | `flags`                                          |
 | `safety.redirect`       | The model's output was redirected for safety        | `reason`                                         |
 | `error`                 | Processing error (may or may not be fatal)          | `code`, `message`, `details?`                    |
+| `tts.audio_chunk`       | With voice on: each sentence of the NPC's line as it is released, before the turn commits (issue #544) | `turn_number`, `chunk_index`, `text`, `voice_id`, `audio_path` (where the audio is served, relative to `/api`; a request there waits until it is synthesised), `thinking_pause_ms?` on the first |
 
 **Released text is committed text.** A sentence is sent as `npc.token` only
 after the whole line so far, that sentence included, has passed the output
@@ -381,13 +382,21 @@ events (`repetition_retry_skipped`). When the player asks for the line again
 is neither held nor retried: there the repeat is the answer, and in the
 language packs asking for it is a repair strategy the rubric rewards.
 
+**The character speaks as the line streams** (issue #544). With voice on,
+each sentence released as `npc.token` is also synthesised at once, and
+announced as `tts.audio_chunk`, so the character is heard while the model
+is still writing the turn's bookkeeping. On a reply streamed sentences are
+synthesised one at a time, in order, so the first is ready first on a machine
+whose processor also runs the model. The turn's REST response lists the same
+sentences at the same `audio_path`s (plus any added after the stream, such as
+a closing line); a client plays each address once, whichever delivers it first.
+
 Reserved for future speech support (clients should accept and ignore):
 
 | Type               | Planned purpose                              |
 |--------------------|----------------------------------------------|
 | `stt.partial`      | Interim speech-to-text transcript            |
 | `stt.final`        | Final speech-to-text transcript              |
-| `tts.audio_chunk`  | Base64-encoded audio chunk                   |
 
 ---
 
