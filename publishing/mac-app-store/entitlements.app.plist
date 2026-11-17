@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!--
+  Entitlements of the Mac App Store edition's app (publishing/MAC_APP_STORE.md).
+  scripts/sign-mac-app-store.sh fills in __TEAM_ID__ and __APP_ID__ from the
+  provisioning profile, which must grant the same application identifier.
+
+  This is not apps/desktop/src-tauri/entitlements.plist (Steam's notarized
+  build): the store requires the App Sandbox and refuses
+  disable-library-validation, and the store build has no Steam to need it.
+
+  - network.client: the model download, and the shell and the AI engine
+    reaching the local engine on 127.0.0.1.
+  - network.server: the engine (convsim-core) and llama-server listen on
+    127.0.0.1; a sandboxed process may not bind a port without this.
+  - device.audio-input: optional voice input (NSMicrophoneUsageDescription is
+    in Info.plist).
+  - files.user-selected.read-write: importing a pack and exporting a debrief
+    through the open and save panels.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.application-identifier</key>
+    <string>__TEAM_ID__.__APP_ID__</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>__TEAM_ID__</string>
+</dict>
+</plist>

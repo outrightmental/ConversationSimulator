@@ -1940,6 +1940,22 @@ jobs:
       run_id: ${{ github.run_id }}
     secrets: inherit
 
+  # ── Mac App Store (macOS) ─────────────────────────────────────────────────────
+  # Builds the sandboxed Mac App Store edition from the tag, signs it with the
+  # store certificates and sends it to TestFlight for Mac
+  # (publishing/MAC_APP_STORE.md). Submitting it for review is a person's click.
+  # On once the repository variable MAC_APP_STORE is "true".
+  mac-app-store:
+    name: Mac App Store
+    needs: [build-desktop, release]
+    if: >-
+      ${{ !cancelled() && needs.build-desktop.result == 'success' &&
+          needs.release.result == 'success' && vars.MAC_APP_STORE == 'true' }}
+    uses: ./.github/workflows/mac-app-store.yml
+    with:
+      tag: ${{ github.event.inputs.tag || github.ref_name }}
+    secrets: inherit
+
   # ── Microsoft Defender for Storage malware scan (Windows) ──────────────────
   # Uploads the signed Windows installer artifact to the Azure storage container
   # configured with Microsoft Defender for Storage on-upload malware scanning,

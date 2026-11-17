@@ -20,6 +20,13 @@
 -->
 <plist version="1.0">
 <dict>
+    <!--
+      The app's only encryption is HTTPS for the downloads a player starts,
+      which is exempt from US export filing. App Store Connect asks for this
+      key on every upload otherwise.
+    -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Conversation Simulator uses the microphone only for optional push-to-talk voice input during practice conversations. Audio is transcribed locally on your device and is never uploaded or shared.</string>
 </dict>

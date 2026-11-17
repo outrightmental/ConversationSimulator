@@ -739,8 +739,7 @@ fn resolve_core_executable(
     // 2. Bundled runtime dir (Steam / packaged builds).
     if let Some(dir) = bundled_runtime_dir {
         for name in CORE_BINARY_NAMES {
-            let p = Path::new(dir).join(name);
-            if p.exists() {
+            if let Some(p) = core_at(&Path::new(dir).join(name)) {
                 return Ok(p);
             }
         }
@@ -749,8 +748,7 @@ fn resolve_core_executable(
     // 3. Tauri resource directory (adjacent to the app bundle).
     if let Some(res) = resource_dir {
         for rel in CORE_RESOURCE_RELATIVE_PATHS {
-            let p = res.join(rel);
-            if p.exists() {
+            if let Some(p) = core_at(&res.join(rel)) {
                 return Ok(p);
             }
         }
@@ -762,6 +760,20 @@ fn resolve_core_executable(
     }
 
     Err(CORE_NOT_FOUND_MESSAGE.to_string())
+}
+
+/// The core at `path`: the executable itself, or, for a PyInstaller one-folder
+/// build (`convsim-core/convsim-core` plus its `_internal/` libraries, which
+/// the Mac App Store edition ships because a one-file build unpacks unsigned
+/// code at launch and the App Sandbox will not load it), the executable inside.
+fn core_at(path: &Path) -> Option<PathBuf> {
+    if path.is_dir() {
+        return CORE_BINARY_NAMES
+            .iter()
+            .map(|name| path.join(name))
+            .find(|inner| inner.is_file());
+    }
+    path.exists().then(|| path.to_path_buf())
 }
 
 /// `which convsim-core` / `where convsim-core`, for dev builds run from a venv.
@@ -2198,6 +2210,32 @@ mod tests {
         )
         .expect("resolved");
         assert_eq!(found, runtimes.join("convsim-core"));
+    }
+
+    #[test]
+    fn a_one_folder_core_is_found_inside_its_folder() {
+        // PyInstaller one-folder output, as the Mac App Store edition ships it.
+        let dir = scratch_dir("resource-onedir");
+        let resources = dir.join("resources");
+        let folder = resources.join("bin").join("convsim-core");
+        let expected = folder.join("convsim-core");
+        touch(&expected);
+        touch(&folder.join("_internal").join("libpython3.11.dylib"));
+
+        let found =
+            resolve_core_executable(None, None, Some(&resources), || None).expect("resolved");
+        assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn an_empty_core_folder_is_not_mistaken_for_the_core() {
+        let dir = scratch_dir("resource-empty-onedir");
+        let resources = dir.join("resources");
+        std::fs::create_dir_all(resources.join("bin").join("convsim-core")).expect("mkdir");
+
+        let err = resolve_core_executable(None, None, Some(&resources), || None)
+            .expect_err("a folder without the executable is not the core");
+        assert_eq!(err, CORE_NOT_FOUND_MESSAGE);
     }
 
     #[test]

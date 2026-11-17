@@ -131,8 +131,7 @@ def _engine_env(layout: VoiceLayout) -> dict[str, str]:
         return env
     var = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
     base = env.get(f"{var}_ORIG") if getattr(sys, "frozen", False) else env.get(var)
-    engine = catalog.engine_asset()
-    lib_dir = layout.root / (engine.install_dir if engine else "engine") / "lib"
+    lib_dir = layout.engine_dir / "lib"
     env[var] = str(lib_dir) + (os.pathsep + base if base else "")
     return env
 

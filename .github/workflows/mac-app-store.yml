@@ -1,0 +1,253 @@
+# SPDX-License-Identifier: Apache-2.0
+# Mac App Store — builds the sandboxed Mac App Store edition of a release,
+# signs it, packs the installer package and sends it to TestFlight for Mac.
+# publishing/MAC_APP_STORE.md is the reference.
+#
+# It is not Steam's macOS build with a different signature: the store takes
+# only an App Sandbox app signed with the store certificates, with its
+# provisioning profile inside, delivered as a signed .pkg. So this builds the
+# app again from the tag:
+#   * the engine (convsim-core) as a PyInstaller one-folder build
+#     (CONVSIM_CORE_ONEDIR=1): a one-file build unpacks libraries at launch,
+#     and the sandbox will not load those;
+#   * the shell without the in-app updater (the store updates the app) and
+#     filed under Education (tauri.appstore.conf.json);
+#   * signed inside out by scripts/sign-mac-app-store.sh, with
+#     publishing/mac-app-store/entitlements.*.plist.
+# Voice: the speech engine includes eSpeak NG (GPL-3.0), which this build
+# does not ship, and a sandboxed app may not download programs; inside the
+# sandbox the app reports voice as unavailable (voice/catalog.py).
+#
+# Runs:
+#   * by hand: gh workflow run mac-app-store.yml -f tag=v0.4.11
+#     (add -f ref=main to try the lane on main before that tag exists)
+#   * chained from release.yml after a full release, once the repository
+#     variable MAC_APP_STORE is "true".
+#
+# Without the signing secrets it still builds the app and keeps it (unsigned)
+# as the mac-app-store-app artifact, which proves the build. With them:
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8   App Store Connect API key (base64 .p8)
+#   MATCH_PASSWORD                         decrypts the shared signing material
+#   MATCH_GIT_BASIC_AUTHORIZATION          base64("x-access-token:<token>"), a token
+#                                          that may read and write UmlautHero
+# it signs, packs mac-app-store-pkg, and uploads to TestFlight. Submitting a
+# TestFlight build for review stays a person's click in App Store Connect.
+name: Mac App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (vMAJOR.MINOR.PATCH)'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to build instead of the tag (e.g. main, to try the lane before a release; never uploaded)'
+        required: false
+        default: ''
+        type: string
+      upload:
+        description: 'Upload to TestFlight (when the signing secrets are set)'
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      ref:
+        required: false
+        default: ''
+        type: string
+      upload:
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Mac App Store build
+    runs-on: macos-latest
+    timeout-minutes: 75
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+    steps:
+      - name: Check the tag and the signing secrets
+        id: plan
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+        run: |
+          # CFBundleShortVersionString is MAJOR.MINOR.PATCH; a pre-release has none.
+          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$RELEASE_TAG is not a vMAJOR.MINOR.PATCH release."
+            exit 1
+          fi
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] && [ -n "$ASC_KEY_P8" ] \
+             && [ -n "$MATCH_PASSWORD" ] && [ -n "$MATCH_GIT_BASIC_AUTHORIZATION" ]; then
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Mac App Store signing skipped: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, MATCH_PASSWORD and MATCH_GIT_BASIC_AUTHORIZATION are not all set. The unsigned app is kept as the mac-app-store-app artifact."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the release tag
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || inputs.tag }}
+
+      # ── The engine, one folder ─────────────────────────────────────────────
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Build convsim-core (one folder)
+        shell: bash
+        env:
+          CONVSIM_CORE_ONEDIR: '1'
+        run: |
+          set -euo pipefail
+          cd services/convsim-core
+          python -m pip install -q -e "../../packages/prompt-composer"
+          python -m pip install -q -e ".[build]"
+          python -m PyInstaller convsim-core.spec --noconfirm
+          OUT=../../apps/desktop/src-tauri/resources/bin
+          mkdir -p "$OUT"
+          rm -rf "$OUT/convsim-core"
+          cp -R dist/convsim-core "$OUT/convsim-core"
+          test -x "$OUT/convsim-core/convsim-core"
+          du -sh "$OUT/convsim-core"
+
+      - name: Bundle llama-server (Metal)
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_DIR=apps/desktop/src-tauri/resources/runtimes
+          bash runtimes/llama_cpp/download-runtime.sh --dest "$RUNTIME_DIR"
+          ls -lh "$RUNTIME_DIR/llama-server"
+
+      # ── The shell ──────────────────────────────────────────────────────────
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared TypeScript packages
+        run: |
+          pnpm --filter @convsim/shared-types build
+          pnpm --filter @convsim/scenario-schema build
+
+      - name: Set app version from release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONF=apps/desktop/src-tauri/tauri.conf.json
+          python3 - "$CONF" "${RELEASE_TAG#v}" <<'PYEOF'
+          import json, sys
+          path, version = sys.argv[1], sys.argv[2]
+          with open(path) as f:
+              conf = json.load(f)
+          conf["version"] = version
+          with open(path, "w") as f:
+              json.dump(conf, f, indent=2)
+              f.write("\n")
+          print(f"Set {path} version to {version}")
+          PYEOF
+
+      - name: Build the app
+        shell: bash
+        env:
+          VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
+          VITE_CONVSIM_EDITION: full
+          CONVSIM_EDITION: full
+        run: |
+          set -euo pipefail
+          # No APPLE_SIGNING_IDENTITY: the store signature is made afterwards,
+          # inside out, by scripts/sign-mac-app-store.sh.
+          unset APPLE_SIGNING_IDENTITY
+          pnpm --filter @convsim/desktop exec tauri build --bundles app \
+            --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json" \
+            --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.appstore.conf.json"
+          APP="$(find apps/desktop/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -n1)"
+          test -n "$APP"
+          echo "APP=$GITHUB_WORKSPACE/$APP" >> "$GITHUB_ENV"
+          CORE="$(find "$APP/Contents/Resources" -path '*bin/convsim-core/convsim-core' -type f | head -n1)"
+          test -n "$CORE" || { echo "::error::the one-folder engine is not in the app"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$APP/Contents/Info.plist"
+          echo "Built $APP; engine at ${CORE#"$APP/"}"
+
+      - name: Keep the unsigned app
+        if: steps.plan.outputs.sign != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent "$APP" mac-app-store-app.zip
+          ls -lh mac-app-store-app.zip
+
+      - name: Upload the unsigned app
+        if: steps.plan.outputs.sign != 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: mac-app-store-app
+          path: mac-app-store-app.zip
+          retention-days: 30
+
+      # ── Sign, pack, upload ─────────────────────────────────────────────────
+      - name: Set up Ruby
+        if: steps.plan.outputs.sign == 'true'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          working-directory: publishing/mac-app-store
+          bundler-cache: true
+
+      - name: Sign, pack and send to TestFlight
+        if: steps.plan.outputs.sign == 'true'
+        working-directory: publishing/mac-app-store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          # A build of another ref than the tag is a trial: never uploaded.
+          UPLOAD: ${{ inputs.upload && !inputs.ref }}
+        run: |
+          bundle exec fastlane mac store \
+            app:"$APP" \
+            pkg:"$GITHUB_WORKSPACE/conversation-simulator-$RELEASE_TAG-mac-app-store.pkg" \
+            upload:"$UPLOAD"
+
+      - name: Keep the package
+        if: steps.plan.outputs.sign == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: mac-app-store-pkg
+          path: conversation-simulator-${{ inputs.tag }}-mac-app-store.pkg
+          if-no-files-found: error
+          retention-days: 90
