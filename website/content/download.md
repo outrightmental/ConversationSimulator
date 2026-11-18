@@ -1,21 +1,12 @@
 ---
 title: Download
-subtitle: Buy the ready-to-run app on Steam for $9.99, or build the open-source code yourself for free. Either way it runs entirely on your computer.
-description: Get Conversation Simulator for Windows, macOS, or Linux — $9.99 on Steam for the ready-to-run build, or free and open source from GitHub. Runs 100% locally.
+subtitle: The ready-to-run app is $9.99 on Steam, the Microsoft Store and the Mac App Store, with a free demo to try first; or build the open-source code yourself for free. Wherever it comes from, it runs entirely on your computer.
+description: Get Conversation Simulator for Windows, macOS, Linux or Steam Deck — $9.99 on Steam, the Microsoft Store and the Mac App Store, a free demo, or free and open source from GitHub. Runs 100% locally.
 ---
 
-<div class="dl-grid">
-  <a class="dl-card" href="https://store.steampowered.com/app/4963030/Conversation_Simulator/" target="_blank" rel="noopener noreferrer">
-    <strong>Buy on Steam — $9.99</strong>
-    <span>Windows · macOS · Linux · Steam Deck · ready to run, auto-updating</span>
-  </a>
-  <a class="dl-card" href="https://github.com/outrightmental/ConversationSimulator" target="_blank" rel="noopener noreferrer">
-    <strong>Build from source — free</strong>
-    <span>Clone the Apache-2.0 repository and build it yourself</span>
-  </a>
-</div>
+{{< channels >}}
 
-## Two ways to get it — both run 100% on your computer
+## Every way to get it runs 100% on your computer
 
 Conversation Simulator is **free and open source**. The engine and the First
 Words tutorial are Apache-2.0 and the official scenario packs are CC BY 4.0, so
@@ -23,9 +14,11 @@ you can always clone the [repository](https://github.com/outrightmental/Conversa
 build it, and run it at no cost — see the
 [developer install guide](https://docs.conversationsimulator.com/dev/developer-install/).
 
-The **$9.99 Steam edition** is that same software, packaged: code-signed and
-notarized, auto-updating, with Steam Cloud settings sync and
-achievements. You are not paying to unlock the product — it is open in the source.
+The **$9.99 store editions** are that same software, packaged: signed, ready
+to run, and kept up to date by the store. The Steam edition adds Steam Cloud
+settings sync and achievements; the Microsoft Store and Mac App Store editions
+are installed and updated by those stores (on the Mac App Store, voice is not
+available yet). You are not paying to unlock the product — it is open in the source.
 You are paying for a build you don't have to assemble yourself, and to fund
 continued development. The local-first guarantee is identical either way: nothing
 is transmitted to any server during play.

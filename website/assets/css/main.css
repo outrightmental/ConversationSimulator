@@ -416,19 +416,60 @@ h3 { font-size: 1.12rem; margin: 0 0 0.4em; }
 .prose th { color: var(--text-faint); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
 .prose hr { border: none; border-top: 1px solid var(--border-soft); margin: 2.5em 0; }
 
-.dl-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 1rem; margin: 1.6rem 0 0.6rem;
+/* ---------- Where to get it (partials/channels.html) ---------- */
+
+.channels { display: grid; gap: 1.6rem; margin: 2rem 0 0.6rem; }
+.channel-group { display: grid; gap: 0.8rem; }
+.channels .channel-head p { margin: 0; }
+.channels .channel-label {
+  font-family: var(--mono); font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--violet);
 }
-.dl-card {
-  display: block; text-decoration: none;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 1.3rem 1.3rem 1.1rem;
+.channels .channel-price {
+  font-family: var(--font-display); font-size: 1.3rem; line-height: 1.25;
+  color: var(--text-strong); margin-top: 0.15rem;
+}
+.channels .channel-note { color: var(--text-faint); font-size: 0.86rem; margin-top: 0.2rem; }
+.channels .stores {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.75rem;
+}
+/* The download page's column is narrow: two cards a row read better than three. */
+.prose .channels .stores { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+.channels .stores li { margin: 0; }
+.channels .store {
+  display: grid; grid-template-columns: 22px 1fr; column-gap: 0.85rem; row-gap: 0.1rem;
+  align-content: start; height: 100%; padding: 0.95rem 1.1rem;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); text-decoration: none;
   transition: border-color 150ms ease, transform 150ms ease;
 }
-.dl-card:hover { border-color: var(--violet-deep); transform: translateY(-2px); text-decoration: none; }
-.dl-card strong { color: var(--text-strong); font-size: 1.05rem; display: block; margin-bottom: 0.25rem; }
-.dl-card span { color: var(--text-faint); font-size: 0.85rem; }
+.channels .store svg { grid-row: span 3; width: 22px; height: 22px; margin-top: 0.1rem; color: var(--text-muted); }
+.channels a.store { border-left: 4px solid var(--violet-deep); }
+.channels a.store:hover { border-color: var(--violet); transform: translateY(-2px); text-decoration: none; }
+.channels a.store-available svg { color: var(--violet); }
+.channels a.store-wishlist { border-left-color: var(--amber); }
+.channels a.store-wishlist:hover { border-color: var(--amber); }
+.channels a.store-wishlist svg { color: var(--amber); }
+.store-name { font-weight: 700; color: var(--text-strong); font-size: 1rem; }
+.store-platforms { color: var(--text-faint); font-size: 0.84rem; line-height: 1.45; }
+.store-action { color: var(--violet); font-size: 0.86rem; font-weight: 600; margin-top: 0.3rem; }
+.store-wishlist .store-action { color: var(--amber); }
+.channels .store-soon { opacity: 0.58; }
+.store-tag {
+  margin-left: 0.4rem; padding: 0.05rem 0.45rem; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-muted);
+  font: 700 0.62rem/1.6 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+  vertical-align: 0.15em; white-space: nowrap;
+}
+.store-wishlist .store-tag { color: var(--amber); border-color: rgba(251, 191, 36, 0.35); }
+
+/* On the home page the product sits beside its stores; on narrow screens and
+   in the narrow download page it sits above them. */
+@media (min-width: 900px) {
+  .section .channel-group { grid-template-columns: 14rem 1fr; gap: 1.5rem; align-items: start; }
+}
+.get-section .section-lede { margin-bottom: 0; }
 
 /* ---------- 404 ---------- */
 
