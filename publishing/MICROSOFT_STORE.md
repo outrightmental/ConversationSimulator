@@ -23,15 +23,18 @@ tax: add the payout and tax profiles, without which Partner Center will not
 charge money; (2) the submission → Age ratings: review the IARC preview, tick
 the IARC Terms of Use and Save; (3) **Submit for certification**.
 
-**The demo (2026-11-17).** Submission 1 of *Conversation Simulator Demo* is
-complete except its age rating: free in every market but China, properties as
-the full app, the v0.4.11 demo package (validated; built by the demo Release
-run 44047602671 and tried as a development package: demo edition, five
-conversations, a reply in 4 s), the English listing with the five demo
-screenshots and captions, certification notes and the `runFullTrust`
-justification. Its IARC preview came out ESRB Everyone (mild language), PEGI 3,
-USK 12. Left, both a person's: tick the IARC Terms of Use and Save, then
-**Submit for certification**. A free product needs no payout or tax profile.
+**The demo: in certification since 2026-11-18.** Submission 1 of
+*Conversation Simulator Demo* was submitted with the maintainer's go-ahead:
+free in every market but China, properties as the full app, the v0.4.11 demo
+package (validated; built by the demo Release run 44047602671 and tried as a
+development package: demo edition, five conversations, a reply in 4 s), the
+English listing with the five demo screenshots and captions, certification
+notes, the `runFullTrust` justification, and its age rating (ESRB Everyone,
+PEGI 3, USK 12; IARC terms accepted by the maintainer). Microsoft says
+certification takes a few hours to three business days; it publishes as soon
+as it passes, at https://apps.microsoft.com/detail/9NNGXLM2HZZM. The full
+app's age rating is also accepted; it still waits on the payout and tax
+profiles, then Submit.
 
 ## The demo
 
