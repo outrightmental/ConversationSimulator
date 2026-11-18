@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Every place to get Conversation Simulator, rendered by
+# layouts/partials/channels.html on the home page (#get) and /download/.
+#
+# status:
+#   available  linked, with its action ("Buy", "Get", ...)
+#   wishlist   linked: the store page is up but the app is not out yet
+#   soon       shown dimmed and not linked, even when a url is already known
+#
+# When a store goes live, change its status (and its action) here; nothing
+# else needs to change. Store IDs: Steam 4963030 (demo 5343430), Microsoft
+# Store 9NTNF4X3GQ95 (demo 9NNGXLM2HZZM); the Mac App Store records do not
+# exist yet (publishing/MAC_APP_STORE.md).
+groups:
+  - id: full
+    label: The full app
+    price: $9.99, one time
+    note: Every official pack, the Creator Workbench, every model tier.
+    stores:
+      - name: Steam
+        icon: gamepad
+        platforms: Windows · macOS · Linux · Steam Deck
+        status: wishlist
+        action: Wishlist now
+        url: https://store.steampowered.com/app/4963030/Conversation_Simulator/
+      - name: Microsoft Store
+        icon: windows
+        platforms: Windows 10 and 11
+        status: soon
+        url: https://apps.microsoft.com/detail/9NTNF4X3GQ95
+      - name: Mac App Store
+        icon: laptop
+        platforms: Macs with Apple silicon
+        status: soon
+
+  - id: demo
+    label: The free demo
+    price: Free
+    note: Five conversations and one model download, to try before you buy.
+    stores:
+      - name: Steam
+        icon: gamepad
+        platforms: Windows · macOS · Linux
+        status: soon
+        url: https://store.steampowered.com/app/4963030/Conversation_Simulator/
+      - name: Microsoft Store
+        icon: windows
+        platforms: Windows 10 and 11
+        status: soon
+        url: https://apps.microsoft.com/detail/9NNGXLM2HZZM
+      - name: Mac App Store
+        icon: laptop
+        platforms: Macs with Apple silicon
+        status: soon
+
+  - id: source
+    label: Open source
+    price: Free, forever
+    note: The same software, built by you from the Apache-2.0 source.
+    stores:
+      - name: GitHub
+        icon: code
+        platforms: Build it yourself · Windows · macOS · Linux
+        status: available
+        action: Get the source
+        url: https://github.com/outrightmental/ConversationSimulator

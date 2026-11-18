@@ -20,6 +20,7 @@ hugo --minify -s website        # production build into website/public/
 | `content/` | Page content: home (`_index.md`), `manifesto.md`, `download.md` |
 | `layouts/` | Bespoke templates — homepage sections live in `layouts/index.html` |
 | `assets/css/main.css` | The whole design system (Hugo Pipes: minified + fingerprinted) |
+| `data/channels.yaml` | Every place to get the app — the stores for the full app and the free demo, and the source — with each one's status (`available`, `wishlist`, `soon`). Rendered by `layouts/partials/channels.html` on the home page (`#get`) and, through the `{{< channels >}}` shortcode, on `/download/`. When a store goes live, change its status here |
 | `static/images/screenshots/` | Web copies of `docs/assets/screenshots/*.png` at 1×, 256 colours — refresh when those change (see `docs/screenshots.md`) |
 
 The palette mirrors the app UI (see `docs/brand.md` and `apps/web/src`):
