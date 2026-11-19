@@ -27,7 +27,8 @@ groups:
       - name: Microsoft Store
         icon: windows
         platforms: Windows 10 and 11
-        status: soon
+        status: available
+        action: Buy it
         url: https://apps.microsoft.com/detail/9NTNF4X3GQ95
       - name: Mac App Store
         icon: laptop
@@ -47,7 +48,8 @@ groups:
       - name: Microsoft Store
         icon: windows
         platforms: Windows 10 and 11
-        status: soon
+        status: available
+        action: Get it free
         url: https://apps.microsoft.com/detail/9NNGXLM2HZZM
       - name: Mac App Store
         icon: laptop
