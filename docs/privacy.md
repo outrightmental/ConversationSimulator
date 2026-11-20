@@ -315,8 +315,11 @@ the request. It cannot tell one visitor from another.
 
 On your first visit a small box asks whether this site may remember your
 browser, so Outright Mental can see how people find their way between its
-sites and games (outrightmental.com, nickcharneykaye.com, fevertilt.com,
-starharvester.com, umlaut-hero.com and these two sites).
+sites and games: these two sites, outrightmental.com, nickcharneykaye.com,
+and the sites of the studio's other games and products (such as
+fevertilt.com, starharvester.com, xjmusic.com and ascendinglark.com).
+[Outright Mental's privacy policy](https://outrightmental.com/privacy/)
+lists them all.
 
 - **If you say no, or don't answer, nothing more is collected** than the
   page counts above. A browser that sends
