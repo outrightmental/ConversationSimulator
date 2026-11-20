@@ -1,0 +1,31 @@
+{{- /* SPDX-License-Identifier: Apache-2.0
+
+    signal-ladder: how far each page is read, in HTML alone. One 1x1 image
+    every 200 px down the page (the first loads with the page and is the
+    view; the rest are lazy, so the browser asks for each as the reader nears
+    it) and one at the foot (`e=1`). Signal's server adds one to that band's
+    count for the page and the day and keeps nothing else: no script, no
+    cookie, no id, so it needs no consent and works with script off.
+
+    The same markup as `ladderHtml` in Signal's sdk/web/ladder.mjs. It must be
+    the first thing inside <body>, and body is `position: relative`
+    (assets/css/main.css), so the ladder spans the page's height and clips to
+    it: a rung past the end of a short page is never asked for.
+
+    Rendered only where partials/signal-on.html says so.
+*/ -}}
+{{- if partial "signal-on.html" . -}}
+{{- with site.Params.signal -}}
+{{- $ingest := strings.TrimSuffix "/" (.ingest | default "https://in.signal.outright.io") -}}
+{{- $path := lower $.RelPermalink -}}
+{{- $path = replaceRE `/index\.html?$` "/" $path -}}
+{{- if gt (len $path) 1 }}{{ $path = strings.TrimSuffix "/" $path }}{{ end -}}
+{{- $base := printf "%s/v1/d?k=%s&p=%s" $ingest (.key | urlquery) ($path | urlquery) -}}
+<div data-signal-depth aria-hidden="true" style="position:absolute;top:0;bottom:0;left:0;width:1px;overflow:hidden;pointer-events:none;opacity:0">
+{{- range $at := seq 0 47 -}}
+<img src="{{ printf "%s&b=%d-%d" $base $at $at | safeURL }}" alt="" width="1" height="1"{{ if gt $at 0 }} loading="lazy"{{ end }} decoding="async" referrerpolicy="no-referrer" style="{{ printf "position:absolute;left:0;top:%dpx" (mul $at 200) | safeCSS }}">
+{{- end -}}
+<img src="{{ printf "%s&e=1" $base | safeURL }}" alt="" width="1" height="1" loading="lazy" decoding="async" referrerpolicy="no-referrer" style="position:absolute;left:0;bottom:0">
+</div>
+{{- end -}}
+{{- end -}}

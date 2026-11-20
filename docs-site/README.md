@@ -50,6 +50,19 @@ do not rename these slugs without updating the app:
   `/create/quality-bar/`, `/create/sample-pack/`
 - `/project/beta-testing/`
 
+## Analytics
+
+The app sends nothing; this site is measured. **Signal**, Outright Mental's
+own analytics (`src/signal.mjs`), counts how far each page is read from a
+ladder of 1×1 images that `src/components/SkipLink.astro` (a Starlight
+override) puts first inside every `<body>` (no script, cookie or id), and its
+web client, added to `<head>` by `astro.config.mjs` and loaded from
+signal.outright.io, keeps a journey only after a visitor's yes in its own
+banner. Both render only in the deploy workflow's build
+(`SIGNAL_DEPLOY=production`), never under `astro dev`, `astro preview` or a
+local build. What visitors are told is in `trust/privacy.md`, under *These
+websites*: keep it true when this changes.
+
 ## Deployment
 
 Pushed to S3 + CloudFront by `.github/workflows/deploy-website.yml` on every

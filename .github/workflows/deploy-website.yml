@@ -41,6 +41,11 @@ jobs:
           hugo version
 
       - name: Build site
+        # Only this build carries Signal's depth ladder and web client
+        # (website/layouts/partials/signal-on.html): a local or CI build never
+        # counts into the production stream.
+        env:
+          SIGNAL_DEPLOY: production
         run: |
           echo "Local: hugo --minify -s website"
           hugo --minify -s website
@@ -86,6 +91,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build docs site
+        # Only this build carries Signal's depth ladder and web client
+        # (docs-site/src/signal.mjs).
+        env:
+          SIGNAL_DEPLOY: production
         run: |
           echo "Local: pnpm --filter @convsim/docs-site build"
           pnpm --filter @convsim/docs-site build

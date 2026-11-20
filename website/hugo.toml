@@ -25,6 +25,32 @@ disableKinds = ['taxonomy', 'term', 'rss']
 [services.googleAnalytics]
   ID = 'G-VVJELQ8MED'
 
+# Signal: Outright Mental's own first-party, aggregate-only analytics, for the
+# website only (the app sends nothing). Every page carries a ladder of 1x1
+# images, counted by Signal's server with no script, cookie or id
+# (layouts/partials/signal-ladder.html); the client script adds journeys only
+# after a visitor says yes (layouts/partials/signal.html). Both render only in a
+# production build for `host` that the deploy workflow marks with
+# SIGNAL_DEPLOY=production, so `hugo server`, a local build and anything that is
+# not the deployed site never count into the stream. Described for visitors at
+# docs.conversationsimulator.com/trust/privacy/#these-websites.
+[params.signal]
+  key = 'conversationsimulator-com.86b0489a6c355f6d74edb087'
+  ingest = 'https://in.signal.outright.io'
+  script = 'https://signal.outright.io/w/signal.js'
+  host = 'www.conversationsimulator.com'
+  privacy = 'https://docs.conversationsimulator.com/trust/privacy/#these-websites'
+  # The studio's hosts a journey may cross (a link to one carries `#sx=`).
+  studio = [
+    'outrightmental.com', 'nickcharneykaye.com', 'fevertilt.com', 'starharvester.com',
+    'umlaut-hero.com', 'conversationsimulator.com', 'docs.conversationsimulator.com',
+  ]
+
+# getenv is limited to these names. The first two are Hugo's defaults;
+# SIGNAL_DEPLOY is set by .github/workflows/deploy-website.yml only.
+[security.funcs]
+  getenv = ['^HUGO_', '^CI$', '^SIGNAL_DEPLOY$']
+
 [markup.goldmark.renderer]
   # Content pages embed small pieces of structural HTML (e.g. the download cards).
   unsafe = true

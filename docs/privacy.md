@@ -5,6 +5,13 @@ Conversation Simulator is designed so that **nothing leaves your computer
 during play**. This document explains exactly what data exists, where it is
 stored, and how to delete it.
 
+The app sends nothing. The two websites, conversationsimulator.com and
+docs.conversationsimulator.com, are a different matter: both count how far
+their pages are read, without cookies, and remember a visitor only after a
+yes, and conversationsimulator.com also runs Google Analytics, which does
+use cookies. [These websites](#these-websites) says exactly what they
+collect.
+
 For network-level enforcement of this guarantee, see
 [`network-security.md`](network-security.md).  
 For content safety policy, see [`safety-policy.md`](safety-policy.md).
@@ -128,9 +135,10 @@ Log files are rotated and stored locally only. They are never transmitted.
 
 No usage analytics, session counts, feature-use events, or performance
 metrics are sent to any server. There are no background pings and no anonymous
-reporting. The settings model carries a `telemetry_enabled` flag that defaults
-to off (surfaced read-only under the `privacy` object of the `/api/health`
-response), but the MVP ships no telemetry subsystem to act on it — nothing is
+reporting from the app. (The websites are measured; see
+[These websites](#these-websites).) The settings model carries a
+`telemetry_enabled` flag that defaults to off (surfaced read-only under the
+`privacy` object of the `/api/health` response), but the MVP ships no telemetry subsystem to act on it — nothing is
 transmitted regardless of the flag.
 
 If telemetry is ever added in a future release, it will:
@@ -279,6 +287,68 @@ The following preferences are available in **Settings**:
 
 All preferences are stored locally in the browser's `localStorage` under
 the `convsim.privacy.*` namespace. They are never transmitted.
+
+---
+
+## These websites
+
+Everything above is about the app, which sends nothing. This section is
+about the two websites: **conversationsimulator.com** and
+**docs.conversationsimulator.com**. Nothing they collect comes from, or
+reaches, the app.
+
+Both sites are measured with **Signal**, Outright Mental's own analytics,
+which Outright Mental runs itself (`in.signal.outright.io`), with no
+analytics company in between. It keeps counts, not records of you.
+
+### How far each page is read, for every visitor
+
+Each page carries a column of tiny invisible images, one every 200 pixels
+down the page and one at its foot. Your browser fetches each one from Signal
+as you scroll near it, with or without JavaScript. Each request carries the
+site, the page's address and how far down the page it sits, and nothing
+else: **no cookie, no identifier, nothing stored on your device**. Signal
+adds one to a count for that page and that day and keeps nothing else about
+the request. It cannot tell one visitor from another.
+
+### Journeys, only if you say yes
+
+On your first visit a small box asks whether this site may remember your
+browser, so Outright Mental can see how people find their way between its
+sites and games (outrightmental.com, nickcharneykaye.com, fevertilt.com,
+starharvester.com, umlaut-hero.com and these two sites).
+
+- **If you say no, or don't answer, nothing more is collected** than the
+  page counts above. A browser that sends
+  [Global Privacy Control](https://globalprivacycontrol.org/) is treated as
+  a no, and is not asked.
+- **If you say yes**, the site keeps a random id in its own browser storage
+  (`localStorage`, not a cookie) and sends each page view with it. A link
+  you follow to another Outright Mental site carries that id in the part of
+  the address after `#`, which no server sees, so the next site can join the
+  two visits once you say yes there too.
+- Nothing that could recognise you is kept as itself: the id is hashed
+  with a secret key held only on Signal's servers. Journeys are used to
+  learn how people find Outright Mental's work and for nothing else: not
+  sold, not shared, not used for advertising. A journey is kept for up to
+  760 days after you were last seen, each page view in it for 395 days.
+- **Changing your answer to no erases you**, on every Outright Mental site at
+  once. Each site keeps its own answer: use **Privacy choices** in the
+  footer of conversationsimulator.com, and
+  the **Privacy choices** button on
+  [the docs site's privacy page](https://docs.conversationsimulator.com/trust/privacy/#these-websites).
+- To ask what Signal holds about you, or to have it erased, write to
+  [legal@outrightmental.com](mailto:legal@outrightmental.com).
+
+Neither site has a sign-up or mailing-list form today.
+
+### Google Analytics on conversationsimulator.com
+
+The marketing site (not the docs site) also runs Google Analytics 4, which
+sets cookies (`_ga`) to tell visits apart and sends page views to Google.
+It runs whatever you answer in the box above. Google's
+[opt-out browser add-on](https://tools.google.com/dlpage/gaoptout) turns it
+off.
 
 ---
 

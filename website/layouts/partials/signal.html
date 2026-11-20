@@ -1,0 +1,23 @@
+{{- /* SPDX-License-Identifier: Apache-2.0
+
+    signal: Signal's web client, the enrichment on top of the ladder
+    (partials/signal-ladder.html). It sends no depth on a page with a ladder.
+    It asks once, in its own small banner (this site has no consent form of
+    its own), whether it may remember this browser; only after a yes does it
+    keep a random visitor id in this site's storage and send page views with
+    it, so a journey across the studio's sites can be seen. A Global Privacy
+    Control signal is a no. A no after a yes erases the visitor. The footer's
+    "Privacy choices" link calls Signal.choices() to ask again.
+
+    Loaded from Signal's own host, so this repository carries no copy.
+    Rendered only where partials/signal-on.html says so.
+*/ -}}
+{{- if partial "signal-on.html" . -}}
+{{- with site.Params.signal -}}
+<script defer src="{{ .script }}"
+        data-key="{{ .key }}"
+        data-ingest="{{ .ingest }}"
+        data-studio="{{ delimit .studio " " }}"
+        data-privacy="{{ .privacy }}"></script>
+{{- end -}}
+{{- end -}}

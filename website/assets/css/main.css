@@ -52,6 +52,9 @@
 html { scroll-behavior: smooth; }
 
 body {
+  /* Signal's depth ladder (layouts/partials/signal-ladder.html) is the first
+     child of body and spans its height, so body is its containing block. */
+  position: relative;
   margin: 0;
   font-family: var(--font);
   background: var(--bg);

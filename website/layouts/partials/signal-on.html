@@ -1,0 +1,18 @@
+{{- /* SPDX-License-Identifier: Apache-2.0
+
+    signal-on: whether this build counts into Signal's production stream.
+    True only for a production build (`hugo`, never `hugo server`) whose
+    baseURL is `params.signal.host`, made by the deploy workflow, which alone
+    sets SIGNAL_DEPLOY=production. A local build, a dev server or a build for
+    any other host renders no ladder and no script, so nothing but the
+    deployed site counts.
+
+    Usage: {{ if partial "signal-on.html" . }}...{{ end }}
+*/ -}}
+{{- $on := false -}}
+{{- with site.Params.signal -}}
+{{- if and hugo.IsProduction .key (eq (getenv "SIGNAL_DEPLOY") "production") (eq (urls.Parse site.BaseURL).Host .host) -}}
+{{- $on = true -}}
+{{- end -}}
+{{- end -}}
+{{- return $on -}}
