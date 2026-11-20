@@ -27,15 +27,15 @@ export const SIGNAL = {
     'docs.conversationsimulator.com',
     'xjmusic.com',
     'docs.xjmusic.com',
-    'podcast.xjmusic.com',
+
     'outright.io',
     'agendar.outright.io',
     'wetware.outright.io',
     'etymolution.com',
     'makeitmoreinteresting.com',
     'interesting.outright.io',
-    'ascendinglark.com',
-    'garden.ascendinglark.com',
+
+
   ],
 }
 
