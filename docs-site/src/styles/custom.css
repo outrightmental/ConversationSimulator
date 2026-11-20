@@ -80,3 +80,9 @@ h2 { font-weight: 580; }
 .sl-markdown-content code:not(:where(pre code)) {
   border-radius: 0.25rem;
 }
+
+/* Signal's depth ladder (src/components/SkipLink.astro) is the first child of
+   body and spans its height, so body is its containing block. */
+body {
+  position: relative;
+}

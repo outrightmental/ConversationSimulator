@@ -26,6 +26,9 @@
         <h3>Trust</h3>
         <a href="/manifesto/">Manifesto</a>
         <a href="{{ site.Params.docsURL }}/trust/privacy/" target="_blank" rel="noopener noreferrer">Privacy</a>
+        {{- /* Asks Signal's question again (partials/signal.html); without the
+               script it is a plain link to what the site measures. */}}
+        <a href="{{ site.Params.docsURL }}/trust/privacy/#these-websites" target="_blank" rel="noopener noreferrer" onclick="if (window.Signal) { window.Signal.choices(); return false; }">Privacy choices</a>
         <a href="{{ site.Params.docsURL }}/trust/safety-policy/" target="_blank" rel="noopener noreferrer">Safety policy</a>
         <a href="{{ site.Params.docsURL }}/trust/network-security/" target="_blank" rel="noopener noreferrer">Network security</a>
       </nav>

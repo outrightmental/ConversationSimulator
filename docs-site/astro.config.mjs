@@ -1,6 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
+import { SIGNAL, signalOn } from './src/signal.mjs'
+
+const site = 'https://docs.conversationsimulator.com'
+
+// Signal's web client (src/signal.mjs): journeys after a yes, on top of the
+// depth ladder. This site has no consent form of its own, so the script asks
+// in its own small banner. Only in the deploy workflow's production build.
+const signalHead = signalOn(site)
+  ? [
+      {
+        tag: 'script',
+        attrs: {
+          defer: true,
+          src: SIGNAL.script,
+          'data-key': SIGNAL.key,
+          'data-ingest': SIGNAL.ingest,
+          'data-studio': SIGNAL.studio.join(' '),
+          'data-privacy': SIGNAL.privacy,
+        },
+      },
+    ]
+  : []
 
 // Remark plugin: honor explicit heading IDs written as `## Title {#custom-id}`.
 // Astro/Starlight's default Markdown pipeline does NOT support this syntax — it
@@ -32,7 +54,7 @@ function remarkExplicitHeadingIds() {
 // Content lives in src/content/docs/ — adapted for players, creators, and
 // contributors from the engineering docs in /docs.
 export default defineConfig({
-  site: 'https://docs.conversationsimulator.com',
+  site,
   markdown: {
     remarkPlugins: [remarkExplicitHeadingIds],
   },
@@ -61,6 +83,11 @@ export default defineConfig({
         baseUrl: 'https://github.com/outrightmental/ConversationSimulator/edit/main/docs-site/',
       },
       customCss: ['./src/styles/custom.css'],
+      // SkipLink is the first thing in <body>: the override puts Signal's depth
+      // ladder ahead of it (src/components/SkipLink.astro).
+      components: {
+        SkipLink: './src/components/SkipLink.astro',
+      },
       lastUpdated: true,
       sidebar: [
         { label: 'Getting Started', autogenerate: { directory: 'start' } },
@@ -80,6 +107,7 @@ export default defineConfig({
           tag: 'meta',
           attrs: { property: 'og:image', content: 'https://www.conversationsimulator.com/images/og-card.png' },
         },
+        ...signalHead,
       ],
     }),
   ],

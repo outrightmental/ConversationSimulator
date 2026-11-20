@@ -1,0 +1,13 @@
+---
+// SPDX-License-Identifier: Apache-2.0
+// Starlight's SkipLink is the first thing inside <body> on every page, so this
+// override puts Signal's depth ladder (src/signal.mjs) ahead of it, where the
+// ladder must be, and then renders Starlight's own skip link unchanged.
+import Default from '@astrojs/starlight/components/SkipLink.astro'
+import { ladderHtml, signalOn } from '../signal.mjs'
+
+const on = signalOn(Astro.site ?? 'http://localhost')
+---
+
+{on && <Fragment set:html={ladderHtml(Astro.url.pathname)} />}
+<Default />

@@ -29,6 +29,20 @@ amber marks scenario events. Copy follows the tone guide in `docs/brand.md` —
 authoritative, warm, concrete; we own the category and never compare the
 product to other genres.
 
+## Analytics
+
+The app sends nothing; this site is measured. **Signal**, Outright Mental's
+own analytics (`params.signal` in `hugo.toml`), counts how far each page is
+read from a ladder of 1×1 images that `layouts/partials/signal-ladder.html`
+puts first inside every `<body>` (no script, cookie or id), and its web
+client (`layouts/partials/signal.html`, loaded from signal.outright.io) keeps
+a journey only after a visitor's yes in its own banner. Both render only in
+the deploy workflow's build (`SIGNAL_DEPLOY=production`, see
+`layouts/partials/signal-on.html`), never under `hugo server` or a local
+build. Google Analytics (`[services.googleAnalytics]`) also runs on
+production builds. What visitors are told is on the docs site's privacy page,
+under *These websites*: keep it true when either changes.
+
 ## Deployment
 
 Pushed to S3 + CloudFront by `.github/workflows/deploy-website.yml` on every

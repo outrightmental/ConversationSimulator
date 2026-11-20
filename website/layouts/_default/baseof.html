@@ -4,6 +4,8 @@
   {{ partial "head.html" . }}
 </head>
 <body>
+  {{- /* Signal's depth ladder goes first inside <body>; see the partial. */}}
+  {{- partial "signal-ladder.html" . }}
   <a class="skip-link" href="#main">Skip to content</a>
   {{ partial "header.html" . }}
   <main id="main">
