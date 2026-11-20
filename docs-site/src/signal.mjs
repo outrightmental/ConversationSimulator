@@ -13,14 +13,29 @@ export const SIGNAL = {
   host: 'docs.conversationsimulator.com',
   privacy: '/trust/privacy/#these-websites',
   // The studio's hosts a journey may cross (a link to one carries `#sx=`).
+  // The same list, in the same order, on every studio site and in
+  // website/hugo.toml; outrightmental.com/privacy/ lists them for visitors.
   studio: [
     'outrightmental.com',
     'nickcharneykaye.com',
+    'apescorporation.com',
     'fevertilt.com',
     'starharvester.com',
+    'zero.starharvester.com',
     'umlaut-hero.com',
     'conversationsimulator.com',
     'docs.conversationsimulator.com',
+    'xjmusic.com',
+    'docs.xjmusic.com',
+    'podcast.xjmusic.com',
+    'outright.io',
+    'agendar.outright.io',
+    'wetware.outright.io',
+    'etymolution.com',
+    'makeitmoreinteresting.com',
+    'interesting.outright.io',
+    'ascendinglark.com',
+    'garden.ascendinglark.com',
   ],
 }
 
