@@ -317,7 +317,7 @@ On your first visit a small box asks whether this site may remember your
 browser, so Outright Mental can see how people find their way between its
 sites and games: these two sites, outrightmental.com, nickcharneykaye.com,
 and the sites of the studio's other games and products (such as
-fevertilt.com, starharvester.com, xjmusic.com and ascendinglark.com).
+fevertilt.com, starharvester.com, xjmusic.com and etymolution.com).
 [Outright Mental's privacy policy](https://outrightmental.com/privacy/)
 lists them all.
 

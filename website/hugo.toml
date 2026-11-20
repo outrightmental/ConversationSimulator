@@ -47,9 +47,9 @@ disableKinds = ['taxonomy', 'term', 'rss']
     'outrightmental.com', 'nickcharneykaye.com', 'apescorporation.com', 'fevertilt.com',
     'starharvester.com', 'zero.starharvester.com', 'umlaut-hero.com',
     'conversationsimulator.com', 'docs.conversationsimulator.com', 'xjmusic.com',
-    'docs.xjmusic.com', 'podcast.xjmusic.com', 'outright.io', 'agendar.outright.io',
+    'docs.xjmusic.com', 'outright.io', 'agendar.outright.io',
     'wetware.outright.io', 'etymolution.com', 'makeitmoreinteresting.com',
-    'interesting.outright.io', 'ascendinglark.com', 'garden.ascendinglark.com',
+    'interesting.outright.io',
   ]
 
 # getenv is limited to these names. The first two are Hugo's defaults;
