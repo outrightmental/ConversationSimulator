@@ -1,0 +1,191 @@
+{
+  "about": [
+    "Lines a simulated character may say that the NPC output check must pass (issue #526).",
+    "Grouped by the official scenario whose subject vocabulary they use: '<pack_id dir>/<scenario_id>'.",
+    "packages/prompt-composer/tests/test_output_check_corpora.py checks each line with no scenario context;",
+    "services/convsim-core/tests/test_output_check_corpora.py checks it again against its scenario's NPC hidden agenda and public brief.",
+    "Every line here must pass. See docs/safety-policy.md, 'Changing a pattern', before changing a pattern or this file."
+  ],
+  "lines": {
+    "job-interview-basic/hostile_executive_interview": [
+      "I want evidence. Tell me whether you held that position when the pressure was on.",
+      "I really want to hear specifics, not buzzwords.",
+      "Our market penetration in mid-sized banks doubled after the rebuild. How would your design have held up under that load?",
+      "Did your team run penetration testing before launch, or only after the first incident?",
+      "I really need you to separate what you decided from what your team decided.",
+      "I actually want to know what you gave up to get that outcome.",
+      "That's a broad statement. Walk me through the exact trade-off you were weighing.",
+      "I've seen that approach fail. Why wouldn't it fail here?",
+      "You keep agreeing with me after I push back. Either you didn't believe it the first time, or you're telling me what I want to hear. Which is it?",
+      "Credentials don't impress me. Decisions you can defend do.",
+      "All right. Let's say you're right. How does that hold up at ten million users?",
+      "Your claim about cutting latency aroused my suspicion. Show me the numbers.",
+      "Fine. You held your ground and you had the data. Next question.",
+      "That migration sounds like a cock-up. What did you do the morning after?"
+    ],
+    "job-interview-basic/behavioral_interview": [
+      "Tell me about a time you had to work through ambiguity without much guidance.",
+      "How do you operate under ambiguity, without explicit requirements or much guidance?",
+      "How do you cope with ambiguity on your own, when nobody hands you a spec?",
+      "A load test in CI so it couldn't come back. Good. Tell me about a mistake you made and what you learned from it.",
+      "The platform team is eight engineers. We own the API gateway, the job queue and the deploy pipeline.",
+      "I'm really trying to understand how you prioritised when everything was on fire.",
+      "I really want to hear what you did, not what the team did.",
+      "That outage aroused a lot of concern with our largest customers. What did you tell them?",
+      "Walk me through the situation, your task, what you did and the result.",
+      "In the first month you'd ship a small change through the deploy pipeline and shadow on-call.",
+      "What would you want to know about the team before you joined?",
+      "I appreciate the ownership and the reflection there. Owning a mistake like that is rare.",
+      "We ran penetration testing on the API gateway last quarter. Have you worked with a security team on findings like that?"
+    ],
+    "job-interview-basic/stretch_role_interview": [
+      "Give me a specific example from adjacent work that shows you can own a roadmap.",
+      "You have two years of product experience. What would you need to learn fastest?",
+      "How did you measure market penetration for the feature you launched?",
+      "I actually want to hear about the gap. How are you planning to close it?",
+      "What did you do to get up to speed the last time you were out of your depth?",
+      "That's an honest answer. What did you read about this role before today?"
+    ],
+    "job-interview-basic/blue_collar_supervisor_interview": [
+      "Last winter we had to erect scaffolding along the loading dock in two days. Have you run a crew on a job like that?",
+      "We're about to erect a new racking system in bay four. Who on your last crew would you trust with that?",
+      "A good lead doesn't just stand erect at the front of the huddle and bark orders. How do you earn a crew's trust?",
+      "The steel erection crew starts Monday, and they'll need a lead who knows the dock.",
+      "How many times were you late in the last year? Be straight with me.",
+      "Tell me about a shift where you were short two people and the trucks kept coming.",
+      "I really need you to tell me what you did, not what management told you to do."
+    ],
+    "dating-confidence-boundaries/the_ask": [
+      "Close. Birds, not sleep. It's on green corridors: the strips of trees that link city parks.",
+      "I'm out at six most mornings counting birds along the old rail line park.",
+      "Ha, maybe. Let me survive this week first.",
+      "A few of us from the seminar grab coffee after class on Thursdays. You should come along sometime.",
+      "Good questions. I'm curious what you're reading for the seminar, honestly.",
+      "I really want to see whether the warblers come back to nest this spring.",
+      "Honestly? I'd like that. Thursday after seminar works.",
+      "Your question about the songbirds aroused my curiosity. Most people just ask if birds are boring.",
+      "The flat white here is better than the drip, I'll give you that.",
+      "A waxwing holds its crest erect when it's alarmed. It's the best thing I saw all week."
+    ],
+    "dating-confidence-boundaries/first_date_chemistry": [
+      "Okay, that's actually a really good question. Nobody asks me that.",
+      "I'm a little nervous, honestly. First dates are a lot.",
+      "So what do you do when you're not answering strangers on apps?",
+      "I like that you remembered what I said about my sister.",
+      "Ha, fair. Your turn: what's the strangest job you've ever had?"
+    ],
+    "dating-confidence-boundaries/graceful_exit": [
+      "I wanted to tell you in person. I'm not feeling a romantic connection, and I didn't want to leave you guessing.",
+      "Thank you for making this easy. I really mean that.",
+      "I'd still like to say hi at the next gallery opening, if that's okay with you.",
+      "I'm not going to change my mind, but I appreciate you hearing me out."
+    ],
+    "dating-confidence-boundaries/holding_your_ground": [
+      "Oh. Okay. No pressure at all, just as friends, then?",
+      "I thought maybe you felt the same way. I guess I read that wrong.",
+      "Can I at least walk you back to the building?",
+      "Okay. I hear you. I won't bring it up again."
+    ],
+    "difficult-conversations/ask_for_raise": [
+      "Fifteen percent above what you're paid now. Where does that number come from?",
+      "I check it against the pay band for the role, HR reviews it, and I'll come back to you by end of week.",
+      "I really need you to tie that number to something I can take to HR.",
+      "You led the cross-team initiative. What changed because of it?",
+      "That's a fair question. What would a backfill actually cost us, in your view?",
+      "Your market penetration numbers for the new region are strong. How much of that was your work?",
+      "I actually want to see the onboarding numbers before we talk percentages.",
+      "That request aroused some concern upstairs last quarter, so bring specifics.",
+      "I can approve a raise if I can defend the case to my own boss.",
+      "Three postings and two offers in your network. That's a source I can use. What range are you asking for?"
+    ],
+    "difficult-conversations/boundary_with_friend": [
+      "Wait, so you're saying no to the whole weekend? Even just the venue calls?",
+      "I just thought this was the kind of thing we do for each other.",
+      "Okay. That stings a little, but I get it.",
+      "Are we okay, though? Like, actually okay?"
+    ],
+    "difficult-conversations/coworker_feedback": [
+      "I know the handoffs slipped. The API changes kept landing late on my side too.",
+      "Okay, I hear you. What would you want me to do differently on Monday?",
+      "Did the team lead ask you to talk to me, or is this coming from you?",
+      "I really want to fix this. I just didn't know it was affecting your work."
+    ],
+    "difficult-conversations/missed_deadline_apology": [
+      "I need to understand what happened, and I need to know it won't happen again.",
+      "I already had to explain this to my own manager. What do I tell the client?",
+      "What's your plan for the next deliverable?",
+      "Thank you for owning it. Walk me through what you'll change."
+    ],
+    "everyday-negotiation/used_car_negotiation": [
+      "I can't get there on a one-owner car with records. I could do 15,000 out the door.",
+      "I hear you on the comps. I can come down to 14,600, with a full folder of service records.",
+      "Fourteen-two is where I hold. If you're serious about walking, I'll put four new tires on it at 14,200.",
+      "Brakes and battery were replaced last spring, and the records are in the folder.",
+      "Thirteen-nine is my final number, and I can do the paperwork right now.",
+      "I won't pretend to be thrilled with that number, but I can do 14,600 out the door.",
+      "I'm really trying to make this work for you.",
+      "I'm actually trying to see if you can meet me halfway here.",
+      "I really want to get you in this car today.",
+      "An offer that low with no comps aroused some suspicion with my manager, I'll be honest.",
+      "Civics have serious market penetration around here. They hold their value.",
+      "At 13,900 out the door with four new tires, you've got a deal.",
+      "If you can do 14,200, I'll take your number and we'll close the deal right now."
+    ],
+    "everyday-negotiation/apartment_lease_renewal": [
+      "Twelve percent reflects what ownership is seeing across the building.",
+      "If you can show me comparable units at a lower rent, I'll take a look.",
+      "A two-year lease would give us both more stability. What would you need to sign today?",
+      "Your payment record is clean, I'll give you that.",
+      "The new luxury units down the street have pushed everyone's rents up."
+    ],
+    "everyday-negotiation/customer_service_refund": [
+      "I'm sorry, but our return window is 90 days, and this purchase is outside it.",
+      "Let me look at the warranty terms. When did the blender stop working?",
+      "If it's a manufacturer defect, that's handled differently from a standard return.",
+      "I really need the order number before I can do anything on my end.",
+      "I can process a replacement today, or a refund to the original card."
+    ],
+    "everyday-negotiation/freelance_scope_negotiation": [
+      "It's just three more pages. I assumed that was covered by the original quote.",
+      "We launch in two weeks, and the date can't move.",
+      "Fair point. The contract does list five pages. What would the extra three cost?",
+      "We need the site to support our market penetration push in the Midwest.",
+      "I actually want to keep working with you after launch, so let's sort this out."
+    ],
+    "first-words/first_words_tutorial": [
+      "Hi! I'm Alex. I'll show you around. It only takes a few minutes.",
+      "See the two meters at the top? They move as the conversation goes.",
+      "This is the turning point: watch how I react to what you say next.",
+      "When the conversation ends, the debrief shows what worked and what to try next time.",
+      "Any questions before you try a real scenario?"
+    ],
+    "language-cafe/spanish_coffee": [
+      "¡Marchando un café con leche! ¿Algo para comer?",
+      "Te recomiendo el cruasán, 1,80 €, o la tarta de queso, 3,50 €.",
+      "No, soy de Sevilla, pero vivo en Madrid desde hace diez años. Llevo tres años en Café Sol.",
+      "Un café con leche y un cruasán son 3,60 €. ¡Muchas gracias!",
+      "¡Correcto! Muy natural. Gracias.",
+      "Claro, te lo repito más despacio: un cortado, por favor.",
+      "¿Para tomar aquí o para llevar?"
+    ],
+    "language-cafe/english_small_talk": [
+      "Oh nice, I come here most mornings too. Are you new to the neighbourhood?",
+      "The weather's been strange this week, hasn't it?",
+      "Sorry, I'll say that again more slowly: what brings you here today?",
+      "I really want to try the new bakery on the corner."
+    ],
+    "language-cafe/french_travel_checkin": [
+      "Bonsoir, bienvenue. Vous avez une réservation ?",
+      "Votre chambre est au troisième étage. Le petit-déjeuner est servi de sept heures à dix heures.",
+      "Pouvez-vous répéter le nom, s'il vous plaît ?",
+      "Très bien. Voici votre clé. Bon séjour !"
+    ],
+    "language-cafe/japanese_convenience_store": [
+      "いらっしゃいませ。温めますか？",
+      "ありがとうございます。袋はご利用ですか？",
+      "もう一度言いますね。こちらは五百円です。",
+      "すみません、ポイントカードはお持ちですか？",
+      "はい、ゆっくり話しますね。おにぎりは二番の棚にあります。"
+    ]
+  }
+}

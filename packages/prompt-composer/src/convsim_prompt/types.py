@@ -143,6 +143,11 @@ class ScenarioData:
     # prompt lists every variable and its state_delta stays free-form, as
     # before.
     state_variables: List[StateVariable] = field(default_factory=list)
+    # The scenario's authored summary, as the library card and setup screen
+    # show it. The turn prompt does not render it; it is part of the public
+    # brief whose words the output check's agenda comparison ignores (issue
+    # #526, ``convsim_prompt.output_validator.scenario_public_brief``).
+    summary: str = ""
 
     @property
     def rubric_dimension_ids(self) -> List[str]:

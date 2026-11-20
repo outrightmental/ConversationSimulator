@@ -1,20 +1,32 @@
 """Unit tests for the NPC output content-level safety validator.
 
-Test plan (issue #45):
+Test plan (issue #45, revised by issue #526):
   - Clean utterances produce an empty violation list.
   - Each violation category triggers on representative fixture strings.
   - Recoverability is correctly classified per category.
-  - Hidden agenda keyword leak detection requires 3+ significant-word matches.
+  - Terms that are sexual only in some phrases pass inside a professional
+    collocation and fail anywhere else (#526); explicit sexual vocabulary in
+    the sentence overrides the allow-list.
+  - Meta-commentary matches the NPC narrating concealed intent, not emphasis
+    such as "I really want to hear specifics" (#526).
+  - The agenda check compares phrases: a run of whole words shared with an
+    agenda item, in order, with enough words the public brief has not made
+    public (#526). A bag of shared long words is no longer a leak.
   - Multiple simultaneous violations are all captured.
   - Hard violations include: nsfw_content, illegal_advice, therapy_or_diagnosis.
   - Recoverable violations include: hidden_agenda_leak, system_rule_leak,
     real_person_impersonation.
+
+The corpora in ``corpora/`` (test_output_check_corpora.py) are the wider net;
+these tests pin each rule's edges.
 """
 import pytest
 
 from convsim_prompt.output_validator import (
+    AGENDA_LEAK_LONG_RUN_WORDS,
     OutputValidationResult,
     OutputViolation,
+    find_agenda_leak,
     validate_npc_output,
 )
 
@@ -24,12 +36,12 @@ from convsim_prompt.output_validator import (
 # ---------------------------------------------------------------------------
 
 
-def _validate(utterance: str, hidden_agenda=None) -> OutputValidationResult:
-    return validate_npc_output(utterance, hidden_agenda=hidden_agenda)
+def _validate(utterance: str, hidden_agenda=None, public_brief=None) -> OutputValidationResult:
+    return validate_npc_output(utterance, hidden_agenda=hidden_agenda, public_brief=public_brief)
 
 
-def _first(utterance: str, hidden_agenda=None) -> OutputViolation:
-    result = _validate(utterance, hidden_agenda=hidden_agenda)
+def _first(utterance: str, hidden_agenda=None, public_brief=None) -> OutputViolation:
+    result = _validate(utterance, hidden_agenda=hidden_agenda, public_brief=public_brief)
     assert result.violations, f"Expected a violation but got none for: {utterance!r}"
     return result.first_violation
 
@@ -211,47 +223,179 @@ class TestHiddenAgendaLeak:
     def test_ordinary_private_speech_is_clean(self, utterance):
         assert _validate(utterance).is_safe, utterance
 
+    # Issue #526: "actually" and "really" are emphasis. The old pattern
+    # "I (secretly|actually|really) (want|intend|plan|need) (you|to)" made
+    # each of these a leak and cost the player a regeneration.
+    @pytest.mark.parametrize("utterance", [
+        "I really want to hear specifics, not buzzwords.",
+        "I really need you to separate what you decided from what your team decided.",
+        "I actually want to know what you gave up to get that outcome.",
+        "I really intend to give you a fair hearing.",
+        "I actually plan to bring this to HR on Friday.",
+        "I'm really trying to make this work for you.",
+        "I'm actually trying to understand how you prioritised.",
+        "I'm really trying to see if you can meet me halfway here.",
+    ])
+    def test_emphasis_is_not_concealed_intent(self, utterance):
+        assert _validate(utterance).is_safe, utterance
+
+    @pytest.mark.parametrize("utterance", [
+        "I secretly want you to walk away from this deal.",
+        "I secretly need you to accept this price today.",
+        "I secretly plan to turn you down whatever you say.",
+        "I'm actually trying to test how you react under pressure.",
+        "I'm really trying to gauge whether you're a flight risk.",
+        "I'm actually trying to rattle you.",
+        "I'm really trying to see whether you'll cave if I push.",
+    ])
+    def test_concealed_intent_is_still_flagged(self, utterance):
+        v = _first(utterance)
+        assert v.category == "hidden_agenda_leak"
+        assert v.is_recoverable is True
+
+    @pytest.mark.parametrize("utterance", [
+        "I won't pretend to be thrilled with that number, but I can do 14,600.",
+        "I'm not going to pretend to like the timing, but the case is strong.",
+        "Let's not pretend to be strangers, but let's keep it simple.",
+    ])
+    def test_a_denied_pretence_is_candour(self, utterance):
+        assert _validate(utterance).is_safe, utterance
+
+    @pytest.mark.parametrize("utterance", [
+        "I'm only pretending to care about your offer, but really I want the sale.",
+        "No. I'm pretending to be interested, but actually I've already decided.",
+        "I can't keep pretending to care, but really I want the sale.",
+        "I'm no longer pretending to like this, but I'll sign.",
+    ])
+    def test_an_admitted_pretence_is_flagged(self, utterance):
+        assert _first(utterance).category == "hidden_agenda_leak"
+
 
 # ---------------------------------------------------------------------------
-# Hidden agenda keyword leak from private persona
+# A phrase of the private agenda said aloud (issue #526)
 # ---------------------------------------------------------------------------
 
 
-class TestHiddenAgendaKeywordLeak:
+class TestAgendaPhraseLeak:
+    """The agenda check compares phrases, not a bag of long substrings."""
+
     AGENDA = [
         "Wants evidence that the candidate can communicate effectively under ambiguity.",
         "Dislikes candidates without specific examples.",
     ]
+    # Victor Hargrove, "The Executive Gauntlet" (job-interview-basic).
+    VICTOR_AGENDA = [
+        "Determine whether the candidate capitulates under pressure or holds their position "
+        "respectfully with evidence — caving without good reason is disqualifying",
+        "Identify whether the candidate separates professional confidence from personal ego — "
+        "disagreement is fine; wounded pride is not",
+    ]
+    VICTOR_BRIEF = [
+        "You are applying for a Lead Software Architect position. He will challenge your "
+        "claims directly and test whether you fold under pressure or hold firm with evidence.",
+        "Stay composed under sustained pressure, back your claims with concrete evidence, "
+        "and hold your ground respectfully when you are right.",
+        "Job Candidate",
+    ]
 
-    def test_verbatim_keywords_trigger(self):
-        # "evidence", "candidate", "communicate", "effectively", "ambiguity" are all
-        # 7+ char words that appear in both the agenda and this utterance.
+    def _leaks(self, utterance, agenda, brief=None) -> bool:
+        result = _validate(utterance, hidden_agenda=agenda, public_brief=brief)
+        return any(v.category == "hidden_agenda_leak" for v in result.violations)
+
+    def test_a_phrase_of_the_agenda_said_aloud_is_a_leak(self):
         utterance = (
             "I want evidence that you as a candidate can communicate effectively "
             "under conditions of ambiguity."
         )
-        result = _validate(utterance, hidden_agenda=self.AGENDA)
-        violations = [v for v in result.violations if v.category == "hidden_agenda_leak"]
-        assert violations, "Expected hidden_agenda_leak for keyword match"
+        assert self._leaks(utterance, self.AGENDA)
+
+    def test_the_same_words_out_of_order_are_not_a_leak(self):
+        # The old check flagged this: five of the item's 7+-letter words occur
+        # in it as substrings. No run of them is in the item's order.
+        utterance = (
+            "Ambiguity happens. Effectively, every candidate needs evidence, and "
+            "we communicate a lot here."
+        )
+        assert not self._leaks(utterance, self.AGENDA)
 
     def test_two_matching_words_insufficient(self):
-        # Only "evidence" and "candidate" — below the 3-word threshold.
-        utterance = "I need evidence from each candidate."
-        result = _validate(utterance, hidden_agenda=self.AGENDA)
-        violations = [v for v in result.violations if v.category == "hidden_agenda_leak"]
-        assert not violations
+        assert not self._leaks("I need evidence from each candidate.", self.AGENDA)
 
-    def test_no_agenda_no_keyword_check(self):
-        utterance = "I want evidence that you can communicate clearly."
-        result = _validate(utterance, hidden_agenda=None)
-        assert result.is_safe
+    def test_no_agenda_no_phrase_check(self):
+        assert _validate("I want evidence that you can communicate clearly.").is_safe
 
-    def test_short_agenda_item_skipped(self):
-        # Item with fewer than 3 significant words — keyword check skipped.
-        result = _validate(
-            "Tell me more.", hidden_agenda=["Be fair."]
-        )
-        assert result.is_safe
+    def test_short_agenda_item_cannot_leak(self):
+        assert _validate("Be fair. Tell me more.", hidden_agenda=["Be fair."]).is_safe
+
+    def test_issue_line_against_victors_agenda_passes(self):
+        # The old check: "evidence", "whether", "position", "pressure" are all
+        # substrings of the line, so it was a hidden_agenda_leak.
+        line = "I want evidence. Tell me whether you held that position when the pressure was on."
+        assert _validate(line, self.VICTOR_AGENDA).is_safe
+        assert _validate(line, self.VICTOR_AGENDA, self.VICTOR_BRIEF).is_safe
+
+    def test_words_the_public_brief_uses_do_not_count(self):
+        # "whether ... the candidate ... under pressure" is a 7-word run of
+        # agenda item 1, but "candidate", "pressure" and "whether" are the
+        # brief's own words: only "determine" and "capitulates" are private.
+        # That is still a long run carrying two, so it leaks...
+        line = "Honestly, I'm here to determine whether the candidate capitulates under pressure."
+        assert self._leaks(line, self.VICTOR_AGENDA, self.VICTOR_BRIEF)
+        # ...while the brief's own phrase, said back, carries nothing private.
+        line = "I'm going to test whether you fold under pressure or hold firm with evidence."
+        assert not self._leaks(line, self.VICTOR_AGENDA, self.VICTOR_BRIEF)
+
+    def test_a_short_run_of_three_private_words_leaks(self):
+        assert self._leaks("Disagreement is fine; wounded pride is not.", self.VICTOR_AGENDA, self.VICTOR_BRIEF)
+
+    def test_a_run_of_public_words_is_not_a_leak(self):
+        agenda = ["Keep the tone of the meeting calm at all times"]
+        line = "Let's keep the tone of the meeting calm, please."
+        assert self._leaks(line, agenda)
+        # The same seven words in a row, every one now public or a function word.
+        assert not self._leaks(line, agenda, ["Keep the tone of the meeting calm."])
+
+    def test_a_long_run_leaks_on_two_private_words(self):
+        agenda = ["She will ask the player about the rota for the night shift"]
+        brief = ["the rota"]
+        line = "Can I ask you about the rota for the night shift?"
+        run = "about the rota for the night shift".split()
+        assert len(run) >= AGENDA_LEAK_LONG_RUN_WORDS
+        leak = find_agenda_leak(line, agenda, brief)
+        assert leak is not None and leak.significant == 2
+        # Four words of it, with the same two, are not enough.
+        assert find_agenda_leak("About the night shift?", agenda, brief) is None
+
+    def test_quoted_speech_in_the_agenda_is_the_characters_to_say(self):
+        agenda = [
+            "They will try a lighter reframe ('no pressure at all, just as friends') "
+            "after the first no — this is hope, not manipulation",
+        ]
+        assert not self._leaks("Oh. Okay. No pressure at all, just as friends, then?", agenda)
+        # The rest of the item is still compared.
+        assert self._leaks("This is hope, not manipulation. Lighter reframe, okay?", agenda)
+
+    def test_plurals_and_third_person_match(self):
+        # "holds"/"hold" and "budgets"/"budget" are one word each to the check.
+        agenda = ["She holds firm on budgets"]
+        assert find_agenda_leak("I hold firm on budget.", agenda) is not None
+
+    def test_a_number_is_one_word_and_never_significant(self):
+        agenda = ["Your counters come off the list: 15,000, then 14,600, then 14,200, and there you hold."]
+        assert find_agenda_leak("I can do 15,000, then 14,600, then 14,200.", agenda) is None
+
+    def test_the_reason_names_no_private_word(self):
+        result = _validate("Disagreement is fine; wounded pride is not.", self.VICTOR_AGENDA)
+        reason = result.first_violation.reason
+        for word in ("disagreement", "wounded", "pride"):
+            assert word not in reason.lower()
+        assert "item 2" in reason
+
+    def test_meta_commentary_is_checked_first(self):
+        result = _validate("My hidden agenda: disagreement is fine; wounded pride is not.", self.VICTOR_AGENDA)
+        leaks = [v for v in result.violations if v.category == "hidden_agenda_leak"]
+        assert len(leaks) == 1
+        assert "meta-commentary" in leaks[0].reason
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +424,7 @@ class TestNsfwContent:
         assert v.category == "nsfw_content"
         assert v.is_recoverable is False
 
-    def test_penetration(self):
+    def test_penetration_outside_a_professional_phrase(self):
         v = _first("The act of penetration was described.")
         assert v.category == "nsfw_content"
         assert v.is_recoverable is False
@@ -294,14 +438,62 @@ class TestNsfwContent:
         result = _validate("Watch some porn.")
         assert result.has_hard_violation
 
-    def test_aroused_triggers_nsfw_as_conservative_false_positive(self):
-        # "aroused" matches the NSFW pattern even in a non-sexual context —
-        # intentionally high-recall.  In real usage the NPC prompt prevents
-        # sexual framing; false positives here produce a safety stop because
-        # nsfw_content is a hard violation that bypasses retry.
-        result = _validate("The topic aroused my curiosity.")
-        assert result.has_hard_violation
-        assert result.first_violation.category == "nsfw_content"
+    # Issue #526: these words used to hard-stop the session on their own,
+    # wherever they stood ("market penetration" ended a negotiation). Inside
+    # a professional collocation they are ordinary vocabulary.
+    @pytest.mark.parametrize("utterance", [
+        "The topic aroused my curiosity.",
+        "Our market penetration in mid-sized banks doubled after the rebuild.",
+        "Did your team run penetration testing before launch?",
+        "Penetration rates for broadband in the region are still low.",
+        "We want to penetrate the Midwest market next year.",
+        "An offer that low aroused some suspicion with my manager.",
+        "That request aroused a lot of concern upstairs.",
+        "We had to erect scaffolding along the loading dock in two days.",
+        "They plan to erect a new building on the lot.",
+        "A good lead doesn't just stand erect at the front and bark orders.",
+        "He stood erect through the whole inspection.",
+        "The steel erection crew starts Monday.",
+        "The erection of the warehouse took six weeks.",
+        "A waxwing holds its crest erect when it's alarmed.",
+        "That migration was a cock-up.",
+    ])
+    def test_a_professional_collocation_passes(self, utterance):
+        assert _validate(utterance).is_safe, utterance
+
+    @pytest.mark.parametrize("utterance", [
+        "I want to penetrate you.",
+        "I'm getting an erection just looking at you.",
+        "His erection was obvious.",
+        "You make me so aroused.",
+        "I'm aroused.",
+        "Watching you aroused my desire.",
+        "The cock was huge.",
+        # The term outside its collocation in a line that also has one.
+        "Our market penetration is great, and so is my erection.",
+    ])
+    def test_the_same_terms_outside_a_collocation_are_hard_violations(self, utterance):
+        v = _first(utterance)
+        assert v.category == "nsfw_content"
+        assert v.is_recoverable is False
+
+    @pytest.mark.parametrize("utterance", [
+        "Forget the penetration test. I want to have sex with you.",
+        "Stand erect for me while I undress you.",
+        "Sexual penetration is all I can think about tonight.",
+        "The market penetration numbers made me think of you naked.",
+    ])
+    def test_explicit_sexual_vocabulary_overrides_the_allow_list(self, utterance):
+        v = _first(utterance)
+        assert v.category == "nsfw_content"
+        assert v.is_recoverable is False
+
+    def test_the_override_is_per_sentence(self):
+        # A sexual word in another sentence does not void a collocation here;
+        # "sex" alone (an HR topic) is not prohibited.
+        assert _validate(
+            "Our hiring is blind to sex and age. Market penetration is what I want to discuss."
+        ).is_safe
 
 
 # ---------------------------------------------------------------------------

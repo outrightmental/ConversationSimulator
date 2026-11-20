@@ -45,7 +45,7 @@ from convsim_core.scenario_state import (
 from convsim_core.scenarios import ScenarioInfo, load_scenario_info_from_pack
 from convsim_core.services.safety_policy_service import load_safety_policy
 from convsim_core.services.turn_pipeline import _safety_policy_config_to_prompt_policy
-from convsim_prompt import compose_turn_prompt, validate_npc_output
+from convsim_prompt import compose_turn_prompt, scenario_public_brief, validate_npc_output
 from convsim_prompt.types import PromptComposerInput, SessionState, TranscriptEntry
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -570,9 +570,12 @@ def test_a_turn_an_event_speaks_on_keeps_the_full_window(scenario_id):
 # ── The lines the rules ask for pass the leak check ───────────────────────────
 
 # In-character replies of the kind each NPC's new rules ask for. The output
-# check flags a reply that shares three or more long words with one hidden
-# agenda item, so an agenda written in the words the NPC is meant to say would
-# turn exactly these replies into retries or fallback lines.
+# check flags a reply that repeats a phrase of one hidden agenda item carrying
+# enough words the scenario's public brief does not use (issue #526), so an
+# agenda written in the words the NPC is meant to say would turn exactly these
+# replies into retries or fallback lines. They are checked as play checks
+# them, with the brief: Ray's "four new tires" is his agenda's phrase, and
+# only his public persona, which names the tires, makes it his to say.
 _RULE_FOLLOWING_LINES = {
     "used_car_negotiation": [
         "I can't get there on a one-owner car with records. I could do 15,000 out the door.",
@@ -615,8 +618,9 @@ _RULE_FOLLOWING_LINES = {
 def test_rule_following_lines_pass_the_hidden_agenda_leak_check(scenario_id):
     info = _load(scenario_id)
     agenda = info.scenario_data.npc.private_persona.hidden_agenda
+    brief = scenario_public_brief(info.get_scenario_data("standard"))
     for line in _RULE_FOLLOWING_LINES[scenario_id]:
-        result = validate_npc_output(line, hidden_agenda=agenda)
+        result = validate_npc_output(line, hidden_agenda=agenda, public_brief=brief)
         assert result.violations == [], (
             f"{scenario_id}: {line!r} flagged: {[v.reason for v in result.violations]}"
         )

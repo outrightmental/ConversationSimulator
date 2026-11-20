@@ -115,6 +115,7 @@ class ScenarioInfo:
             player_visible_goals=self.scenario_data.player_visible_goals,
             rubric=self.scenario_data.rubric,
             state_variables=self._prompt_state_variables(),
+            summary=self.scenario_data.summary,
         )
 
     def played_variables(self) -> List[str]:
@@ -784,6 +785,7 @@ def load_scenario_info_from_pack(
         npc=npc,
         player_visible_goals=player_visible_goals,
         rubric=_load_rubric(pack_dir, scenario_file, raw),
+        summary=str(raw.get("summary") or "").strip(),
     )
 
     return ScenarioInfo(

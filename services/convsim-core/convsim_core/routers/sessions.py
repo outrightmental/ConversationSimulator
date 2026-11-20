@@ -357,11 +357,15 @@ class TurnDebugDetail(BaseModel):
     parse_events: List[Dict[str, Any]]
     prompt_metadata: Optional[Dict[str, Any]]
     timing: Optional[Dict[str, Any]] = None
+    # Lines the output check rejected this turn, by violation category (#526).
+    rejections: Dict[str, int] = {}
 
 
 class SessionDebugResponse(BaseModel):
     session_id: str
     turns: List[TurnDebugDetail]
+    # ``rejections`` summed over every turn of the session (#526).
+    rejection_totals: Dict[str, int] = {}
 
 
 class DebriefTurningPoint(BaseModel):
@@ -1684,8 +1688,12 @@ async def get_session_debug(session_id: str, request: Request) -> SessionDebugRe
 
     all_game_turns = sorted(set(raw_by_game_turn) | set(debug_by_turn))
     turns: List[TurnDebugDetail] = []
+    totals: Dict[str, int] = {}
     for game_turn in all_game_turns:
         debug = debug_by_turn.get(game_turn, {})
+        rejections = _turn_rejections(debug)
+        for category, count in rejections.items():
+            totals[category] = totals.get(category, 0) + count
         turns.append(TurnDebugDetail(
             turn_number=game_turn,
             raw_npc_output=raw_by_game_turn.get(game_turn),
@@ -1694,9 +1702,32 @@ async def get_session_debug(session_id: str, request: Request) -> SessionDebugRe
             parse_events=debug.get("parse_events", []),
             prompt_metadata=prompt_by_turn.get(game_turn),
             timing=timings_by_turn.get(game_turn),
+            rejections=rejections,
         ))
 
-    return SessionDebugResponse(session_id=session_id, turns=turns)
+    return SessionDebugResponse(
+        session_id=session_id, turns=turns, rejection_totals=dict(sorted(totals.items())),
+    )
+
+
+def _turn_rejections(debug: Dict[str, Any]) -> Dict[str, int]:
+    """Lines the output check rejected in one turn, by category (issue #526).
+
+    A turn played since #526 stores the counts in its ``debug`` event
+    (``convsim_prompt.count_rejections``). An older turn has only its parse
+    events, and the reply's ``output_violation_detected`` is the one
+    rejection those name for certain; that is what it is counted from.
+    """
+    stored = debug.get("rejections")
+    if isinstance(stored, dict):
+        return {str(k): int(v) for k, v in stored.items() if isinstance(v, int) and v > 0}
+    counts: Dict[str, int] = {}
+    for event in debug.get("parse_events") or []:
+        if isinstance(event, dict) and event.get("event_type") == "output_violation_detected":
+            category = event.get("category")
+            if isinstance(category, str) and category:
+                counts[category] = counts.get(category, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 @router.post("/{session_id}/debrief", response_model=DebriefResponse)

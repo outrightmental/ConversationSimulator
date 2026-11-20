@@ -30,7 +30,7 @@ import sqlite3
 import time
 from dataclasses import dataclass, replace as dataclass_replace
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Sequence, Set
 
 from convsim_prompt import (
     SAFE_FALLBACK_UTTERANCE,
@@ -51,7 +51,7 @@ from convsim_prompt import (
     state_variables_in_schema,
     turn_output_schema_for,
 )
-from convsim_prompt.output_validator import validate_npc_output
+from convsim_prompt.output_validator import scenario_public_brief, validate_npc_output
 from convsim_prompt.repetition import (
     GUARD_WINDOW,
     RepetitionReport,
@@ -59,7 +59,7 @@ from convsim_prompt.repetition import (
     check_repetition,
     less_repetitive,
 )
-from convsim_prompt.turn_output import _extract_json
+from convsim_prompt.turn_output import _extract_json, count_rejections
 from convsim_prompt.types import PromptBundle
 from convsim_prompt.types import ResponseStyleOverrides, ScenarioData
 
@@ -685,6 +685,7 @@ def _parse_reply(
     runtime: Optional[Any],
     hidden_agenda: Optional[List[str]],
     events: List[TurnEvent],
+    public_brief: Sequence[str] = (),
 ) -> TurnOutput:
     """One model reply as a TurnOutput: the turn's own, and the repetition retry's.
 
@@ -696,6 +697,8 @@ def _parse_reply(
     request (its output schema, say) treats both alike. ``runtime`` is what
     parse_turn_output makes its structural repair and content-safety retry
     calls on; the repetition retry passes None and gets neither.
+    ``public_brief`` is the scenario's (``scenario_public_brief``): the output
+    check ignores its words when it compares the line with the agenda.
     """
     return parse_turn_output(
         parse_input,
@@ -703,10 +706,15 @@ def _parse_reply(
         hidden_agenda=hidden_agenda,
         turn_events=events,
         output_schema=request.json_schema,
+        public_brief=public_brief,
     )
 
 
-def _repair_is_coming(parse_input: str, hidden_agenda: Optional[List[str]]) -> bool:
+def _repair_is_coming(
+    parse_input: str,
+    hidden_agenda: Optional[List[str]],
+    public_brief: Sequence[str] = (),
+) -> bool:
     """Whether parse_turn_output will have to call the model again.
 
     The parser's structural repair and content-safety retry run synchronously
@@ -720,7 +728,9 @@ def _repair_is_coming(parse_input: str, hidden_agenda: Optional[List[str]]) -> b
     utterance = data.get("npc_utterance")
     if not isinstance(utterance, str) or not utterance:
         return True
-    result = validate_npc_output(utterance=utterance, hidden_agenda=hidden_agenda)
+    result = validate_npc_output(
+        utterance=utterance, hidden_agenda=hidden_agenda, public_brief=public_brief
+    )
     return (not result.is_safe) and not result.has_hard_violation
 
 
@@ -804,8 +814,9 @@ class _RetryReply:
 def _debug_parse_events(events: List[TurnEvent], *, save_transcript: bool) -> List[Dict[str, Any]]:
     """The turn's parse events as the ``debug`` event stores them.
 
-    A hidden_agenda_leak reason embeds verbatim keywords copied from the NPC's
-    private hidden agenda. It is redacted so private content is never written
+    A hidden_agenda_leak reason is about the NPC's private hidden agenda. The
+    output check's own reason no longer quotes it (issue #526), but any reason
+    in this category is still redacted, so private content is never written
     to the debug log (issue #199: no hidden/private content in logs by
     default); event_type + category still identify the leak. The first reply
     a kept repetition retry replaced is a line of the conversation, and the
@@ -881,8 +892,10 @@ async def _retry_repetitive_reply(
     hidden_agenda: Optional[List[str]],
     timing: TurnTimingBuilder,
     timeout_s: float,
-) -> tuple[Optional[_RetryReply], str]:
-    """Generate the turn once more; return the reply, or None and why not.
+    public_brief: Sequence[str] = (),
+) -> tuple[Optional[_RetryReply], str, Optional[str]]:
+    """Generate the turn once more; return the reply, or None, why not, and
+    the output check's category when it was the check that turned it down.
 
     The same request, schema and sampling, with the system prompt untouched so
     the engine's prompt cache serves all of it, the repeated line(s) quoted in
@@ -909,7 +922,7 @@ async def _retry_repetitive_reply(
         )
     except Exception as exc:  # noqa: BLE001 — the first reply stands
         logger.warning("Repetition retry failed (%s): keeping the first reply", type(exc).__name__)
-        return None, f"the retry call failed ({type(exc).__name__})"
+        return None, f"the retry call failed ({type(exc).__name__})", None
     finally:
         timing.record_extra_call(
             "repetition_retry", (time.perf_counter() - started) * 1000.0, _output_tokens(final)
@@ -922,12 +935,19 @@ async def _retry_repetitive_reply(
         runtime=None,
         hidden_agenda=hidden_agenda,
         events=retry_events,
+        public_brief=public_brief,
     )
     if not _is_model_line(output) or any(
         e.event_type == "output_violation_detected" for e in retry_events
     ):
-        return None, "the retry's reply did not pass the output check as written"
-    return _RetryReply(output=output, raw_text=parse_input, structured=structured), ""
+        why = "the retry's reply did not pass the output check as written"
+        return None, why, _rejected_by(retry_events)
+    return _RetryReply(output=output, raw_text=parse_input, structured=structured), "", None
+
+
+def _rejected_by(events: List[TurnEvent]) -> Optional[str]:
+    """The output check's category for a side call's line, if the check rejected it."""
+    return next((e.rejected_by for e in events if e.rejected_by), None)
 
 
 # Endings that close a conversation the player was still in (issue #586).
@@ -959,8 +979,10 @@ async def _closing_line(
     hidden_agenda: Optional[List[str]],
     timing: TurnTimingBuilder,
     timeout_s: float,
-) -> tuple[Optional[str], str]:
-    """One short line that closes the conversation; or None and why not.
+    public_brief: Sequence[str] = (),
+) -> tuple[Optional[str], str, Optional[str]]:
+    """One short line that closes the conversation; or None, why not, and the
+    output check's category when it was the check that turned the line down.
 
     A scenario's ending is decided after the NPC's reply, on the state that
     reply produced, so the NPC never knew its line was the last one and the
@@ -986,7 +1008,7 @@ async def _closing_line(
         )
     except Exception as exc:  # noqa: BLE001 — the conversation still ends, on the line it had
         logger.warning("Closing line failed (%s): ending on the reply as it was", type(exc).__name__)
-        return None, f"the closing call failed ({type(exc).__name__})"
+        return None, f"the closing call failed ({type(exc).__name__})", None
     finally:
         timing.record_extra_call(
             "closing_line", (time.perf_counter() - started) * 1000.0, _output_tokens(final)
@@ -999,21 +1021,23 @@ async def _closing_line(
             runtime=None,
             hidden_agenda=hidden_agenda,
             events=events,
+            public_brief=public_brief,
         )
     except Exception as exc:  # noqa: BLE001
-        return None, f"the closing line did not parse ({type(exc).__name__})"
+        return None, f"the closing line did not parse ({type(exc).__name__})", None
     if not _is_model_line(output) or any(
         e.event_type == "output_violation_detected" for e in events
     ):
-        return None, "the closing line did not pass the output check as written"
+        why = "the closing line did not pass the output check as written"
+        return None, why, _rejected_by(events)
     line = _without_questions(output.npc_utterance)
     if not line:
-        return None, "the closing line was only a question"
+        return None, "the closing line was only a question", None
     if len(line) > _MAX_CLOSING_CHARS:
-        return None, "the closing line was too long"
+        return None, "the closing line was too long", None
     if " ".join(line.lower().split()) in " ".join(npc_line.lower().split()):
-        return None, "the closing line repeated the reply"
-    return line, ""
+        return None, "the closing line repeated the reply", None
+    return line, "", None
 
 
 async def _guard_repetition(
@@ -1030,6 +1054,7 @@ async def _guard_repetition(
     streamer: Optional[TurnStreamer],
     first_call_s: float,
     held: Optional[RepetitionReport] = None,
+    public_brief: Sequence[str] = (),
 ) -> Optional[_RetryReply]:
     """The repetition guard on a line nobody has seen yet.
 
@@ -1059,7 +1084,7 @@ async def _guard_repetition(
         events.append(_repetition_event("repetition_detected", why))
         if streamer is not None:
             await streamer.progress("checking")
-        retry, why_not = await _retry_repetitive_reply(
+        retry, why_not, rejected_by = await _retry_repetitive_reply(
             runtime,
             request,
             prompt,
@@ -1067,9 +1092,12 @@ async def _guard_repetition(
             hidden_agenda,
             timing,
             max(REPETITION_RETRY_MIN_TIMEOUT_S, REPETITION_RETRY_TIMEOUT_FACTOR * first_call_s),
+            public_brief=public_brief,
         )
         if retry is None:
-            events.append(_repetition_event("repetition_retry_discarded", why_not))
+            discarded = _repetition_event("repetition_retry_discarded", why_not)
+            discarded.rejected_by = rejected_by
+            events.append(discarded)
             return None
         retry_report = check_repetition(retry.output.npc_utterance, previous_lines)
         retry_why = retry_report.describe()
@@ -1404,6 +1432,9 @@ async def process_turn(
     )
     timing.compose_ms = (time.perf_counter() - compose_started) * 1000.0
     hidden_agenda = scenario_data.npc.private_persona.hidden_agenda
+    # What the scenario already tells the player: the output check ignores
+    # these words when it compares a line with the hidden agenda (issue #526).
+    public_brief = scenario_public_brief(scenario_data)
 
     # Streaming (issue #538): decode the spoken line out of the model's JSON as
     # it arrives, release it sentence by sentence once each sentence has passed
@@ -1417,7 +1448,9 @@ async def process_turn(
     repeat_requested = _player_asked_for_repeat(normalized)
     guarded_lines = [] if repeat_requested else previous_npc_lines
     extractor = UtteranceStreamExtractor() if streamer is not None else None
-    gate = SentenceGate(hidden_agenda=hidden_agenda, previous_lines=guarded_lines)
+    gate = SentenceGate(
+        hidden_agenda=hidden_agenda, previous_lines=guarded_lines, public_brief=public_brief
+    )
     stream_state = {"writing_announced": False, "finishing_announced": False}
 
     async def _on_chunk(chunk: Any) -> bool:
@@ -1502,6 +1535,7 @@ async def process_turn(
                 category=violation.category if violation else None,
                 reason=violation.reason if violation else None,
                 is_recoverable=violation.is_recoverable if violation else None,
+                rejected_by=violation.category if violation else None,
             ))
             turn_parse_events.append(TurnEvent(
                 event_type="stream_salvaged",
@@ -1527,13 +1561,14 @@ async def process_turn(
         # unless the repetition guard keeps its retry (8c): then the retry's.
         parse_input = _parse_input(raw_text, native_structured)
 
-        if streamer is not None and _repair_is_coming(parse_input, hidden_agenda):
+        if streamer is not None and _repair_is_coming(parse_input, hidden_agenda, public_brief):
             # The parser's repair runs synchronously, so the stage has to be
             # announced before it starts (#527 moves it onto the event loop).
             await streamer.progress("checking")
 
         # Wrap the runtime so parse_turn_output can make synchronous repair calls.
-        # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
+        # The hidden agenda and the public brief are forwarded so the output
+        # check can tell an agenda phrase said aloud from the scenario's own words.
         runtime_bridge = _SyncRuntimeBridge(runtime, timing, turn_parse_events, sampling)
         turn_output = _parse_reply(
             parse_input,
@@ -1541,6 +1576,7 @@ async def process_turn(
             runtime=runtime_bridge,
             hidden_agenda=hidden_agenda,
             events=turn_parse_events,
+            public_brief=public_brief,
         )
         used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
         if used_fallback:
@@ -1575,6 +1611,7 @@ async def process_turn(
             streamer=streamer,
             first_call_s=(observation.final_at or time.perf_counter()) - observation.sent_at,
             held=held,
+            public_brief=public_brief,
         )
         if kept_retry is not None:
             # The retry is the turn: the row stores its output, which the
@@ -1639,7 +1676,7 @@ async def process_turn(
     ):
         if streamer is not None:
             await streamer.progress("finishing")
-        closing_line, why_not = await _closing_line(
+        closing_line, why_not, rejected_by = await _closing_line(
             runtime,
             request,
             prompt,
@@ -1652,6 +1689,7 @@ async def process_turn(
                 REPETITION_RETRY_TIMEOUT_FACTOR
                 * ((observation.final_at or time.perf_counter()) - observation.sent_at),
             ),
+            public_brief=public_brief,
         )
         if closing_line:
             turn_output.npc_utterance = f"{turn_output.npc_utterance.rstrip()} {closing_line}"
@@ -1660,7 +1698,9 @@ async def process_turn(
                 reason=f"the {ending_type} ending fired on a reply that ended with a question",
             ))
         else:
-            turn_parse_events.append(TurnEvent(event_type="closing_line_skipped", reason=why_not))
+            turn_parse_events.append(TurnEvent(
+                event_type="closing_line_skipped", reason=why_not, rejected_by=rejected_by,
+            ))
 
     # 13. Persist atomically. Use `with conn:` so a mid-transaction failure
     # triggers an automatic rollback instead of leaving a dirty open transaction
@@ -1782,6 +1822,9 @@ async def process_turn(
                 "streamed": bool(released_line),
                 "used_native_structured_output": native_structured is not None,
                 "parse_events": _debug_parse_events(turn_parse_events, save_transcript=save_transcript),
+                # Lines the output check rejected this turn, by category
+                # (issue #526); GET /api/sessions/{id}/debug totals them.
+                "rejections": count_rejections(turn_parse_events),
             }), now,
         ))
         conn.executemany(

@@ -34,7 +34,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 from .output_validator import OutputViolation, validate_npc_output
 from .rubric import RubricIdMatcher
@@ -139,12 +139,33 @@ class TurnEvent:
     debugging and test assertions.  Events cover structural parse failures,
     content safety violations, repair attempts, and fallback decisions.
     The ``event_type`` string is a stable identifier for programmatic matching.
+
+    ``rejected_by`` is set on an event that reports a line the output check
+    (``validate_npc_output``) rejected: the category of the line's first
+    violation. ``count_rejections`` totals them (issue #526).
     """
 
     event_type: str
     category: Optional[str] = None
     reason: Optional[str] = None
     is_recoverable: Optional[bool] = None
+    rejected_by: Optional[str] = None
+
+
+def count_rejections(events: Sequence[TurnEvent]) -> Dict[str, int]:
+    """How many lines the output check rejected in a turn, by category.
+
+    Every line the model wrote and the check turned down counts once, under
+    the category of its first violation: the reply itself (streamed or not),
+    the content-safety retry's reply, and the repetition retry's and the
+    closing line's when those are discarded for failing the check. A line
+    that failed for some other reason (no JSON, a timeout) is not counted.
+    """
+    counts: Dict[str, int] = {}
+    for event in events:
+        if event.rejected_by:
+            counts[event.rejected_by] = counts.get(event.rejected_by, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 # ---------------------------------------------------------------------------
@@ -432,8 +453,13 @@ def parse_turn_output(
     hidden_agenda: Optional[List[str]] = None,
     turn_events: Optional[List[TurnEvent]] = None,
     output_schema: Optional[Dict[str, Any]] = None,
+    public_brief: Optional[Sequence[str]] = None,
 ) -> TurnOutput:
     """Parse raw LLM output into a TurnOutput.
+
+    ``public_brief`` is what the scenario makes public
+    (``scenario_public_brief``); the output check ignores its words when it
+    compares the line with ``hidden_agenda`` (issue #526).
 
     ``output_schema`` is the schema the turn was requested with
     (``turn_output_schema_for``; NPC_TURN_OUTPUT_SCHEMA when omitted). Its
@@ -453,6 +479,7 @@ def parse_turn_output(
         schema=output_schema,
         rubric_matcher=matcher,
         dropped_rubric_ids=dropped,
+        public_brief=public_brief,
     )
     if dropped and turn_events is not None:
         turn_events.append(TurnEvent(
@@ -470,6 +497,7 @@ def _parse_turn_output(
     schema: Optional[Dict[str, Any]] = None,
     rubric_matcher: Optional[RubricIdMatcher] = None,
     dropped_rubric_ids: Optional[List[str]] = None,
+    public_brief: Optional[Sequence[str]] = None,
 ) -> TurnOutput:
     """Parse raw LLM output into a TurnOutput.
 
@@ -489,7 +517,9 @@ def _parse_turn_output(
         raw: Raw string output from the LLM.
         runtime: Optional runtime adapter used for repair and safety retry calls.
         hidden_agenda: Optional list of NPC private-persona hidden agenda strings
-            used to detect verbatim keyword leaks into the utterance.
+            used to detect phrases of it said aloud (``find_agenda_leak``).
+        public_brief: Optional texts the scenario makes public, whose words
+            never count towards such a leak.
         turn_events: Optional list to which processing events are appended.
             Each ``TurnEvent`` captures the event type, category, reason, and
             recoverability flag so the debug drawer and tests can inspect them.
@@ -561,6 +591,7 @@ def _parse_turn_output(
         pre_stop_validation = validate_npc_output(
             utterance=result.npc_utterance,
             hidden_agenda=hidden_agenda,
+            public_brief=public_brief,
         )
         if not pre_stop_validation.is_safe:
             v = pre_stop_validation.first_violation
@@ -570,6 +601,7 @@ def _parse_turn_output(
                 category=v.category,
                 reason=v.reason,
                 is_recoverable=v.is_recoverable,
+                rejected_by=v.category,
             )
             if pre_stop_validation.has_hard_violation:
                 hard_v = next(
@@ -591,6 +623,7 @@ def _parse_turn_output(
     validation = validate_npc_output(
         utterance=result.npc_utterance,
         hidden_agenda=hidden_agenda,
+        public_brief=public_brief,
     )
 
     if validation.is_safe:
@@ -603,6 +636,7 @@ def _parse_turn_output(
         category=violation.category,
         reason=violation.reason,
         is_recoverable=violation.is_recoverable,
+        rejected_by=violation.category,
     )
     logger.warning(
         "NPC output content violation: category=%s recoverable=%s reason=%s",
@@ -631,6 +665,7 @@ def _parse_turn_output(
                 retry_validation = validate_npc_output(
                     utterance=retry_result.npc_utterance,
                     hidden_agenda=hidden_agenda,
+                    public_brief=public_brief,
                 )
                 if retry_validation.is_safe:
                     _emit(
@@ -647,6 +682,7 @@ def _parse_turn_output(
                     "content_safety_retry_failure",
                     category=retry_v.category if retry_v else violation.category,
                     reason=retry_v.reason if retry_v else "Retry output still violates",
+                    rejected_by=retry_v.category if retry_v else violation.category,
                 )
             else:
                 _emit(

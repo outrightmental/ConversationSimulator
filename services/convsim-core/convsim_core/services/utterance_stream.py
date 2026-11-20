@@ -225,6 +225,10 @@ class SentenceGate:
     Unlike ``blocked``, ``repeated`` does not ask for generation to stop: the
     line is retried from the complete output. Later slices are checked for
     safety only (see ``_repeats``).
+
+    The default check is the one the parser runs on the whole line, with the
+    same ``hidden_agenda`` and ``public_brief`` (issue #526), so a streamed
+    line is held back for exactly what would have rejected it unstreamed.
     """
 
     hidden_agenda: Optional[List[str]] = None
@@ -234,11 +238,14 @@ class SentenceGate:
     released: List[str] = field(default_factory=list)
     previous_lines: Sequence[str] = ()
     repeated: Optional[RepetitionReport] = None
+    public_brief: Sequence[str] = ()
 
     def _check(self, text: str) -> OutputValidationResult:
         if self.checker is not None:
             return self.checker(text)
-        return validate_npc_output(utterance=text, hidden_agenda=self.hidden_agenda)
+        return validate_npc_output(
+            utterance=text, hidden_agenda=self.hidden_agenda, public_brief=self.public_brief
+        )
 
     def _repeats(self, text: str, complete: bool) -> RepetitionReport:
         """Whether the first release, ``text``, would make the line a repeat.
