@@ -408,5 +408,3 @@ orphaned.
 - **Auto-update** is not configured.
 - **Code signing** is not configured — macOS Gatekeeper will warn on unsigned
   builds unless you sign with a Developer ID certificate.
-- **App icons** are placeholders. Run `pnpm tauri icon <source.png>` to replace
-  them with real branding before building a distributable.
