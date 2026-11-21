@@ -7,10 +7,9 @@
 > the SHA-256 hashes of the promoted artifacts, release notes, and the go/no-go
 > confirmation.
 >
-> **When to update:** Immediately after the `steam-promote.yml` CI workflow
-> completes successfully.  Copy the "Steam Promotion Record" block printed by the
-> "Record promotion details" step and paste it into the [Entries](#entries)
-> section below.
+> **When to update:** Immediately after the `promote.yml` CI workflow
+> completes successfully.  Take the build ids from its "What went live" summary
+> and fill in the record below in the [Entries](#entries) section.
 >
 > **Audience:** Platform team, launch commander, Outright Mental.  This log is
 > the authoritative provenance record for every public release — do not delete
@@ -41,7 +40,7 @@ Build ID (prev)   :   ← the Build ID that was live before this promotion
                        (used for rollback — do NOT delete this build from Steamworks)
 Branch set live   : default
 Promoted by       :   ← GitHub username
-CI run            :   ← link to the steam-promote.yml workflow run
+CI run            :   ← link to the promote.yml workflow run
 
 ### Go/no-go confirmation
 
@@ -109,7 +108,7 @@ For the full rollback procedure see publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md
 
 ## Links
 
-- [`.github/workflows/steam-promote.yml`](../.github/workflows/steam-promote.yml) — CI workflow that performs the promotion
+- [`.github/workflows/promote.yml`](../.github/workflows/promote.yml) — CI workflow that performs the promotion
 - [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) — CI workflow that uploads content and optionally sets a branch live
 - [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md) — launch-day sequence; Step 3 triggers this promotion
 - [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md) — rollback procedure and player support messages

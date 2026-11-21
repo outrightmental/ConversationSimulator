@@ -1,0 +1,52 @@
+# Conversation Simulator's publishing contract, read by outrightmental/publishing in every ready check and
+# promote. The rule is that repository's schema/product.schema.json. The full product and its demo are
+# separate apps in every store, so each is its own variant.
+
+schema: 1
+product: conversation-simulator
+name: Conversation Simulator
+repository: outrightmental/ConversationSimulator
+
+variants:
+  - id: full
+    name: Conversation Simulator
+    price: paid
+    stores:
+      steam:
+        app_id: 4963030
+        depots: { windows: 4963031, macos: 4963032, linux: 4963033 }
+        test_branch: beta
+      microsoft_store:
+        product_id: 9NTNF4X3GQ95
+        identity: OutrightMental.ConversationSimulator
+      # mac-app-store.yml sends nothing to TestFlight until vars.MAC_APP_STORE is true: promote it with
+      # stores=steam,microsoft_store until then
+      app_store:
+        bundle_id: com.outrightmental.convsim
+        apple_id: "6837668150"
+        platforms: [macos]
+      web:
+        url: https://conversationsimulator.com
+  - id: demo
+    name: Conversation Simulator Demo
+    price: demo
+    stores:
+      steam:
+        app_id: 5343430
+        depots: { windows: 5343431, macos: 5343432, linux: 5343433 }
+        test_branch: beta
+      microsoft_store:
+        product_id: 9NNGXLM2HZZM
+        identity: OutrightMental.ConversationSimulatorDemo
+
+privacy:
+  policy_url: https://docs.conversationsimulator.com/trust/privacy/
+
+# The product's propaganda. The folder does not exist yet, and no handle is chosen (the demo has no
+# profiles of its own: publishing/assets/social/README.md). The ready check reports on it and stops
+# nothing until enforce is true.
+propaganda:
+  path: propaganda
+  target_id: conversation_simulator
+  channels: [web, x, instagram, youtube]
+  enforce: false

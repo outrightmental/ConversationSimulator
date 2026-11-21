@@ -22,7 +22,7 @@
 #   3. Prints the rollback record template (copy into ROLLBACK_AND_SUPPORT_MESSAGING.md).
 #
 # After the fix is committed to the hotfix branch, open a PR to main and tag
-# a new patch release.  Then re-run steam-deploy.yml + steam-promote.yml to
+# a new patch release.  Then re-run steam-deploy.yml + promote.yml to
 # stage and promote the fixed build.
 #
 # See publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md for the rollback procedure
@@ -167,8 +167,8 @@ jobs:
           echo "  3. After merge, tag a new patch release (e.g. ${TAG%.*}.$((${TAG##*.} + 1)))."
           echo "     (If the version has a pre-release suffix, increment the patch segment.)"
           echo "  4. Run steam-deploy.yml with the new patch tag to stage the fixed build."
-          echo "  5. Run steam-promote.yml to record provenance, then set the fixed"
-          echo "     build live on 'default' in Steamworks App Admin."
+          echo "  5. Run promote.yml with the new patch version: it sets the fixed build"
+          echo "     live on 'default' (approve it in the Steam Mobile app)."
           echo "  6. Post the appropriate player-facing message from"
           echo "     publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md."
           echo "  7. Close the P0 — blocker GitHub issue opened during rollback."

@@ -1887,7 +1887,7 @@ jobs:
   # Steam credential is exposed without a human click.
   #
   # Automatic runs always target the 'beta' branch.  'default' (public) must be
-  # promoted via steam-promote.yml after the Stage 4 gate passes.
+  # promoted via promote.yml after the Stage 4 gate passes.
   #
   # If STEAM_USERNAME / STEAM_CONFIG_VDF are not yet configured, steam-deploy
   # short-circuits with an INFO message and this job succeeds, leaving the release

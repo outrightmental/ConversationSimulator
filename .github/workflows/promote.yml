@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Promote
+
+# Takes a release that release.yml staged in every store and makes it public (outrightmental/publishing's
+# promote.yml, shared by every studio product):
+#
+#   Steam            the build whose description names the version, set live on default, for the full
+#                    product and the demo (Steam asks the confirming account to approve it in the Steam
+#                    Mobile app once the app is released)
+#   Microsoft Store  the Partner Center draft holding the version, sent to certification, for each
+#   Mac App Store    the version's build submitted for review, released when approved (once
+#                    mac-app-store.yml ships builds: until then leave it out of `stores`)
+#
+#   gh workflow run promote.yml -f version=0.4.12 -f go_nogo_confirmed=YES
+#
+# The Stage 4 gate stays as it was: type YES to confirm every criterion in docs/steam-mvp-scope.md is met
+# and the release owner said go, and a reviewer approves the run in the steam-release environment. A dry
+# run needs neither and changes nothing. publishing/STEAM_PROMOTION_LOG.md takes the record from the run's
+# "What went live" summary, which names each build set live.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to take live, without its v (0.4.12)"
+        required: true
+      variants:
+        description: "all, full or demo"
+        default: all
+      stores:
+        description: "Comma list of steam, microsoft_store, app_store"
+        default: steam,microsoft_store
+      go_nogo_confirmed:
+        description: "Type YES: every Stage 4 gate criterion is met and the release owner said go"
+        default: ""
+      dry_run:
+        description: "Dry run: find everything, change nothing"
+        type: boolean
+        default: false
+
+# The shared workflow's App Privacy and Google Play jobs ask for these, and GitHub refuses to start a called
+# workflow whose jobs ask for more than its caller grants, even jobs this product never runs.
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  gate:
+    name: Stage 4 go/no-go
+    runs-on: ubuntu-latest
+    # A reviewer with the required-reviewer role approves the run here, as for every default-branch release.
+    # A dry run uses an environment of its own (dry-run, which GitHub makes on first use) that asks no one.
+    environment: ${{ inputs.dry_run && 'dry-run' || 'steam-release' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Go/no-go
+        env:
+          GO_NOGO: ${{ inputs.go_nogo_confirmed }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: the gate is not asked"
+          elif [ "$GO_NOGO" != "YES" ]; then
+            echo "::error::go_nogo_confirmed must be exactly YES: every Stage 4 criterion met, and the release owner's go"
+            exit 1
+          fi
+
+  promote:
+    needs: gate
+    uses: outrightmental/publishing/.github/workflows/promote.yml@v1
+    with:
+      version: ${{ inputs.version }}
+      variants: ${{ inputs.variants }}
+      stores: ${{ inputs.stores }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
