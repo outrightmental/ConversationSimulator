@@ -115,16 +115,25 @@ Done once, in this order. Nothing here can be done from CI.
    gh variable set MAC_APP_STORE --repo outrightmental/ConversationSimulator --body true
    ```
 
-## Where it stands (2026-11-17)
+## Where it stands (2026-11-21)
 
-The lane builds: an unsigned trial on `main` (run 44041318971) produced the
-app with the one-folder engine at
-`Contents/Resources/resources/bin/convsim-core/convsim-core`, llama-server and
-its Metal libraries, `LSApplicationCategoryType` education,
-`ITSAppUsesNonExemptEncryption` false and the microphone text; three programs
-and 104 libraries for the signing script. Not yet: signing, the `.pkg`, the
-TestFlight upload, and any run of the sandboxed app on a Mac. Those wait on
-the steps below, which are all a person's.
+Both apps build from the v0.4.12 tag, unsigned: the full app (run
+44897182990) and the demo (run 44896676770), each with the one-folder engine
+at `Contents/Resources/resources/bin/convsim-core/convsim-core`,
+llama-server and its Metal libraries, `LSApplicationCategoryType`
+education, `ITSAppUsesNonExemptEncryption` false and the microphone text.
+The full app's first v0.4.12 build (run 44896674177) stopped on an empty
+bash array under macOS's bash 3.2, fixed in #619; the workflow from `main`
+builds any tag. Not yet: signing, the `.pkg`, the TestFlight upload, and any
+run of the sandboxed app on a Mac. Those wait on the six steps above, which
+are all a person's. Once they are done, send v0.4.12 to TestFlight with:
+
+```bash
+gh workflow run mac-app-store.yml --repo outrightmental/ConversationSimulator --ref main -f tag=v0.4.12
+```
+```bash
+gh workflow run mac-app-store.yml --repo outrightmental/ConversationSimulator --ref main -f tag=v0.4.12 -f edition=demo
+```
 
 ## Getting a build there
 

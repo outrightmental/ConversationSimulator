@@ -14,6 +14,21 @@
 > [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) for
 > the registration checklist and identifier table.
 
+**Where it stands (2026-11-21).** v0.4.12 is staged on both apps, set live
+on no branch. Both builds came from the v0.4.12 tag, and Defender found the
+Windows payloads clean.
+
+| App | Store state | Latest staged build |
+|---|---|---|
+| Conversation Simulator (4963030) | public page, *Coming soon*, Q1 2027 | BuildID **26831893**, `Conversation Simulator v0.4.12` (Release run 44895020918) |
+| Conversation Simulator Demo (5343430) | not public | BuildID **26832087**, `Conversation Simulator Demo v0.4.12` (demo Release run 44896670753) |
+
+Before Next Fest, the demo also needs its store presence, which is a
+partner-portal user's job. That means the icons, capsules and library art
+regenerated with the official icon in #617 (the full game's art changed too),
+and the five demo screenshots. Then it needs build and store review
+([`STEAM_NEXT_FEST_DEMO.md`](STEAM_NEXT_FEST_DEMO.md) §4).
+
 ---
 
 ## SteamPipe concepts

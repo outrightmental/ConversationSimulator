@@ -11,30 +11,27 @@ and how a build gets there.
 |---|---|
 | Partner Center product | *Conversation Simulator*, product type **MSIX or PWA app**, reserved 2026-11-16 |
 | Store ID | `9NTNF4X3GQ95` |
-| Listing | https://apps.microsoft.com/detail/9NTNF4X3GQ95 (live once the first submission passes certification) |
+| Listing | https://apps.microsoft.com/detail/9NTNF4X3GQ95 (live since 2026-11-19) |
 | Publisher | Outright Mental (company account, seller ID in Account settings → Legal info) |
 
-**Where it stands (2026-11-16).** Submission 1 is a complete draft: pricing
-and markets, properties, the v0.4.10 package (validated; built by
-microsoft-store.yml run 44035015351), the English listing with five
-screenshots, the certification notes and the `runFullTrust` justification.
-Three steps are left, and each is a person's: (1) Account settings → Payout and
-tax: add the payout and tax profiles, without which Partner Center will not
-charge money; (2) the submission → Age ratings: review the IARC preview, tick
-the IARC Terms of Use and Save; (3) **Submit for certification**.
+**Where it stands (2026-11-21).** Both products are live: *Conversation
+Simulator* at $9.99 (https://apps.microsoft.com/detail/9NTNF4X3GQ95) and
+*Conversation Simulator Demo*, free (https://apps.microsoft.com/detail/9NNGXLM2HZZM),
+each with the package of its first submission (the full app's v0.4.10 or
+v0.4.11, the demo's v0.4.11). The v0.4.12 packages are built and waiting to be
+uploaded, because the four `MSSTORE_*` secrets ([below](#then-let-releases-send-drafts))
+are not set yet:
 
-**The demo: in certification since 2026-11-18.** Submission 1 of
-*Conversation Simulator Demo* was submitted with the maintainer's go-ahead:
-free in every market but China, properties as the full app, the v0.4.11 demo
-package (validated; built by the demo Release run 44047602671 and tried as a
-development package: demo edition, five conversations, a reply in 4 s), the
-English listing with the five demo screenshots and captions, certification
-notes, the `runFullTrust` justification, and its age rating (ESRB Everyone,
-PEGI 3, USK 12; IARC terms accepted by the maintainer). Microsoft says
-certification takes a few hours to three business days; it publishes as soon
-as it passes, at https://apps.microsoft.com/detail/9NNGXLM2HZZM. The full
-app's age rating is also accepted; it still waits on the payout and tax
-profiles, then Submit.
+| Product | Package | Built by |
+|---|---|---|
+| Conversation Simulator | `conversation-simulator-v0.4.12-windows.msix` (`microsoft-store-msix`) | Release run 44895020918 |
+| Conversation Simulator Demo | `conversation-simulator-demo-v0.4.12-windows.msix` (`microsoft-store-demo-msix`) | demo Release run 44896670753 |
+
+For each: Partner Center → the product → **Update** (a new submission copied
+from the live one) → Packages → upload the `.msix` and remove the older one →
+**Submit to the Store**. v0.4.12 is also the first package with the official
+icon, so it updates the Store tile too. Once the secrets are set, releases send
+these as draft submissions on their own.
 
 ## The demo
 
