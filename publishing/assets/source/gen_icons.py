@@ -1,100 +1,90 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Application-icon set for Conversation Simulator — base and demo editions.
+"""Every Conversation Simulator icon, favicon and logo, from one source.
 
-Issue #499: the Steam Demo app (App 5343430) shipped the base app's icon, so
-the demo and the full game were indistinguishable in the Steam client. This
-script is the single source of truth for the app mark and emits, per edition:
+There is exactly one Conversation Simulator icon: the violet and emerald
+speech bubbles on a dark radial-gradient square, checked in as
 
-  32x32.png 128x128.png 128x128@2x.png icon.ico icon.icns  -> apps/desktop/
-                                                              src-tauri/icons-demo/
-  <edition>_app_icon.jpg (184), <edition>_shortcut_icon.png (256),
-  <edition>_icon.svg                                       -> publishing/assets/icons/
+    docs/assets/brand/ConversationSimulatorIcon.svg   (the icon)
+    docs/assets/brand/mark.svg                        (the same bubbles, no square)
 
-The bundle set is what ``bundle.icon`` in tauri.demo.conf.json points at.  The
-other two go to Steamworks, under Store Presence -> Graphical Assets ->
-Community and Client Icons, and they are two different fields:
+and exactly one demo icon: that icon with an amber "DEMO" badge in its
+lower-right corner.  This script reads those two files and writes every
+rendition the project ships, so that no platform can drift onto a different
+drawing again.  (Before this, the app bundle and the store logos had a teal
+plate with a white bubble, the demo a purple one, the Steam capsules a third
+design and the favicons an older cut of the bubbles.)
 
-  * **App Icon** — 184x184 JPG.  Valve: "used in the library list view,
-    'favorites' in chat, and notifications across the Steam client, mobile
-    client, and Deck."  This is the one in the issue's screenshot: the sidebar
-    row where the demo and the full game read as the same product.  JPG has no
-    alpha, so the plate is flattened onto the capsule set's near-black.
-  * **Shortcut Icon** — 256x256 (or 512x512) .ico or .png, for the desktop
-    shortcut Steam creates.  Valve generates the .ico from a PNG, so a PNG is
-    what this emits, at 256: that is byte-identical to the frame the app
-    itself installs, so the two cannot drift apart.
+Edit the source SVGs, never the outputs, then re-run:
 
-macOS shortcuts additionally need an ICNS in Steamworks' **Mac Icon** field;
-that is ``icons-demo/icon.icns`` from the bundle set, uploaded as-is.
+    python3 publishing/assets/source/gen_icons.py              # write into the repo
+    python3 publishing/assets/source/gen_icons.py --out /tmp/x # write a copy elsewhere
 
-The demo differs from the base in two ways, in this order of importance:
+What it writes, per edition (``base`` is the full game, ``demo`` the demo):
 
-  1. Plate colour.  Teal (#147A84) for the full game, deep purple (#6D28D9,
-     the player-voice purple the capsule set already uses) for the demo.  Hue
-     is the only thing that survives the 16-32 px the Steam client library
-     list actually renders, so it carries the distinction on its own.
-  2. A "DEMO" corner ribbon, drawn only at >= 128 px (``RIBBON_MIN_PX``).
-     WORD_HEIGHT is 26 of the viewBox's 256 units, so the cap height is a
-     tenth of the frame: 13 px at 128, 6 px at 64, 3 px at 32.  Below 128
-     the word turns to mush, so the small frames stay clean and let the
-     colour do the work.
+  Brand masters
+    docs/assets/brand/ConversationSimulatorDemoIcon.svg / .png (2048)
+        The demo icon.  The base icon's masters are the checked-in sources.
 
-The mark itself — white speech bubble, three dots — is identical in both
-editions: the demo must read as the same product, not a different one.
+  Desktop app bundles (Tauri ``bundle.icon``)
+    apps/desktop/src-tauri/icons/       base:  32x32.png 128x128.png
+    apps/desktop/src-tauri/icons-demo/  demo:  128x128@2x.png icon.ico icon.icns
 
-Everything is drawn as explicit polygons, circles and rounded rects, and the
-"DEMO" word is vector letterforms rather than text.  ImageMagick's built-in
-SVG renderer — what you get when librsvg is not installed, which is the common
-case — silently ignores ``clip-path`` and ``transform`` and cannot resolve a
-font at all; gen_capsules.py's reliance on an installed Carlito is exactly the
-sort of thing that makes a generator irreproducible.  Nothing here needs more
-than ImageMagick's own rasteriser, which ``render_png`` asks for by name
-(``MSVG:``) so that an installed librsvg cannot quietly re-render the set,
-with no font to install.
+  Steamworks, Store Presence -> Graphical Assets -> Community and Client Icons
+    publishing/assets/icons/<edition>_app_icon.jpg       App Icon, 184 JPG
+    publishing/assets/icons/<edition>_shortcut_icon.png  Shortcut Icon, 256 PNG
+    publishing/assets/icons/<edition>_icon.svg           the app icon, as vector
+    (The Mac Icon field takes the bundle's icon.icns as-is.)
 
-Reproducibility, stated carefully: the output is deterministic for a given
-ImageMagick build (two runs on one machine give identical bytes), and the
-ICO and ICNS are assembled here from the PNG bytes, so they inherit that.
-It is not reproducible across builds.  MSVG's rasteriser and the Lanczos
-resize anti-alias differently from one ImageMagick version to the next, so
-a run on another build changes the bytes of every raster (the three PNGs,
-the ICO, the ICNS and the JPG) while leaving the drawing the same to the
-eye: on Ubuntu's ImageMagick 6.9.12 every raster differs from the committed
-set by edge pixels only, with the same silhouette coverage and the same
-plate colour, and the acceptance suite passes on either set.  The JPG
-drifts the most, because quantisation and Huffman tables also differ
-between libjpeg and libjpeg-turbo builds; its encoder settings are pinned
-below all the same.  The build that produced the committed set was not
-recorded, so there is no version to install that gives those bytes back.
+  Microsoft Store package logos
+    publishing/microsoft-store/Assets/       base:  Square150x150Logo.png
+    publishing/microsoft-store/Assets-demo/  demo:  Square44x44Logo.png StoreLogo.png
 
-So judge a regeneration by the acceptance suite
-(tests/acceptance/test_demo_branding.py) and by eye, not by ``git diff``,
-and do not commit the churn unless the mark itself changed.  When you do
-commit regenerated icons, name the ImageMagick build that made them
-(``magick -version`` or ``convert -version``) in the commit message, so the
-next person knows what produced the bytes they are looking at.  The suite
-checks every output by content (size, opacity, plate colour, ribbon, shared
-mark) rather than against a regenerated copy for the same reason.
+  Social media (base only; see publishing/assets/social/README.md)
+    publishing/assets/social/avatar.png      1024 square, every profile picture
+    publishing/assets/social/banner.png      1500 x 500, every profile header
 
-Usage:
-    python3 publishing/assets/source/gen_icons.py            # write into the repo
-    python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
+  Websites and the in-app web UI (base only)
+    website/static/       favicon.svg favicon.ico apple-touch-icon.png
+    docs-site/public/     favicon.svg favicon.ico apple-touch-icon.png
+    apps/web/public/      favicon.svg
+    website/layouts/partials/logo.svg   the bubbles, inline beside the wordmark
+    docs-site/src/assets/logo.svg       the bubbles, Starlight's site logo
 
-Only the demo set is committed.  The base set in apps/desktop/src-tauri/icons/
-is the original `tauri icon` output and is deliberately left alone; rendering
-it here is for side-by-side comparison when the mark changes — and for the
-full game's own Steamworks icons, which come from `--edition base`.
-gen_capsules.py no longer draws a 184 x 184 `community_icon` (issue #551):
-it looked like the right file, but drew a #6D28D9 bubble on the near-black
-with no plate, and #6D28D9 is the demo's plate colour — uploading a copy left
-over from an old run against the full game would hand the demo's
-distinguishing hue to the app it is meant to be told apart from.
+Three shapes of the same drawing, because platforms frame icons differently:
 
-gen_capsules.py also borrows the ribbon from here — ``ribbon_shapes()``, pinned
-to each capsule's lower-right corner — and ``PLATE["demo"]`` as the demo
-capsules' plate, so a change to either restyles the demo capsule set too:
-re-run ``gen_capsules.py --edition demo`` after it.
+  * ``square`` — the source exactly, full bleed.  For opaque targets that get
+    their own mask or none: the Steam App Icon (a JPG), social avatars (which
+    the platforms crop to a circle — the bubbles sit inside it), the
+    apple-touch-icon (iOS masks it).
+  * ``tile`` — the same square with rounded corners (``TILE_RADIUS``) and
+    transparent outside them.  For every icon a desktop or a browser draws
+    as-is: the Windows .ico, the Linux PNGs, the Steam shortcut, the Microsoft
+    Store logos, the favicons.
+  * ``macos`` — the tile laid on Apple's icon grid: the art scaled to
+    824/1024 of the canvas with a 185.4/1024 corner radius.  Only the .icns.
+    A full-bleed square would sit oversized in the Dock, and macOS 26 puts an
+    icon that does not fill the standard shape inside a grey plate of its own.
+
+The demo badge is part of the drawing, not an overlay a renderer may drop:
+an amber (``--cs-event``) pill carrying "DEMO" as vector outlines, so no
+renderer needs a font.  It is drawn at every size.  At 16-32 px the word is
+not legible, but the amber pill is, and colour is what tells two rows of a
+Steam library list apart.
+
+Rasterising needs librsvg's ``rsvg-convert`` (Ubuntu ``librsvg2-bin``,
+macOS ``brew install librsvg``) and ImageMagick (``magick`` or ``convert``)
+for the JPEG and for reading pixels back into the ICNS's ARGB chunks.  The
+SVG outputs are plain text and reproduce byte for byte anywhere; the rasters
+are deterministic for a given librsvg build but move anti-aliased edge pixels
+between builds.  Judge a regeneration by
+``tests/acceptance/test_demo_branding.py`` and ``test_brand_icon.py`` and by
+eye, not by ``git diff``, and do not commit raster churn unless the drawing
+changed.  When you do, name the librsvg build (``rsvg-convert --version``)
+in the commit message.
+
+gen_capsules.py imports this module for ``mark_markup()`` and the badge, so a
+change to either restyles the Steam capsules too: re-run it after this.
 """
 from __future__ import annotations
 
@@ -102,316 +92,430 @@ import argparse
 import functools
 import math
 import re
+import shutil
 import struct
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+BRAND_DIR = REPO_ROOT / "docs" / "assets" / "brand"
+ICON_SOURCE = BRAND_DIR / "ConversationSimulatorIcon.svg"
+MARK_SOURCE = BRAND_DIR / "mark.svg"
+
+EDITIONS = ("base", "demo")
+NAME = {"base": "Conversation Simulator", "demo": "Conversation Simulator Demo"}
 
 # ── Palette ────────────────────────────────────────────────────────────────
-PLATE = {
-    "base": "#147A84",  # sampled from the committed icons/128x128@2x.png
-    # gen_capsules.py's PURP: the player bubble in the capsule mark.  The UI's
-    # own player token (--cs-you, #A78BFA) is a tint meant for text on a dark
-    # stage and is far too light to sit behind a white speech bubble.
-    "demo": "#6D28D9",
-}
-WHITE = "#FFFFFF"
-RIBBON_BG = "#0D0D15"   # the capsule-set base colour
-RIBBON_FG = "#F4F4F5"
+# The badge is "the moment" in the brand palette (docs/brand.md: --cs-event)
+# with the stage colour (--cs-stage) for the lettering.  Neither is a voice
+# colour, so the badge cannot be read as the player or the character.
+BADGE_FILL = "#FBBF24"
+BADGE_INK = "#0F0F11"
+# The flat colour behind anything that must be opaque around the icon (the
+# JPEG's corners, were there any): the source's own outer gradient stop.
+STAGE = "#292929"
 
-# Below this pixel size the ribbon is dropped: the word is illegible and only
-# muddies the silhouette.  The Steam App Icon (184) and Shortcut Icon (256) are
-# both above it; the bundle's 16-64 px frames are deliberately below.
-RIBBON_MIN_PX = 128
+# ── Shapes ─────────────────────────────────────────────────────────────────
+TILE_RADIUS = 0.18                  # corner radius / side, for the tile
+MACOS_ART = 824.0 / 1024.0          # Apple's icon grid: art side / canvas side
+MACOS_RADIUS = 185.4 / 1024.0       # Apple's corner radius / canvas side
+SHAPES = ("square", "tile", "macos")
 
-# Supersampling, expressed as the square the render is forced to before the
-# final Lanczos step down.  Note that this is *not* the size MSVG rasterises
-# at — see render_png, where it is also handed to -density and ImageMagick
-# scales the 256-unit viewBox by density/96 on top.
-SUPERSAMPLE = 4
-SUPERSAMPLE_CAP = 1024
+# ── The DEMO badge, in fractions of the icon's side ────────────────────────
+# Sized against the source's 864-unit square: an 88-unit cap height, a
+# 150-unit pill, 52 units of margin to the right and bottom edges.  That keeps
+# the pill clear of the emerald tail's tip (53 units above it) and of the
+# violet tail (over 60 units to its left), and inside the rounded corner of
+# both the tile and the macOS shape — see _check_badge_fits, which fails the
+# run if a change breaks that.
+BADGE_CAP = 88.0 / 864.0
+BADGE_HEIGHT = 150.0 / 864.0
+BADGE_PAD_X = 44.0 / 864.0
+BADGE_MARGIN = 52.0 / 864.0
+BADGE_CORNER_AIR = 12.0 / 864.0    # least gap between the pill and a corner arc
 
-# ── Geometry, in a 256-unit viewBox ────────────────────────────────────────
-# Measured off the committed base icon so the demo plate lines up pixel for
-# pixel with the full game's.
-VIEW = 256.0
-PLATE_X, PLATE_Y, PLATE_WH, PLATE_R = 9.5, 9.5, 236.0, 44.3
-BUBBLE = (49.5, 64.5, 156.2, 95.2, 24.0)   # x, y, w, h, rx
-# The tail's top edge is tucked inside the bubble, so only the pointer shows.
-TAIL = ((79.5, 140.0), (79.5, 199.8), (113.0, 159.7))
-DOTS_CY, DOTS_R = 117.1, 10.65
-DOTS_CX = (89.7, 127.7, 165.7)
+# "DEMO" in Carlito Bold (SIL OFL 1.1, metric-compatible with Calibri, the
+# face the Steam capsules' logotype is set in), outlined with fontTools'
+# SVGPathPen, letter-spaced by 0.06 cap heights.  Units: cap height = 1,
+# baseline at y = 0, y down.  Outlines, not <text>, so that a favicon, an
+# .icns frame and a store logo all draw the same letters without a font.
+DEMO_GLYPHS = (
+    "M0.9367 -0.5008Q0.9367 -0.3908 0.9021 -0.2986"
+    "Q0.8675 -0.2063 0.8038 -0.1401Q0.7402 -0.0738 0.6506 -0.0369"
+    "Q0.561 0 0.4518 0H0.0873V-1H0.4518Q0.561 -1 0.6506 -0.9631"
+    "Q0.7402 -0.9262 0.8038 -0.8599Q0.8675 -0.7937 0.9021 -0.7018"
+    "Q0.9367 -0.6099 0.9367 -0.5008ZM0.7357 -0.5008"
+    "Q0.7357 -0.5806 0.7161 -0.6438Q0.6965 -0.7071 0.66 -0.7515"
+    "Q0.6235 -0.7959 0.5708 -0.8197Q0.5181 -0.8434 0.4518 -0.8434"
+    "H0.2861V-0.1574H0.4518Q0.5181 -0.1574 0.5708 -0.1807"
+    "Q0.6235 -0.2041 0.66 -0.2485Q0.6965 -0.2929 0.7161 -0.3566"
+    "Q0.7357 -0.4202 0.7357 -0.5008ZM1.7309 -1V-0.8426H1.3198V-0.5783"
+    "H1.6398V-0.427H1.3198V-0.1574H1.7317L1.7309 0H1.121V-1Z"
+    "M2.4754 -0.427Q2.501 -0.3795 2.5198 -0.3283"
+    "Q2.5304 -0.3547 2.5409 -0.3799Q2.5515 -0.4051 2.5643 -0.4285"
+    "L2.8723 -0.9691Q2.8783 -0.9804 2.8847 -0.9868"
+    "Q2.8911 -0.9932 2.8986 -0.9959Q2.9061 -0.9985 2.9159 -0.9992"
+    "Q2.9257 -1 2.9385 -1H3.0876V0H2.9137V-0.6258"
+    "Q2.9137 -0.6461 2.9148 -0.6698Q2.9159 -0.6935 2.9182 -0.7184"
+    "L2.6027 -0.1596Q2.5793 -0.116 2.5342 -0.116H2.5063"
+    "Q2.4604 -0.116 2.437 -0.1596L2.1177 -0.7214"
+    "Q2.1208 -0.6958 2.1223 -0.6713Q2.1238 -0.6468 2.1238 -0.6258V0"
+    "H1.9491V-1H2.0989Q2.1117 -1 2.1211 -0.9992"
+    "Q2.1305 -0.9985 2.1384 -0.9955Q2.1464 -0.9925 2.1528 -0.9864"
+    "Q2.1592 -0.9804 2.1652 -0.9691L2.4754 -0.427Z"
+    "M4.2598 -0.5008Q4.2598 -0.3908 4.2252 -0.2971"
+    "Q4.1905 -0.2033 4.1269 -0.1348Q4.0633 -0.0663 3.9737 -0.0279"
+    "Q3.8841 0.0105 3.7749 0.0105Q3.6657 0.0105 3.5761 -0.0279"
+    "Q3.4865 -0.0663 3.4225 -0.1348Q3.3585 -0.2033 3.3234 -0.2971"
+    "Q3.2884 -0.3908 3.2884 -0.5008Q3.2884 -0.6099 3.3234 -0.7037"
+    "Q3.3585 -0.7974 3.4225 -0.8656Q3.4865 -0.9337 3.5761 -0.9725"
+    "Q3.6657 -1.0113 3.7749 -1.0113Q3.8841 -1.0113 3.9737 -0.9725"
+    "Q4.0633 -0.9337 4.1269 -0.8652Q4.1905 -0.7967 4.2252 -0.7033"
+    "Q4.2598 -0.6099 4.2598 -0.5008ZM4.058 -0.5008"
+    "Q4.058 -0.5806 4.0384 -0.6438Q4.0189 -0.7071 3.9823 -0.7515"
+    "Q3.9458 -0.7959 3.8935 -0.8197Q3.8411 -0.8434 3.7749 -0.8434"
+    "Q3.7086 -0.8434 3.6559 -0.8197Q3.6032 -0.7959 3.5667 -0.7515"
+    "Q3.5302 -0.7071 3.5106 -0.6438Q3.491 -0.5806 3.491 -0.5008"
+    "Q3.491 -0.4202 3.5106 -0.3566Q3.5302 -0.2929 3.5667 -0.2489"
+    "Q3.6032 -0.2048 3.6559 -0.1815Q3.7086 -0.1581 3.7749 -0.1581"
+    "Q3.8411 -0.1581 3.8935 -0.1815Q3.9458 -0.2048 3.9823 -0.2489"
+    "Q4.0189 -0.2929 4.0384 -0.3566Q4.058 -0.4202 4.058 -0.5008Z"
+)
+# The outlines' ink extent along x, in the same units: D's stem to O's bowl.
+DEMO_INK_X = (0.0873, 4.2598)
 
-# Ribbon band, expressed as distance along the lower-right diagonal:
-# u(x, y) = (x + y) / sqrt(2).  The plate's far corner sits at u = 329.
-RIBBON_U_INNER, RIBBON_U_OUTER = 266.0, 308.0
-WORD_HEIGHT = 26.0       # cap height of "DEMO" inside the band
-WORD_TRACKING = 4.0      # gap between letterforms
+
+# ── Reading the sources ────────────────────────────────────────────────────
+_SVG_NS = "http://www.w3.org/2000/svg"
+_XLINK_NS = "http://www.w3.org/1999/xlink"
+_SKIP = {"title", "desc", "metadata", "style"}
+_SHAPES = {"rect", "path", "polygon", "polyline", "circle", "ellipse", "line", "g"}
+_GRADIENTS = {"linearGradient", "radialGradient"}
+_PAINT_PROPS = ("fill", "fill-opacity", "fill-rule", "opacity",
+                "stroke", "stroke-width", "stroke-opacity")
 
 
-def _rot45(x: float, y: float) -> tuple[float, float]:
-    """Rotate (x, y) by -45 degrees about the plate centre.
+class Artwork(NamedTuple):
+    """A source SVG reduced to plain markup: no CSS, no title, scoped ids."""
+    side: float      # the square viewBox's side, in source units
+    defs: str        # gradients, ids prefixed
+    body: str        # the drawing, every paint as an attribute
 
-    Lets the ribbon be laid out in a comfortable upright frame and then be
-    mapped onto the lower-right diagonal, without asking the SVG renderer to
-    honour a transform attribute.
+
+def _local(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _css_rules(root: ET.Element) -> dict[str, dict[str, str]]:
+    """``.class{prop:value;...}`` rules from the source's <style> blocks.
+
+    Design tools export paint as classes; resolving them here keeps a
+    ``<style>`` out of every output, where an inlined copy would restyle any
+    page that happens to use the same class names (``.cls-1`` is common).
     """
-    c = VIEW / 2.0
-    k = math.sqrt(0.5)
-    dx, dy = x - c, y - c
-    return c + (dx + dy) * k, c + (dy - dx) * k
+    rules: dict[str, dict[str, str]] = {}
+    for style in root.iter(f"{{{_SVG_NS}}}style"):
+        text = style.text or ""
+        for selectors, body in re.findall(r"([^{}]+)\{([^}]*)\}", text):
+            props = dict(
+                (k.strip(), v.strip())
+                for k, v in (d.split(":", 1) for d in body.split(";") if ":" in d)
+            )
+            for sel in selectors.split(","):
+                sel = sel.strip()
+                if not re.fullmatch(r"\.[\w-]+", sel):
+                    sys.exit(f"unsupported CSS selector {sel!r} in a brand source; "
+                             "only plain .class rules are understood")
+                rules.setdefault(sel[1:], {}).update(props)
+    return rules
 
 
-def _poly(points: list[tuple[float, float]], fill: str, rotate: bool) -> str:
-    pts = [_rot45(x, y) if rotate else (x, y) for x, y in points]
-    body = " ".join(f"{x:.2f},{y:.2f}" for x, y in pts)
-    return f'<polygon points="{body}" fill="{fill}"/>'
+@functools.lru_cache(maxsize=None)
+def load_artwork(path: Path, prefix: str) -> Artwork:
+    """Parse a brand source into an :class:`Artwork`, scoping its ids.
 
-
-def _rect_poly(x: float, y: float, w: float, h: float) -> list[tuple[float, float]]:
-    return [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
-
-
-def _plate_outline(arc_steps: int = 12) -> list[tuple[float, float]]:
-    """The rounded-square plate traced as a polygon, corners included.
-
-    The ribbon is intersected with this in Python rather than with an SVG
-    ``clip-path``: ImageMagick's built-in SVG renderer silently ignores
-    clip-path, which let an unclipped band run square out to the canvas corner.
+    Only what the brand sources actually use is understood — basic shapes,
+    groups, linear and radial gradients, class-based paint — and anything else
+    stops the run with the element named, rather than being dropped from
+    every icon without a word.
     """
-    x0, y0 = PLATE_X, PLATE_Y
-    x1, y1 = PLATE_X + PLATE_WH, PLATE_Y + PLATE_WH
-    r = PLATE_R
-    corners = (                       # (centre, start angle) going clockwise
-        ((x1 - r, y0 + r), -90.0),    # top-right
-        ((x1 - r, y1 - r), 0.0),      # bottom-right
-        ((x0 + r, y1 - r), 90.0),     # bottom-left
-        ((x0 + r, y0 + r), 180.0),    # top-left
-    )
-    points = [(x0 + r, y0)]
-    for (cx, cy), start in corners:
-        for i in range(arc_steps + 1):
-            a = math.radians(start + 90.0 * i / arc_steps)
-            points.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-    return points
+    root = ET.parse(path).getroot()
+    view = [float(v) for v in root.get("viewBox", "").replace(",", " ").split()]
+    if len(view) != 4 or view[0] or view[1] or view[2] != view[3]:
+        sys.exit(f"{path}: the viewBox must be a square starting at 0 0, got {view}")
+    rules = _css_rules(root)
+
+    def attrs(el: ET.Element) -> str:
+        out: dict[str, str] = {}
+        for cls in (el.get("class") or "").split():
+            for prop, value in rules.get(cls, {}).items():
+                if prop in _PAINT_PROPS:
+                    out[prop] = value
+        for key, value in el.attrib.items():
+            key = _local(key)
+            if key in ("class", "id", "style"):
+                continue
+            out[key] = value
+        for prop, value in list(out.items()):
+            out[prop] = re.sub(r"url\(#([^)]+)\)", rf"url(#{prefix}-\1)", value)
+        return "".join(f' {k}="{v}"' for k, v in out.items())
+
+    defs: list[str] = []
+
+    def emit(el: ET.Element) -> str:
+        tag = _local(el.tag)
+        if tag in _SKIP:
+            return ""
+        if tag == "defs":
+            for child in el:
+                emit(child)
+            return ""
+        if tag in _GRADIENTS:
+            stops = "".join(f"<stop{attrs(s)}/>" for s in el if _local(s.tag) == "stop")
+            defs.append(f'<{tag} id="{prefix}-{el.get("id")}"{attrs(el)}>{stops}</{tag}>')
+            return ""
+        if tag not in _SHAPES:
+            sys.exit(f"{path}: unsupported element <{tag}> in a brand source")
+        if tag == "g":
+            inner = "".join(emit(child) for child in el)
+            own = attrs(el)
+            # A layer group that only carried an id (ART, GUIDES) is unwrapped.
+            return f"<g{own}>{inner}</g>" if inner and own else inner
+        return f"<{tag}{attrs(el)}/>"
+
+    body = "".join(emit(child) for child in root)
+    return Artwork(side=view[2], defs="".join(defs), body=body)
 
 
-def _clip_halfplane(
-    poly: list[tuple[float, float]], a: float, b: float, c: float
-) -> list[tuple[float, float]]:
-    """Sutherland-Hodgman clip of ``poly`` to the half-plane a*x + b*y <= c."""
-    out: list[tuple[float, float]] = []
-    for i, current in enumerate(poly):
-        previous = poly[i - 1]
-        d_cur = a * current[0] + b * current[1] - c
-        d_prev = a * previous[0] + b * previous[1] - c
-        if (d_cur <= 0) != (d_prev <= 0):
-            t = d_prev / (d_prev - d_cur)
-            out.append((previous[0] + t * (current[0] - previous[0]),
-                        previous[1] + t * (current[1] - previous[1])))
-        if d_cur <= 0:
-            out.append(current)
-    return out
+def icon_artwork() -> Artwork:
+    return load_artwork(ICON_SOURCE, "csi")
 
 
-# ── "DEMO" letterforms ─────────────────────────────────────────────────────
-# Each letter is a list of (points, is_counter) shapes on a 0..WORD_HEIGHT
-# vertical box.  Counters (the holes in D and O) are painted in the ribbon
-# colour over the solid outer shape — the ribbon is a flat fill, so the result
-# is identical to a real hole and needs no fill-rule support.
-def _letter_d(h: float) -> tuple[float, list[tuple[list[tuple[float, float]], bool]]]:
-    w, s, c = 0.77 * h, 0.19 * h, 0.23 * h
-    outer = [(0, 0), (w - c, 0), (w, c), (w, h - c), (w - c, h), (0, h)]
-    inner = [(s, s), (w - c - s * 0.4, s), (w - s, c + s * 0.4),
-             (w - s, h - c - s * 0.4), (w - c - s * 0.4, h - s), (s, h - s)]
-    return w, [(outer, False), (inner, True)]
+def mark_artwork() -> Artwork:
+    return load_artwork(MARK_SOURCE, "csm")
 
 
-def _letter_e(h: float) -> tuple[float, list[tuple[list[tuple[float, float]], bool]]]:
-    w, s = 0.66 * h, 0.19 * h
-    return w, [
-        (_rect_poly(0, 0, w, s), False),
-        (_rect_poly(0, (h - s) / 2, w * 0.82, s), False),
-        (_rect_poly(0, h - s, w, s), False),
-        (_rect_poly(0, 0, s, h), False),
-    ]
+def mark_markup(x: float, y: float, size: float) -> str:
+    """The bubbles (mark.svg) scaled so the source square is ``size`` wide at (x, y)."""
+    art = mark_artwork()
+    k = size / art.side
+    return f'<g transform="translate({_n(x)} {_n(y)}) scale({_n(k, 6)})">{art.body}</g>'
 
 
-def _letter_m(h: float) -> tuple[float, list[tuple[list[tuple[float, float]], bool]]]:
-    w, s = 0.94 * h, 0.19 * h
-    mid = w / 2.0
-    outer = [
-        (0, 0), (s * 1.2, 0), (mid, 0.46 * h), (w - s * 1.2, 0), (w, 0),
-        (w, h), (w - s, h), (w - s, 0.36 * h), (mid + s * 0.55, 0.74 * h),
-        (mid - s * 0.55, 0.74 * h), (s, 0.36 * h), (s, h), (0, h),
-    ]
-    return w, [(outer, False)]
+@functools.lru_cache(maxsize=1)
+def mark_ink_box() -> tuple[float, float, float, float]:
+    """The bubbles' bounding box in mark.svg's own units: (x0, y0, x1, y1).
 
-
-def _letter_o(h: float) -> tuple[float, list[tuple[list[tuple[float, float]], bool]]]:
-    w, s, c = 0.80 * h, 0.19 * h, 0.23 * h
-    outer = [(c, 0), (w - c, 0), (w, c), (w, h - c), (w - c, h), (c, h), (0, h - c), (0, c)]
-    inner = [(c + s * 0.4, s), (w - c - s * 0.4, s), (w - s, c + s * 0.4),
-             (w - s, h - c - s * 0.4), (w - c - s * 0.4, h - s), (c + s * 0.4, h - s),
-             (s, h - c - s * 0.4), (s, c + s * 0.4)]
-    return w, [(outer, False), (inner, True)]
-
-
-_GLYPHS = {"D": _letter_d, "E": _letter_e, "M": _letter_m, "O": _letter_o}
-
-
-Shape = tuple[list[tuple[float, float]], str]   # (polygon, fill)
-
-
-def _word(text: str, cx: float, cy: float, h: float) -> list[Shape]:
-    """Lay ``text`` out centred on (cx, cy) in the upright pre-rotation frame,
-    then rotate every letterform onto the diagonal."""
-    glyphs = [_GLYPHS[ch](h) for ch in text]
-    total = sum(w for w, _ in glyphs) + WORD_TRACKING * (len(glyphs) - 1)
-    pen, top = cx - total / 2.0, cy - h / 2.0
-    out: list[Shape] = []
-    for w, shapes in glyphs:
-        for points, is_counter in shapes:
-            moved = [_rot45(pen + px, top + py) for px, py in points]
-            out.append((moved, RIBBON_BG if is_counter else RIBBON_FG))
-        pen += w + WORD_TRACKING
-    return out
-
-
-def ribbon_shapes() -> list[Shape]:
-    """The lower-right "DEMO" corner band as polygons in the 256-unit frame.
-
-    The band comes first, already clipped to the plate, then the letterforms
-    in paint order (each counter after the shape it is cut from).  Only the
-    plate's two straight edges meet the band — its rounded corner starts at
-    u = 316, beyond RIBBON_U_OUTER — which is what lets gen_capsules.py pin
-    the same shapes to a square-cornered capsule's lower-right corner.
+    Read off every coordinate pair in the source's path data and polygon
+    points.  The bubbles' Bézier control points lie on their bounding box (the
+    corners are quarter-ellipses), so this is the ink's extent exactly.  Only
+    absolute coordinates are understood, which is what the source uses.
     """
-    k = math.sqrt(2.0)
-    band = _plate_outline()
-    band = _clip_halfplane(band, 1.0, 1.0, RIBBON_U_OUTER * k)    # x + y <= outer
-    band = _clip_halfplane(band, -1.0, -1.0, -RIBBON_U_INNER * k)  # x + y >= inner
-    assert band, "ribbon band does not intersect the plate — check RIBBON_U_*"
-
-    # The word is laid out upright and then rotated onto the diagonal, centred
-    # on the band.  In the rotated frame the band's distance from the plate
-    # centre along y is just u minus the centre's own u.
-    c = VIEW / 2.0
-    u_centre = (c + c) / k
-    y_word = c + ((RIBBON_U_INNER + RIBBON_U_OUTER) / 2.0 - u_centre)
-    return [(band, RIBBON_BG)] + _word("DEMO", c, y_word, WORD_HEIGHT)
+    body = mark_artwork().body
+    xs: list[float] = []
+    ys: list[float] = []
+    for chunk in re.findall(r'\s(?:d|points)="([^"]+)"', body):
+        if re.search(r"[a-z]", chunk):
+            sys.exit("mark.svg uses relative path commands; export it with absolute ones")
+        nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", chunk)]
+        xs += nums[0::2]
+        ys += nums[1::2]
+    return min(xs), min(ys), max(xs), max(ys)
 
 
-def _ribbon() -> str:
-    """The lower-right "DEMO" corner band, already clipped to the plate."""
-    return "".join(_poly(points, fill, rotate=False) for points, fill in ribbon_shapes())
+def mark_at(x: float, y: float, h: float) -> str:
+    """The mark with its bubbles' bounding box at (x, y), ``h`` units square.
+
+    Placed by the ink, not by mark.svg's square: the source keeps the icon's
+    margin around the bubbles, which a composition (a capsule, a banner, the
+    share card) does not want.
+    """
+    x0, y0, x1, y1 = mark_ink_box()
+    side = mark_artwork().side
+    k = h / max(x1 - x0, y1 - y0)
+    return mark_markup(x - x0 * k, y - y0 * k, side * k)
 
 
-def icon_svg(edition: str, ribbon: bool) -> str:
-    """The full icon as an SVG string."""
-    plate = PLATE[edition]
-    bx, by, bw, bh, brx = BUBBLE
-    body = [
-        f'<rect x="{PLATE_X}" y="{PLATE_Y}" width="{PLATE_WH}" height="{PLATE_WH}"'
-        f' rx="{PLATE_R}" fill="{plate}"/>',
-        f'<rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="{brx}" fill="{WHITE}"/>',
-        _poly(list(TAIL), WHITE, rotate=False),
-    ]
-    body += [
-        f'<circle cx="{cx}" cy="{DOTS_CY}" r="{DOTS_R}" fill="{plate}"/>'
-        for cx in DOTS_CX
-    ]
-    if ribbon:
-        body.append(_ribbon())
-    # Every shape is drawn inside the plate on purpose — no clip-path, no
-    # group transform, nothing the simplest SVG renderer could drop.
+def _n(value: float, places: int = 3) -> str:
+    """A number for SVG: fixed places, trailing zeros and a bare point dropped."""
+    text = f"{value:.{places}f}".rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
+
+
+# ── The badge ──────────────────────────────────────────────────────────────
+class Pill(NamedTuple):
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+def badge_box(side: float) -> Pill:
+    """The pill's rectangle on an icon of side ``side``, lower-right corner."""
+    cap = BADGE_CAP * side
+    ink = (DEMO_INK_X[1] - DEMO_INK_X[0]) * cap
+    w = ink + 2 * BADGE_PAD_X * side
+    h = BADGE_HEIGHT * side
+    x = side - BADGE_MARGIN * side - w
+    y = side - BADGE_MARGIN * side - h
+    return Pill(x, y, w, h)
+
+
+def badge_at(pill: Pill) -> str:
+    """The amber pill with "DEMO" centred in it, for any rectangle of the
+    badge's proportions — the icons place it with :func:`badge_box`, the
+    capsules pin it to their own lower-right corner."""
+    cap = pill.h * BADGE_CAP / BADGE_HEIGHT
+    ink_w = (DEMO_INK_X[1] - DEMO_INK_X[0]) * cap
+    tx = pill.x + (pill.w - ink_w) / 2 - DEMO_INK_X[0] * cap
+    ty = pill.y + (pill.h + cap) / 2          # baseline: cap box centred
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {VIEW:.0f} {VIEW:.0f}">'
-        f'{"".join(body)}</svg>'
+        f'<rect x="{_n(pill.x)}" y="{_n(pill.y)}" width="{_n(pill.w)}" '
+        f'height="{_n(pill.h)}" rx="{_n(pill.h / 2)}" fill="{BADGE_FILL}"/>'
+        f'<path transform="translate({_n(tx)} {_n(ty)}) scale({_n(cap, 4)})" '
+        f'fill="{BADGE_INK}" d="{DEMO_GLYPHS}"/>'
     )
+
+
+def _check_badge_fits(side: float) -> None:
+    """The badge stays inside every shape's rounded corner and clear of the
+    bubbles.
+
+    Checked against the geometry, not a render, so a change to the badge
+    constants or to a shape's corner radius fails here with the reason.  The
+    pill's right end-cap is a circle; it must sit inside the corner arc of the
+    tile and of the macOS shape (whose radius, in the art's own units, is the
+    larger of the two) with at least ``BADGE_CORNER_AIR`` of the side to spare.
+    """
+    p = badge_box(side)
+    r = p.h / 2
+    cap_centre = (p.x + p.w - r, p.y + r)
+    for shape, radius in (("tile", TILE_RADIUS), ("macos", MACOS_RADIUS / MACOS_ART)):
+        corner = side * (1 - radius)
+        reach = math.dist(cap_centre, (corner, corner)) + r
+        if reach > side * (radius - BADGE_CORNER_AIR):
+            sys.exit(f"the DEMO badge runs into the {shape} shape's rounded corner")
+    if p.x < side * 0.25 or p.y < side * 0.6:
+        sys.exit("the DEMO badge has grown into the bubbles; shrink BADGE_*")
+
+
+# ── Composing an icon ──────────────────────────────────────────────────────
+def icon_svg(edition: str, shape: str, *, header: bool = False) -> str:
+    """One edition of the icon, in one shape, as a standalone SVG string."""
+    if edition not in EDITIONS or shape not in SHAPES:
+        raise ValueError((edition, shape))
+    art = icon_artwork()
+    s = art.side
+    _check_badge_fits(s)
+    drawing = art.body + (badge_at(badge_box(s)) if edition == "demo" else "")
+    defs = art.defs
+    if shape == "tile":
+        defs += (f'<clipPath id="csi-shape"><rect width="{_n(s)}" height="{_n(s)}" '
+                 f'rx="{_n(s * TILE_RADIUS)}"/></clipPath>')
+        drawing = f'<g clip-path="url(#csi-shape)">{drawing}</g>'
+    elif shape == "macos":
+        k = MACOS_ART
+        offset = s * (1 - k) / 2
+        defs += (f'<clipPath id="csi-shape"><rect width="{_n(s)}" height="{_n(s)}" '
+                 f'rx="{_n(s * MACOS_RADIUS / k)}"/></clipPath>')
+        drawing = (f'<g transform="translate({_n(offset)} {_n(offset)}) scale({_n(k, 6)})">'
+                   f'<g clip-path="url(#csi-shape)">{drawing}</g></g>')
+    comment = ""
+    if header:
+        comment = ("<!-- SPDX-License-Identifier: CC-BY-4.0 -->\n"
+                   "<!-- Generated by publishing/assets/source/gen_icons.py from "
+                   "docs/assets/brand/ConversationSimulatorIcon.svg; edit that, "
+                   "not this. -->\n")
+    return (
+        f'{comment}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_n(s)} {_n(s)}" '
+        f'role="img" aria-label="{NAME[edition]}"><defs>{defs}</defs>{drawing}</svg>\n'
+    )
+
+
+def mark_svg(*, inline_class: str | None = None, px: int | None = None,
+             header: bool = False) -> str:
+    """The bubbles alone, transparent, cropped to their own square — the mark
+    beside a wordmark.
+
+    Cropped because mark.svg keeps the icon's margin around the bubbles, which
+    beside a wordmark would only shrink them: at the website header's 28 px the
+    bubbles get all 28 rather than 20.  ``inline_class`` and ``px`` make the
+    Hugo partial's form: decorative (``aria-hidden``) because the wordmark
+    next to it carries the name.
+    """
+    art = mark_artwork()
+    x0, y0, x1, y1 = mark_ink_box()
+    side = max(x1 - x0, y1 - y0)
+    view = (f"{_n(x0 - (side - (x1 - x0)) / 2)} {_n(y0 - (side - (y1 - y0)) / 2)} "
+            f"{_n(side)} {_n(side)}")
+    if inline_class is not None:
+        open_tag = (f'<svg class="{inline_class}" xmlns="http://www.w3.org/2000/svg" '
+                    f'viewBox="{view}" width="{px}" height="{px}" aria-hidden="true">')
+    else:
+        open_tag = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}" '
+                    f'role="img" aria-label="{NAME["base"]}">')
+    comment = ""
+    if header:
+        comment = ("<!-- SPDX-License-Identifier: CC-BY-4.0 -->\n"
+                   "<!-- Generated by publishing/assets/source/gen_icons.py from "
+                   "docs/assets/brand/mark.svg; edit that, not this. -->\n")
+    defs = f"<defs>{art.defs}</defs>" if art.defs else ""
+    return f"{comment}{open_tag}{defs}{art.body}</svg>\n"
 
 
 # ── Rasterisation ──────────────────────────────────────────────────────────
+def _need(cmd: str, hint: str) -> str:
+    path = shutil.which(cmd)
+    if path is None:
+        sys.exit(f"gen_icons.py needs `{cmd}` on PATH: {hint}")
+    return path
+
+
+@functools.lru_cache(maxsize=1)
+def _rsvg() -> str:
+    return _need("rsvg-convert", "Ubuntu `apt-get install librsvg2-bin`, "
+                                 "macOS `brew install librsvg`")
+
+
 @functools.lru_cache(maxsize=1)
 def _magick() -> str:
-    """The ImageMagick entry point: `magick` on v7, `convert` on v6.
-
-    `convert` is also the name of Windows' NTFS volume converter, which is why
-    the probe reads `-version` rather than trusting the name.  The format list
-    is checked for the MSVG coder as well: Debian and Ubuntu split
-    ImageMagick's SVG support out of the `imagemagick` package into
-    `libmagickcore-*-extra`, and without it `render_png` would die on a raw
-    CalledProcessError pointing at a temp file instead of at the missing coder.
-    """
+    """`magick` on ImageMagick 7, `convert` on 6 (checked: Windows has a convert.exe)."""
     for candidate in ("magick", "convert"):
-        try:
-            version = subprocess.run(
-                [candidate, "-version"], check=True, capture_output=True, text=True,
-            ).stdout
-        except (OSError, subprocess.CalledProcessError):
+        path = shutil.which(candidate)
+        if path is None:
             continue
-        if "ImageMagick" not in version:
-            continue
-        formats = subprocess.run(
-            [candidate, "-list", "format"], check=True, capture_output=True, text=True,
-        ).stdout
-        if not re.search(r"^\s*MSVG\b", formats, re.MULTILINE):
-            sys.exit(
-                f"{candidate} has no MSVG coder (ImageMagick's own SVG renderer, "
-                "which render_png pins); on Debian and Ubuntu it is in the "
-                "libmagickcore-*-extra package (libmagickcore-6.q16-7-extra on "
-                "Ubuntu 24.04), so install that and re-run."
-            )
-        return candidate
-    sys.exit(
-        "gen_icons.py needs ImageMagick on PATH (`brew install imagemagick` on "
-        "macOS; `apt-get install imagemagick libmagickcore-6.q16-7-extra` on "
-        "Ubuntu 24.04, the -extra package being the SVG coder)."
-    )
+        probe = subprocess.run([path, "-version"], capture_output=True, text=True)
+        if "ImageMagick" in probe.stdout:
+            return path
+    sys.exit("gen_icons.py needs ImageMagick on PATH (`apt-get install "
+             "imagemagick`, `brew install imagemagick`).")
 
 
-def render_png(edition: str, size: int, dest: Path) -> Path:
-    """Rasterise one edition at ``size`` px; only the demo gets the ribbon."""
-    svg = icon_svg(edition, ribbon=edition == "demo" and size >= RIBBON_MIN_PX)
-    with tempfile.NamedTemporaryFile("w", suffix=".svg", delete=False) as fh:
-        fh.write(svg)
-        src = Path(fh.name)
-    try:
-        # Supersample and filter down: ImageMagick's built-in SVG renderer
-        # anti-aliases poorly, and at 32 px the dots are three pixels across.
-        render_at = min(size * SUPERSAMPLE, max(size, SUPERSAMPLE_CAP))
-        # -density is dots per inch, not a pixel count: this SVG declares no
-        # width or height, so MSVG scales the 256-unit viewBox by density/96
-        # and actually rasterises at 8/3 x render_at before the forced resize
-        # brings it back.  That is where most of the supersampling happens, and
-        # it is why SUPERSAMPLE_CAP earns its keep: the uncapped 4096 that the
-        # 1024 px frame would otherwise ask for is a 10922-square canvas —
-        # gigabytes under a Q16-HDRI build — not the 4096-square one the
-        # arithmetic above reads like.  Raise the cap only with that in mind.
-        #
-        # MSVG: pins ImageMagick's own rasteriser.  Plain `foo.svg` hands the
-        # file to librsvg — compiled in, or shelled out to as the `svg:decode`
-        # delegate — whenever it is present, and librsvg anti-aliases
-        # differently, so the committed PNGs would come back changed on a
-        # machine that happens to have it.  This drawing needs nothing librsvg
-        # offers, so asking for the simple renderer by name costs nothing and
-        # makes the output depend on the ImageMagick build alone.
-        subprocess.run(
-            [_magick(), "-background", "none", "-density", str(render_at),
-             "MSVG:" + str(src), "-resize", f"{render_at}x{render_at}!",
-             "-filter", "Lanczos", "-resize", f"{size}x{size}!",
-             "-depth", "8", "-strip", "PNG32:" + str(dest)],
-            check=True,
-        )
-    finally:
-        src.unlink(missing_ok=True)
+def render_svg(svg: str, width: int, height: int, dest: Path) -> Path:
+    """Rasterise SVG markup to an 8-bit RGBA PNG of exactly width x height."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "in.svg"
+        src.write_text(svg)
+        raw = Path(tmp) / "out.png"
+        subprocess.run([_rsvg(), "--width", str(width), "--height", str(height),
+                        "--format", "png", "--output", str(raw), str(src)], check=True)
+        # Through ImageMagick once more: PNG32 pins 8-bit RGBA whatever cairo
+        # chose, and -strip drops the ancillary chunks a reader does not need.
+        subprocess.run([_magick(), "PNG:" + str(raw), "-strip", "-depth", "8",
+                        "PNG32:" + str(dest)], check=True)
     return dest
 
 
+def render_png(edition: str, shape: str, size: int, dest: Path) -> Path:
+    return render_svg(icon_svg(edition, shape), size, size, dest)
+
+
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+FAVICON_ICO_SIZES = (16, 32, 48)
 
 # ICNS chunk type -> pixel size, for the types that carry a plain PNG payload.
 ICNS_PNG_TYPES = (
@@ -421,28 +525,23 @@ ICNS_PNG_TYPES = (
 
 # The 1x 16 pt and 32 pt representations.  The ICNS format does define
 # PNG-capable types at these two sizes (icp4/icp5), but neither Apple's
-# `iconutil` nor the base app's committed icon.icns uses them: both carry
-# ic04/ic05, which are run-length-encoded ARGB.  Omitting them is not fatal
-# — macOS scales the nearest representation down — but it costs exactly the
-# small-size sharpness this icon exists to provide, on every 1x display.
+# `iconutil` nor a typical app's icon.icns uses them: both carry ic04/ic05,
+# which are run-length-encoded ARGB.  Omitting them is not fatal — macOS
+# scales the nearest representation down — but it costs exactly the
+# small-size sharpness an icon exists to provide, on every 1x display.
 ICNS_ARGB_TYPES = ((b"ic04", 16), (b"ic05", 32))
 
 ICNS_SIZES = tuple(sorted(
     {s for _, s in ICNS_PNG_TYPES} | {s for _, s in ICNS_ARGB_TYPES}
 ))
 
+
 def write_ico(frames: dict[int, Path], dest: Path, sizes: tuple[int, ...]) -> None:
     """Assemble an ICO holding each frame as its PNG bytes.
 
     Written here rather than handed to ImageMagick because its ICO coder
     stores every frame as an uncompressed DIB — a 256 px frame alone costs
-    256 KB, which is how a seven-frame icon turns into a third of a megabyte.
-    PNG payloads are what Windows has read since Vista and what the base app's
-    committed `icon.ico` already carries, so the demo's matches it.
-
-    Nothing Steamworks takes is built here: its Shortcut Icon field accepts a
-    plain PNG and generates the .ico itself, so this writer only ever produces
-    the bundle's `icon.ico`.
+    256 KB.  PNG payloads are what Windows has read since Vista.
     """
     payloads = [frames[s].read_bytes() for s in sizes]
     header = struct.pack("<HHH", 0, 1, len(sizes))
@@ -450,12 +549,9 @@ def write_ico(frames: dict[int, Path], dest: Path, sizes: tuple[int, ...]) -> No
     entries, body = b"", b""
     for size, payload in zip(sizes, payloads):
         # 256 is encoded as 0 in the single-byte width/height fields. Planes
-        # and bit depth are ignored for PNG payloads; 0/32 is what the base
-        # app's working icon.ico carries.
+        # and bit depth are ignored for PNG payloads; 0/32 is conventional.
         dim = 0 if size >= 256 else size
-        entries += struct.pack(
-            "<BBBBHHII", dim, dim, 0, 0, 0, 32, len(payload), offset
-        )
+        entries += struct.pack("<BBBBHHII", dim, dim, 0, 0, 0, 32, len(payload), offset)
         body += payload
         offset += len(payload)
     dest.write_bytes(header + entries + body)
@@ -509,29 +605,16 @@ def _argb_chunk(png: Path, size: int) -> bytes:
     """An ``ic04``/``ic05`` payload: the "ARGB" magic, then A, R, G and B.
 
     The samples are straight-alpha, not premultiplied — the same thing
-    ``iconutil`` itself writes. (Apple zeroes the colour under fully
-    transparent pixels where this keeps the plate colour; that is the only
-    difference, and it is invisible either way.)
+    ``iconutil`` itself writes.  The blue channel — the last one, so the one
+    whose final byte is also the payload's — is encoded with
+    ``tail_literal``: ``iconutil``'s reader stops one byte short of the
+    payload, on Apple's own files too, which costs one sample when the channel
+    ends on a literal and up to 130 when it ends on a run.
 
-    The blue channel — the last one, so the one whose final byte is also the
-    payload's — is encoded with ``tail_literal``. ``iconutil``'s reader stops
-    one byte short of the payload, on Apple's own files too. There that costs
-    one sample, because Apple always ends a channel on a literal; it would
-    cost this encoder a whole trailing run, which is up to 130 samples and in
-    practice wiped the blue out of the icon's bottom two rows — a band of
-    (109, 40, 0) where the plate should be. Two bytes buys the same one-sample
-    degradation Apple's own files get.
-
-    Even so, do not check these two chunks with ``iconutil -c iconset``: it
+    Do not check these two chunks with ``iconutil -c iconset``: it
     un-premultiplies on the way out, so every partly transparent pixel comes
-    back blown out toward white — a 16 px edge pixel of this icon reads
-    (255, 159, 255) instead of (109, 40, 217). *That* part is an artefact of
-    the export path and not of the file: build an ICNS from these same frames
-    with ``iconutil -c icns``, extract it again, and Apple's own output is
-    blown out identically. Check with the renderer macOS actually draws icons
-    through instead — ``NSImage(contentsOfFile:)``, then ``colorAt`` on the
-    representation of the size you care about — which reads these chunks back
-    exactly, and reads Apple's own within a level or two.
+    back blown out toward white, on Apple's own output as much as this.  Check
+    with ``NSImage(contentsOfFile:)`` and ``colorAt`` instead.
     """
     rgba = _rgba_bytes(png)
     assert len(rgba) == size * size * 4, f"{png}: expected {size}x{size} RGBA"
@@ -543,14 +626,8 @@ def _argb_chunk(png: Path, size: int) -> bytes:
 
 
 def write_icns(frames: dict[int, Path], dest: Path) -> None:
-    """Assemble an ICNS from PNG frames.
-
-    The format is a four-byte magic, a big-endian total length, then one
-    ``[type][length][payload]`` chunk per representation.  Most types take the
-    PNG bytes verbatim; ``ic04``/``ic05`` are the two that do not, and are
-    built from the same frames as run-length-encoded ARGB.  No platform
-    tooling is needed either way, so the set builds on Linux and Windows too.
-    """
+    """Assemble an ICNS from PNG frames: a four-byte magic, a big-endian total
+    length, then one ``[type][length][payload]`` chunk per representation."""
     chunks = b""
     for kind, size in ICNS_PNG_TYPES:
         payload = frames[size].read_bytes()
@@ -561,39 +638,16 @@ def write_icns(frames: dict[int, Path], dest: Path) -> None:
     dest.write_bytes(b"icns" + struct.pack(">I", len(chunks) + 8) + chunks)
 
 
-# The PNG members of Tauri's five-file `bundle.icon` list, by pixel size;
-# icon.ico and icon.icns are the other two and are assembled below.
-BUNDLE_PNGS = ((32, "32x32.png"), (128, "128x128.png"), (256, "128x128@2x.png"))
-
-# Steamworks "Community and Client Icons".  Both are required fields, and they
-# are the pair that issue #499 is actually about: the App Icon is what the
-# Steam client draws in the library list, where the demo and the full game
-# looked the same, and the Shortcut Icon is what lands on the desktop.
-APP_ICON_PX = 184       # App Icon: 184x184 JPG
-SHORTCUT_ICON_PX = 256  # Shortcut Icon: 256x256 (512 also taken) .ico/.png
-
-
-def write_app_icon(png: Path, dest: Path) -> None:
-    """Flatten a frame onto the capsule base colour and write it as JPEG.
-
-    Steamworks wants this one as a JPG, which has no alpha channel, so the
-    plate's rounded corners have to be composited against something. They go
-    onto RIBBON_BG — the near-black the whole capsule set sits on — rather
-    than onto the plate colour, so the corners stay visible and the icon reads
-    as part of the same family as the store art.
+def write_jpeg(png: Path, dest: Path) -> None:
+    """Flatten onto the stage and write a JPEG, as Steamworks' App Icon wants.
 
     4:4:4 sampling, because chroma subsampling on a 184 px icon smears the
-    plate edge and the ribbon's lettering, and both of those are what the
-    asset exists to show. ``-strip`` drops the profile and any timestamp, and
-    the Huffman tables are optimised rather than left at libjpeg's defaults so
-    the file does not depend on which default a build happens to carry.
-
-    Even so this is the one output whose bytes are not promised across
-    machines — see the module docstring. Judge a regenerated .jpg by looking
-    at it, not by ``git diff``.
+    bubbles' edges and the badge's lettering; ``-strip`` drops the profile
+    and any timestamp, and optimised Huffman tables keep the bytes from
+    depending on which default a libjpeg build carries.
     """
     subprocess.run(
-        [_magick(), "PNG:" + str(png), "-background", RIBBON_BG,
+        [_magick(), "PNG:" + str(png), "-background", STAGE,
          "-alpha", "remove", "-alpha", "off", "-strip",
          "-sampling-factor", "1x1", "-quality", "95",
          "-define", "jpeg:optimize-coding=true", "JPEG:" + str(dest)],
@@ -601,98 +655,164 @@ def write_app_icon(png: Path, dest: Path) -> None:
     )
 
 
-def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
-    """Write one edition's bundle icon set and its Steamworks icons."""
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-    steam_dir.mkdir(parents=True, exist_ok=True)
-    needed = sorted({*ICO_SIZES, *ICNS_SIZES, *(s for s, _ in BUNDLE_PNGS),
-                     APP_ICON_PX, SHORTCUT_ICON_PX})
-    written = []
+# ── Where everything goes ──────────────────────────────────────────────────
+# The PNG members of Tauri's five-file `bundle.icon` list, by pixel size;
+# icon.ico and icon.icns are the other two and are assembled below.
+BUNDLE_PNGS = ((32, "32x32.png"), (128, "128x128.png"), (256, "128x128@2x.png"))
+BUNDLE_DIR = {
+    "base": Path("apps/desktop/src-tauri/icons"),
+    "demo": Path("apps/desktop/src-tauri/icons-demo"),
+}
+
+# Steamworks "Community and Client Icons".
+STEAM_ICON_DIR = Path("publishing/assets/icons")
+APP_ICON_PX = 184       # App Icon: 184x184 JPG — the library list, chat, notifications
+SHORTCUT_ICON_PX = 256  # Shortcut Icon: 256x256 (512 also taken) .ico/.png
+
+# Microsoft Store package logos (AppxManifest.xml), by file name.
+MSSTORE_DIR = {
+    "base": Path("publishing/microsoft-store/Assets"),
+    "demo": Path("publishing/microsoft-store/Assets-demo"),
+}
+MSSTORE_LOGOS = (("Square150x150Logo.png", 150), ("Square44x44Logo.png", 44),
+                 ("StoreLogo.png", 50))
+
+DEMO_MASTER_SVG = Path("docs/assets/brand/ConversationSimulatorDemoIcon.svg")
+DEMO_MASTER_PNG = Path("docs/assets/brand/ConversationSimulatorDemoIcon.png")
+MASTER_PX = 2048        # the checked-in ConversationSimulatorIcon.png's size
+
+SOCIAL_AVATAR = Path("publishing/assets/social/avatar.png")
+SOCIAL_AVATAR_PX = 1024
+SOCIAL_BANNER = Path("publishing/assets/social/banner.png")
+SOCIAL_BANNER_SIZE = (1500, 500)   # Bluesky, X and Mastodon headers are all 3:1
+
+
+def banner_svg() -> str:
+    """A profile header: the share card's stage, the mark centred, no text.
+
+    No text because every platform prints the account's name under or over
+    its header, and centred because each crops a 3:1 header differently on
+    phones and lays the avatar over a different corner.  The stage is the
+    share card's (website/static/images/og-card.svg): near-black with a violet
+    glow from the top left and an emerald one from the bottom right.
+    """
+    w, h = SOCIAL_BANNER_SIZE
+    ink = 300
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}">'
+        '<defs><radialGradient id="glowV" cx="0.12" cy="0" r="0.9">'
+        '<stop offset="0" stop-color="#7c5cdb" stop-opacity="0.22"/>'
+        '<stop offset="1" stop-color="#7c5cdb" stop-opacity="0"/></radialGradient>'
+        '<radialGradient id="glowE" cx="0.95" cy="1.05" r="0.85">'
+        '<stop offset="0" stop-color="#10b981" stop-opacity="0.16"/>'
+        '<stop offset="1" stop-color="#10b981" stop-opacity="0"/></radialGradient></defs>'
+        f'<rect width="{w}" height="{h}" fill="#0a0a0c"/>'
+        f'<rect width="{w}" height="{h}" fill="url(#glowV)"/>'
+        f'<rect width="{w}" height="{h}" fill="url(#glowE)"/>'
+        f'{mark_at((w - ink) / 2, (h - ink) / 2, ink)}</svg>\n'
+    )
+
+# Web favicons.  The SVG is what every current browser uses; the .ico is what
+# a browser, crawler or feed reader asks for at /favicon.ico without reading
+# the page; the apple-touch-icon is iOS's home-screen and share-sheet icon,
+# opaque and unmasked because iOS applies its own corner mask.
+FAVICON_SVG = (Path("website/static/favicon.svg"), Path("docs-site/public/favicon.svg"),
+               Path("apps/web/public/favicon.svg"))
+FAVICON_ICO = (Path("website/static/favicon.ico"), Path("docs-site/public/favicon.ico"))
+APPLE_TOUCH = (Path("website/static/apple-touch-icon.png"),
+               Path("docs-site/public/apple-touch-icon.png"))
+APPLE_TOUCH_PX = 180
+
+# The bubbles beside the wordmark.
+WEBSITE_LOGO_PARTIAL = Path("website/layouts/partials/logo.svg")
+WEBSITE_LOGO_PX = 28
+DOCS_LOGO = Path("docs-site/src/assets/logo.svg")
+
+
+def text_outputs() -> dict[Path, str]:
+    """Every generated file that is SVG text, by repo-relative path.
+
+    These need no renderer, so the acceptance suite regenerates them and
+    compares byte for byte: a hand-edited favicon or a stale demo master
+    fails CI rather than quietly becoming a second logo.
+    """
+    out = {
+        DEMO_MASTER_SVG: icon_svg("demo", "square", header=True),
+        WEBSITE_LOGO_PARTIAL: mark_svg(inline_class="logo-mark", px=WEBSITE_LOGO_PX),
+        DOCS_LOGO: mark_svg(header=True),
+    }
+    for edition in EDITIONS:
+        out[STEAM_ICON_DIR / f"{edition}_icon.svg"] = icon_svg(edition, "tile", header=True)
+    for path in FAVICON_SVG:
+        out[path] = icon_svg("base", "tile")
+    return out
+
+
+def build(root: Path) -> list[Path]:
+    """Write every output under ``root`` (the repo, or a scratch copy of its layout)."""
+    written: list[Path] = []
+
+    def dest(rel: Path) -> Path:
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        written.append(path)
+        return path
+
+    for rel, text in text_outputs().items():
+        dest(rel).write_text(text)
+
     with tempfile.TemporaryDirectory() as tmp:
-        frames = {
-            s: render_png(edition, s, Path(tmp) / f"{s}.png") for s in needed
-        }
-        for size, name in BUNDLE_PNGS:
-            dest = bundle_dir / name
-            dest.write_bytes(frames[size].read_bytes())
-            written.append(dest)
+        tmp = Path(tmp)
+        for edition in EDITIONS:
+            # Every tile frame the bundle, the Steam shortcut and the Store
+            # logos need, rendered once.
+            tile_sizes = sorted({*ICO_SIZES, *(s for s, _ in BUNDLE_PNGS),
+                                 SHORTCUT_ICON_PX, *(s for _, s in MSSTORE_LOGOS),
+                                 *FAVICON_ICO_SIZES})
+            tile = {s: render_png(edition, "tile", s, tmp / f"{edition}-tile-{s}.png")
+                    for s in tile_sizes}
+            mac = {s: render_png(edition, "macos", s, tmp / f"{edition}-mac-{s}.png")
+                   for s in ICNS_SIZES}
 
-        ico = bundle_dir / "icon.ico"
-        write_ico(frames, ico, ICO_SIZES)
-        written.append(ico)
+            bundle = BUNDLE_DIR[edition]
+            for size, name in BUNDLE_PNGS:
+                dest(bundle / name).write_bytes(tile[size].read_bytes())
+            write_ico(tile, dest(bundle / "icon.ico"), ICO_SIZES)
+            write_icns(mac, dest(bundle / "icon.icns"))
 
-        icns = bundle_dir / "icon.icns"
-        write_icns(frames, icns)
-        written.append(icns)
+            square_184 = render_png(edition, "square", APP_ICON_PX, tmp / f"{edition}-184.png")
+            write_jpeg(square_184, dest(STEAM_ICON_DIR / f"{edition}_app_icon.jpg"))
+            # The Shortcut Icon is the frame the app itself installs, byte for
+            # byte, so the desktop shortcut and the app cannot drift apart.
+            dest(STEAM_ICON_DIR / f"{edition}_shortcut_icon.png").write_bytes(
+                tile[SHORTCUT_ICON_PX].read_bytes())
 
-        # Steamworks App Icon: the 184 px JPG the Steam client draws beside
-        # the app name in the library list, in chat favourites and in
-        # notifications.  This is the asset in issue #499's screenshot — the
-        # one that made the demo and the full game indistinguishable there.
-        app_icon = steam_dir / f"{edition}_app_icon.jpg"
-        write_app_icon(frames[APP_ICON_PX], app_icon)
-        written.append(app_icon)
+            for name, size in MSSTORE_LOGOS:
+                dest(MSSTORE_DIR[edition] / name).write_bytes(tile[size].read_bytes())
 
-        # Steamworks Shortcut Icon: 256 px, for the desktop shortcut Steam
-        # creates.  Valve accepts a PNG here and generates the .ico itself, so
-        # this is simply the same 256 px frame the app installs — no hand-built
-        # container between the mark and the shortcut.
-        shortcut = steam_dir / f"{edition}_shortcut_icon.png"
-        shortcut.write_bytes(frames[SHORTCUT_ICON_PX].read_bytes())
-        written.append(shortcut)
-
-    # The large-frame artwork as vector, next to the uploads: for reading
-    # the mark and re-rendering it at sizes this script does not emit.  It is
-    # the >= RIBBON_MIN_PX drawing — the demo render always carries the ribbon,
-    # so re-render from here only at 128 px and up; below that the word is the
-    # mush RIBBON_MIN_PX exists to avoid, and the frame to use is the one
-    # render_png emits (or icon_svg(edition, ribbon=False)).  It is generated
-    # output, overwritten on every run — the mark's source of truth is the
-    # geometry above, so edits belong there and not in the .svg.
-    #
-    # Written with a trailing newline, per the repo's .editorconfig
-    # (insert_final_newline).  It is the one generated artefact here that is
-    # plain text, so it is the one an editor will open — and the acceptance
-    # suite compares it to icon_svg() to catch a half-applied regeneration.
-    # Without the newline an EditorConfig-aware editor adds one on save, the
-    # comparison fails, and re-running this script takes it straight back out.
-    svg = steam_dir / f"{edition}_icon.svg"
-    svg.write_text(icon_svg(edition, ribbon=edition == "demo") + "\n")
-    written.append(svg)
+            if edition == "base":
+                for rel in FAVICON_ICO:
+                    write_ico(tile, dest(rel), FAVICON_ICO_SIZES)
+                touch = render_png("base", "square", APPLE_TOUCH_PX, tmp / "touch.png")
+                for rel in APPLE_TOUCH:
+                    dest(rel).write_bytes(touch.read_bytes())
+                render_png("base", "square", SOCIAL_AVATAR_PX, dest(SOCIAL_AVATAR))
+                render_svg(banner_svg(), *SOCIAL_BANNER_SIZE, dest(SOCIAL_BANNER))
+            else:
+                render_png("demo", "square", MASTER_PX, dest(DEMO_MASTER_PNG))
     return written
 
 
-# Where each edition lands with no --out.  Only the demo writes into the repo:
-# the base set in apps/desktop/src-tauri/icons/ is the original `tauri icon`
-# output, and this script must never overwrite it by accident.
-DEMO_BUNDLE_DIR = REPO_ROOT / "apps" / "desktop" / "src-tauri" / "icons-demo"
-STEAM_ICON_DIR = REPO_ROOT / "publishing" / "assets" / "icons"
-
-
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--edition", choices=("base", "demo", "all"), default="demo")
-    ap.add_argument(
-        "--out",
-        type=Path,
-        help="write everything under this directory instead of the committed "
-             "locations; always use it when rendering the base edition for "
-             "comparison",
-    )
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", type=Path,
+                    help="write under this directory, mirroring the repo's layout, "
+                         "instead of into the repo")
     args = ap.parse_args()
-
-    editions = ("base", "demo") if args.edition == "all" else (args.edition,)
-    for edition in editions:
-        if args.out is not None:
-            bundle_dir = args.out / edition if len(editions) > 1 else args.out
-            steam_dir = bundle_dir
-        elif edition == "demo":
-            bundle_dir, steam_dir = DEMO_BUNDLE_DIR, STEAM_ICON_DIR
-        else:
-            scratch = Path(tempfile.gettempdir()) / "convsim-icons-base"
-            bundle_dir, steam_dir = scratch, scratch
-        for path in build(edition, bundle_dir, steam_dir):
-            print(f"{edition}: {path}")
+    root = args.out if args.out is not None else REPO_ROOT
+    for path in build(root):
+        print(path.relative_to(root) if path.is_relative_to(root) else path)
 
 
 if __name__ == "__main__":

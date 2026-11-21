@@ -103,6 +103,12 @@ export default defineConfig({
         },
       ],
       head: [
+        // favicon.svg is Starlight's own `favicon` above; these two are for
+        // what does not read SVG favicons: anything that asks for
+        // /favicon.ico without reading the page, and iOS's home screen.
+        // All three come from publishing/assets/source/gen_icons.py.
+        { tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
         {
           tag: 'meta',
           attrs: { property: 'og:image', content: 'https://www.conversationsimulator.com/images/og-card.png' },

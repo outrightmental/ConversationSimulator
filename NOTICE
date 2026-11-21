@@ -42,9 +42,16 @@ Licensing summary by content type (SPDX identifiers):
              private data. See docs/screenshots.md for the capture environment.
 
   Brand assets (docs/assets/brand/, site favicons and logos in website/,
-    docs-site/, apps/web/public/):
+    docs-site/, apps/web/public/; the app icons, store logos and social images
+    generated from them in apps/desktop/src-tauri/icons*/, publishing/assets/,
+    publishing/microsoft-store/):
     SPDX-License-Identifier: CC-BY-4.0
     https://creativecommons.org/licenses/by/4.0/
+    The "DEMO" lettering on the demo icon and the demo Steam art is drawn as
+    vector outlines of the Carlito Bold typeface (Copyright 2013 The Carlito
+    Project Authors, https://github.com/googlefonts/carlito; SPDX-License-
+    Identifier: OFL-1.1); the capsules' logotype is set in Carlito Bold. No
+    font file is distributed.
 
   Fraunces typeface (website/static/fonts/, docs-site/public/fonts/):
     Copyright 2020 The Fraunces Project Authors

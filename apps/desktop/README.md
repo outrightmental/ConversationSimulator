@@ -104,42 +104,29 @@ identifier, so a model downloaded in the demo is reused by the full app. The
 release workflow's `edition` input drives all of this in CI — see
 [docs/steam-next-fest-demo.md](../../docs/steam-next-fest-demo.md).
 
-The repo ships **placeholder** app icons in `src-tauri/icons/` so the app
-compiles out of the box. Replace them before shipping a distributable:
+Both editions' app icons are the official Conversation Simulator icon,
+[`docs/assets/brand/ConversationSimulatorIcon.svg`](../../docs/assets/brand/ConversationSimulatorIcon.svg):
+`src-tauri/icons/` for the full game, and `src-tauri/icons-demo/` — selected
+by `bundle.icon` in `tauri.demo.conf.json` — for the demo, which is the same
+icon with an amber "DEMO" badge in its lower-right corner. Without its own set
+the demo and the full game are indistinguishable in the Steam client.
 
-```bash
-# Regenerate the full icon set from a 1024×1024 source PNG:
-pnpm --filter @convsim/desktop tauri icon assets/icon.png
-```
-
-The demo edition has its **own** icon set in `src-tauri/icons-demo/`, selected
-by `bundle.icon` in `tauri.demo.conf.json`: the same speech-bubble mark on a
-purple plate instead of the full app's teal, with a "DEMO" ribbon on the
-frames large enough to read one. Without it the demo and the full game are
-indistinguishable in the Steam client. Regenerate it — and the matching
-Steamworks App Icon and Shortcut Icon under `publishing/assets/icons/` — with:
+Neither set is drawn by hand or by `tauri icon`. Both are generated, with the
+Steamworks icons, the Microsoft Store logos and the web favicons, from the
+brand source:
 
 ```bash
 python3 publishing/assets/source/gen_icons.py
 ```
 
-Re-run it only when the mark or the plate colours change. The output is
-deterministic per ImageMagick build and not across builds: on a different
-build every raster (the PNGs, the ICO, the ICNS and the JPG) comes back with
-new bytes and the same drawing, because the anti-aliasing differs, and the
-build that made the committed set is not recorded. Judge the result by
+The PNGs and the `.ico` use the icon's rounded-square tile; the `.icns` puts
+that tile on Apple's icon grid (824 of 1024 px, centred), which is what keeps
+macOS from setting it on a grey plate of its own. Re-run the script only when
+the source changes. The rasters are deterministic per librsvg build and not
+across builds, so judge a regeneration by
 `tests/acceptance/test_demo_branding.py` and by eye, do not commit the churn
-unless the mark changed, and when you do commit, name your ImageMagick build
-(`convert -version` or `magick -version`) in the commit message.
-
-The demo set is **not** derived from `src-tauri/icons/` at build time: it is
-redrawn from the geometry and the `PLATE` colours in `gen_icons.py`, which
-were measured off the icons above. Replacing the base set therefore means
-updating that geometry and `PLATE["base"]` to match and re-running the script
-— otherwise the two editions stop being the same mark, and
-`tests/acceptance/test_demo_branding.py` fails on the silhouette and
-plate-colour comparisons. `--edition base --out <dir>` renders the base mark
-from the same geometry for a side-by-side check.
+unless the drawing changed, and when you do, name your librsvg build
+(`rsvg-convert --version`) in the commit message.
 
 ---
 
@@ -375,8 +362,8 @@ apps/desktop/
     ├── tauri.conf.json          # Product name, window, bundle settings
     ├── capabilities/
     │   └── default.json         # Window permission grants
-    ├── icons/                   # Placeholder app icons (replace with `tauri icon`)
-    ├── icons-demo/              # Demo-edition app icons (gen_icons.py)
+    ├── icons/                   # App icons (gen_icons.py, from docs/assets/brand/)
+    ├── icons-demo/              # Demo app icons: the icon + DEMO badge (gen_icons.py)
     └── src/
         ├── main.rs              # OS entry point
         └── lib.rs               # Tauri Builder, core process management
@@ -421,5 +408,3 @@ orphaned.
 - **Auto-update** is not configured.
 - **Code signing** is not configured — macOS Gatekeeper will warn on unsigned
   builds unless you sign with a Developer ID certificate.
-- **App icons** are placeholders. Run `pnpm tauri icon <source.png>` to replace
-  them with real branding before building a distributable.

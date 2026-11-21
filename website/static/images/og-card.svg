@@ -13,11 +13,8 @@
   <rect width="1200" height="630" fill="url(#glowV)"/>
   <rect width="1200" height="630" fill="url(#glowE)"/>
 
-  <!-- mark -->
-  <g transform="translate(96,120) scale(1.9)">
-    <g fill="#a78bfa"><rect x="6" y="18" width="36" height="26" rx="8"/><path d="M13 40 L13 54 L27 40 Z"/></g>
-    <g fill="#6ee7b7"><rect x="22" y="6" width="36" height="26" rx="8"/><path d="M51 30 L51 44 L37 30 Z"/></g>
-  </g>
+  <!-- mark: docs/assets/brand/mark.svg, placed by publishing/assets/source/gen_icons.mark_at(107, 127, 100) -->
+  <g transform="translate(85.606 105.608) scale(0.165258)"><path fill="#a78bfa" d="M222.547 280.722 L455.273 280.722 C506.685 280.722 548.363 325.875 548.363 381.574 L548.363 507.639 C548.363 563.338 506.685 608.491 455.273 608.491 L222.547 608.491 C171.135 608.491 129.457 563.338 129.457 507.639 L129.457 381.574 C129.457 325.875 171.135 280.722 222.547 280.722 Z"/><polygon fill="#a78bfa" points="210.911,558.065 210.911,734.557 373.819,558.065"/><path fill="#6ee7b7" d="M408.727 129.443 L641.453 129.443 C692.865 129.443 734.543 174.596 734.543 230.296 L734.543 356.361 C734.543 412.06 692.865 457.213 641.453 457.213 L408.727 457.213 C357.315 457.213 315.637 412.06 315.637 356.361 L315.637 230.296 C315.637 174.596 357.315 129.443 408.727 129.443 Z"/><polygon fill="#6ee7b7" points="653.089,432 653.089,608.491 490.181,432"/></g>
 
   <text x="96" y="330" font-family="Segoe UI, Arial, sans-serif" font-size="78" font-weight="800" fill="#f4f4f5" letter-spacing="-1.5">Conversation Simulator</text>
   <text x="96" y="398" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="500" fill="#a78bfa">The simulator for conversations.</text>

@@ -61,13 +61,37 @@ and rubrics.
 The identity has one story: **two voices on a dark stage.** Everything else
 derives from it.
 
-### The mark — "The Exchange"
+### The icon — "The Exchange"
 
 Two speech bubbles mid-turn: violet underneath (the player, speaking up),
-emerald above (the character, replying). Source:
-[`docs/assets/brand/mark.svg`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/assets/brand/mark.svg).
-It is the favicon of the app, the website, and this docs site. Don't recolor
-it, don't separate the bubbles, don't add a third.
+emerald above (the character, replying), on a dark stage. There is **one**
+Conversation Simulator icon, and it is this one:
+
+| File | What it is |
+|------|------------|
+| [`docs/assets/brand/ConversationSimulatorIcon.svg`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/assets/brand/ConversationSimulatorIcon.svg) (and `.png`, 2048 px) | **The icon.** The bubbles on the dark radial-gradient square. |
+| [`docs/assets/brand/mark.svg`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/assets/brand/mark.svg) | The same bubbles with no square: the mark beside a wordmark. |
+| [`docs/assets/brand/ConversationSimulatorDemoIcon.svg`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/assets/brand/ConversationSimulatorDemoIcon.svg) (and `.png`) | **The demo icon.** The icon with an amber "DEMO" badge in its lower-right corner. Generated; do not edit. |
+
+The icon is the app icon on every platform (Windows, macOS, Linux), the Steam
+App Icon and Shortcut Icon, the Microsoft Store logos, the favicon of the app,
+the website and the docs site, and the profile picture on every social
+account. The mark beside the wordmark is the website and docs-site logo, and
+the mark on the Steam capsules and the share card. The demo icon is the same
+everywhere the demo appears (the Steam demo app, the Microsoft Store demo
+package); the demo's Steam capsules are the full game's with the same badge.
+
+Every one of those files is drawn from the two sources above by
+`publishing/assets/source/gen_icons.py` (and the capsules by
+`gen_capsules.py`). To change the icon, change the source SVG and re-run the
+generators — never edit or draw an output by hand, and never make a new mark
+for a new surface. The acceptance suite fails on any violet-and-emerald
+drawing in the repository that is not the official one.
+
+Don't recolor it, don't separate the bubbles, don't add a third. The DEMO
+badge is the only thing ever added to the icon, and only for the demo. It is
+amber (`--cs-event`) with stage-dark lettering, so it can never be read as
+either voice.
 
 ### The two voices (palette)
 

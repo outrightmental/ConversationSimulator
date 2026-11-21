@@ -32,11 +32,11 @@ the repository; uploading to Steamworks is a separate, manual step.
 | Vertical capsule | Yes | 748 × 896 px, JPG or PNG | Base committed; demo committed, not yet uploaded |
 | Library capsule | Yes | 600 × 900 px, JPG or PNG | Base committed; demo committed, not yet uploaded |
 | Library header | Yes | 920 × 430 px, JPG or PNG | Base committed; demo committed, not yet uploaded |
-| Library hero | Yes | 3840 × 1240 px, JPG or PNG, no text or logo | Base committed; demo committed (plate and mark only, no ribbon), not yet uploaded |
-| Library logo | Yes | 1280 × 720 px max, transparent PNG | Base committed; demo committed (demo mark, no ribbon), not yet uploaded |
-| App icon | Yes | 184 × 184 px, JPG | Demo done (`publishing/assets/icons/demo_app_icon.jpg`); base renders from the same generator, `gen_icons.py --edition base`, not committed — see [Icons](#icons) |
-| Shortcut icon | Yes | 256 × 256 px or 512 × 512 px, `.ico` or PNG | Demo done (`publishing/assets/icons/demo_shortcut_icon.png`); base not started |
-| Mac icon | For macOS shortcuts | `.icns` | Demo done (`apps/desktop/src-tauri/icons-demo/icon.icns`); base is `apps/desktop/src-tauri/icons/icon.icns` |
+| Library hero | Yes | 3840 × 1240 px, JPG or PNG, no text or logo | Base committed; demo committed (the full game's, no badge), not yet uploaded |
+| Library logo | Yes | 1280 × 720 px max, transparent PNG | Base committed; demo committed (the full game's, no badge), not yet uploaded |
+| App icon | Yes | 184 × 184 px, JPG | Committed for both: `publishing/assets/icons/base_app_icon.jpg` and `demo_app_icon.jpg` — see [Icons](#icons) |
+| Shortcut icon | Yes | 256 × 256 px or 512 × 512 px, `.ico` or PNG | Committed for both: `publishing/assets/icons/base_shortcut_icon.png` and `demo_shortcut_icon.png` |
+| Mac icon | For macOS shortcuts | `.icns` | Committed for both: `apps/desktop/src-tauri/icons/icon.icns` and `icons-demo/icon.icns` |
 | Page background | Optional | 1438 × 810 px, JPG or PNG | Base committed (`capsules/page_background.png`); none for the demo by design — see [Demo edition](#demo-edition) |
 | Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Demo app: five 1920 × 1080 captures committed under `screenshots/demo/` (`scripts/capture-store-screenshots.mjs`), not yet uploaded; see `STEAM_NEXT_FEST_DEMO.md` §4.2. Base app: source captures in `docs/assets/screenshots/` (2× README frames), still to be re-shot at Steam dimensions |
 | Gameplay trailer | Yes | MP4, H.264, 1920 × 1080 px, 30–120 seconds | Not started |
@@ -63,10 +63,11 @@ results and lists.
 - No photorealistic faces that could be mistaken for real people
 - Use abstract or stylised character representations (silhouettes, icons,
   illustrated characters) to represent the NPC and player
-- A speech-bubble or transcript motif can anchor the conversation theme
-- Colour palette: dark neutral base (near-black) with a strong accent —
-  the app UI uses deep purple (`#4C1D95` area) for player turns and dark
-  green for NPC turns; either can anchor the capsule art
+- The mark is the official one, `docs/assets/brand/mark.svg` — the violet
+  and emerald bubbles — and never a capsule-only drawing of its own
+- Colour palette: the dark stage with the two voices, violet (`#A78BFA`,
+  the player) and emerald (`#6EE7B7`, the character), as `docs/brand.md`
+  defines them
 
 **Text on capsules:** the game name and nothing else — Valve's
 [store-asset rules](https://partner.steamgames.com/doc/store/assets/rules)
@@ -74,7 +75,7 @@ allow only artwork and the name on capsules, and only the title on library
 assets. No tagline and no publisher wordmark on any of them (both were
 removed after Valve's July 2026 store-presence review). The library hero
 carries no text at all: Steam lays the library logo over it. The demo's
-"DEMO" ribbon is the one addition, and it is part of that app's name.
+"DEMO" badge is the one addition, and it is part of that app's name.
 
 **Prohibited:**
 - Photographs of real people
@@ -114,14 +115,13 @@ python3 publishing/assets/source/gen_capsules.py --edition demo --out /tmp/demo
 
 It needs librsvg's `rsvg-convert` (Ubuntu `librsvg2-bin`), ImageMagick, and
 the Carlito font (Ubuntu `fonts-crosextra-carlito`); it checks for the font
-rather than let fontconfig substitute one. The drawing is SVG rendered by
-librsvg, which is what produced the committed full-game capsules, so a
-regeneration reproduces them to within a few dozen anti-aliased edge pixels
-(43–77 outside a 2 % tolerance on Ubuntu 24.04's librsvg 2.58).
-That churn is not worth committing: judge a regeneration by eye and by
+rather than let fontconfig substitute one. The mark is the official one, read
+from `docs/assets/brand/mark.svg` through `gen_icons.py`, so the capsules and
+the icons cannot drift apart. The committed set was rendered with librsvg
+2.58.0 on Ubuntu 24.04; a regeneration on another build moves anti-aliased
+edge pixels without changing the drawing, and that churn is not worth
+committing: judge a regeneration by eye and by
 `tests/acceptance/test_demo_branding.py`, not by `git diff`, as for the icons.
-`small_capsule.png` predates the script's matching job (the job was updated
-to reproduce its mark-and-name layout) and is likewise left as committed.
 
 | Asset | Full game (App 4963030) | Demo (App 5343430) | Steamworks field |
 |-------|------------------------|--------------------|------------------|
@@ -137,35 +137,28 @@ to reproduce its mark-and-name layout) and is likewise left as committed.
 
 ### Demo edition
 
-The demo's set is the full game's with three changes, all taken from the
-demo icon so the capsules and the App Icon read as one family:
-
-- **Plate.** The near-black stage becomes the demo icon's plate, `#6D28D9`,
-  with the lower band a step darker (`#5B21B6`) where the full game's is
-  slightly darker too. As with the icons, hue is what tells the two library
-  entries apart at a glance.
-- **Mark.** On that plate the full game's purple player bubble would vanish,
-  so it turns white with plate-coloured dots — the demo icon's own mark. The
-  green NPC bubble and the logotype are unchanged.
-- **Ribbon.** The icon's "DEMO" corner ribbon (`ribbon_shapes()` in
-  `gen_icons.py`), pinned to the lower-right corner of every asset allowed to
-  carry the name: header, small, main and vertical capsules, library capsule
-  and library header. It scales with the capsule's geometric-mean side, and
-  the generator refuses to write an asset whose artwork comes within 40 % of
-  the band's width of it.
+The demo's set is the full game's art with one addition, the same one the
+demo icon makes: the amber **"DEMO" badge** (`badge_at()` in `gen_icons.py`),
+pinned to the lower-right corner of every asset allowed to carry the name —
+header, small, main and vertical capsules, library capsule and library header.
+It is sized as the badge of an icon 0.6 × the capsule's geometric-mean side,
+and the generator refuses to write an asset whose artwork comes within a
+quarter of the pill's height of it. Everything outside the badge is the full
+game's art, pixel for pixel.
 
 Per asset, the exceptions and why:
 
-- **Library hero:** plate and mark only. Valve's hero takes no text or logo,
-  so it gets no ribbon.
-- **Library logo:** the same logo with the demo mark — it sits on the purple
-  hero, where a purple bubble would disappear — and no ribbon or "DEMO": it
-  has no corner to carry one, and the library shows the app's name.
-- **Page background:** not drawn. It is optional, Valve wants it ambient and
-  textless, and on the purple plate it would be neither; the full game's
-  near-black one is the file to use if the demo ever needs one.
+- **Library hero:** the full game's, byte for byte. Valve's hero takes no
+  text or logo, so it gets no badge.
+- **Library logo:** the full game's, byte for byte: it has no corner to
+  carry a badge, and the library shows the app's name.
+- **Page background:** not drawn. It is optional and Valve wants it ambient
+  and textless; the full game's is the file to use if the demo ever needs one.
 - **Community icon:** none from this script for either edition. The App Icon
   and Shortcut Icon come from `gen_icons.py` — see [Icons](#icons).
+
+The hero and the logo are still written to `capsules/demo/` so that the
+directory is the demo app's complete upload set.
 
 ---
 
@@ -187,101 +180,65 @@ their library, and it carries one job — telling two entries apart at a glance.
 
 ### Design brief
 
-- The mark is the app's own icon — the white speech bubble with three dots on
-  a rounded square — not a crop of a capsule. Capsule art is composed for
+- The icon is **the** Conversation Simulator icon,
+  `docs/assets/brand/ConversationSimulatorIcon.svg` — the violet and emerald
+  bubbles on the dark stage — the same one the app, the stores and the
+  websites use. It is not a crop of a capsule: capsule art is composed for
   920 px and reads as mud in a library row.
-- **Editions are separated first by plate colour.** The full game is teal
-  (`#147A84`); the Steam Next Fest demo is deep purple (`#6D28D9`) — the
-  player-voice purple the capsule set already uses, not the lighter UI token
-  `--cs-you` (`#A78BFA`), which is a tint for text on a dark stage and
-  disappears behind a white speech bubble. Hue is the only cue that survives
-  everywhere: the ribbon's lettering is a tenth of the frame tall, which is
-  three pixels on a 32 px taskbar button.
-- **The base App Icon comes from the same generator as the demo's:**
-  `gen_icons.py --edition base --out <dir>`, then `base_app_icon.jpg`.
-  `gen_capsules.py` used to emit a 184 × 184 `community_icon` too, and it was
-  dropped (issue #551) because it looked like the right file and was not: a
-  `#6D28D9` bubble on the near-black, with no plate, and `#6D28D9` is the hue
-  the bullet above reserves for the demo. A copy of it from an old run would
-  put the demo's colour on the full game and undo the only cue that survives
-  a library row.
-- A **"DEMO"** ribbon across the lower-right corner reinforces it at 128 px
-  and above, which both Steamworks icons clear at their native size — the App
-  Icon at 184, the Shortcut Icon at 256. Steam rescales the App Icon: in the
-  library list of issue #499's screenshot it is drawn at about 35 px, where
-  the ribbon survives as a legible dark corner tag rather than as four
-  readable letters. That is the floor's intent, not an exception to it — the
-  word is a second cue behind the colour wherever it lands. It is deliberately
-  absent on the smaller bundle frames, which the OS draws at their native 16
-  to 64 px and where the band would only muddy the silhouette.
-- Same silhouette in both editions. The demo is the same product; only its
-  colour and its ribbon say otherwise.
-- The App Icon is a JPG, which has no alpha, so the plate's rounded corners
-  are flattened onto the capsule set's near-black (`#0D0D15`) rather than
-  left for Valve to fill with solid black.
+- **The demo is the same icon with an amber "DEMO" badge** in its lower-right
+  corner: a pill in `--cs-event` amber with the word in stage-dark letters.
+  The badge is drawn at every size. Steam rescales the App Icon — in the
+  library list it is drawn at about 35 px — where the word is no longer
+  legible but the amber pill is, and colour is what tells two rows apart at
+  a glance. At the native 184 and 256 px it reads as the word.
+- Nothing else differs between the editions: the demo is the same product.
+- The App Icon is a JPG, which has no alpha, so it is the icon's full-bleed
+  square; the Shortcut Icon and the Mac Icon are the rounded tile the app
+  installs.
 
 ### Production
 
-`publishing/assets/source/gen_icons.py` is the source of truth. It draws the
-mark as plain polygons and circles — no fonts, no `clip-path`, no group
-transforms — and pins ImageMagick's own SVG rasteriser, so that nothing on
-the machine but ImageMagick itself shapes the output, and emits both the
-Steamworks icons and the Tauri `bundle.icon` set:
+`publishing/assets/source/gen_icons.py` is the source of truth for every
+icon the project ships, both editions, from the brand source. It renders with
+librsvg and needs no font: the badge's lettering is vector outlines.
 
 ```bash
-python3 publishing/assets/source/gen_icons.py                     # demo, into the repo
-python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
+python3 publishing/assets/source/gen_icons.py                 # everything, into the repo
+python3 publishing/assets/source/gen_icons.py --out /tmp/icons
 ```
 
-| Output | Path | Used by |
-|--------|------|---------|
-| App Icon | `publishing/assets/icons/demo_app_icon.jpg` | Steamworks → Community and Client Icons → **App Icon**, on the demo app (5343430) |
-| Shortcut Icon | `publishing/assets/icons/demo_shortcut_icon.png` | Steamworks → Community and Client Icons → **Shortcut Icon**, same app |
-| Mac Icon | `apps/desktop/src-tauri/icons-demo/icon.icns` | Steamworks → Community and Client Icons → **Mac Icon**, uploaded from the bundle set as-is |
-| Bundle icon set | `apps/desktop/src-tauri/icons-demo/` | `bundle.icon` in `tauri.demo.conf.json` |
-| Vector render | `publishing/assets/icons/demo_icon.svg` | Reading the mark and re-rendering it **at 128 px and up** — it is the ribboned drawing, so a smaller render from it would carry the three-pixel lettering the brief above rules out; for anything smaller, re-run the script. Generated output, rewritten on every run: change `gen_icons.py`, not this file |
+| Output | Full game (App 4963030) | Demo (App 5343430) | Used by |
+|--------|------------------------|--------------------|---------|
+| App Icon | `publishing/assets/icons/base_app_icon.jpg` | `publishing/assets/icons/demo_app_icon.jpg` | Steamworks → Community and Client Icons → **App Icon** |
+| Shortcut Icon | `publishing/assets/icons/base_shortcut_icon.png` | `publishing/assets/icons/demo_shortcut_icon.png` | … → **Shortcut Icon** |
+| Mac Icon | `apps/desktop/src-tauri/icons/icon.icns` | `apps/desktop/src-tauri/icons-demo/icon.icns` | … → **Mac Icon**, uploaded from the bundle set as-is |
+| Bundle icon set | `apps/desktop/src-tauri/icons/` | `apps/desktop/src-tauri/icons-demo/` | `bundle.icon` in `tauri.conf.json` / `tauri.demo.conf.json` |
+| Vector | `publishing/assets/icons/base_icon.svg` | `publishing/assets/icons/demo_icon.svg` | Reading the icon and re-rendering it. Generated output: change the brand source, not this file |
 
 The Shortcut Icon is a plain PNG, not a hand-built `.ico`: Valve accepts a PNG
 in that field and generates the `.ico` itself, so the uploaded file is
 byte-identical to the 256 px frame the app installs and there is no container
-in between to go wrong. Valve takes 512 × 512 in that field too; 256 is chosen
-because it is the frame the bundle already ships — one file, not two renders
-of the same mark that can drift apart. The bundle's own multi-size `icon.ico` is still
-assembled by the script, with PNG payloads — that is what `tauri icon`
-produced for the base app, and it is what stops the 256 px frame costing
+in between to go wrong. The bundle's own multi-size `icon.ico` is assembled by
+the script with PNG payloads, which is what stops the 256 px frame costing
 256 KB.
 
-Regeneration is deterministic on one machine and not across machines. The
-output depends on the ImageMagick build: its rasteriser and Lanczos resize
-anti-alias differently from one version to the next, so running the script on
-a different build changes the bytes of every raster (the three PNGs, the ICO,
-the ICNS and the JPG) without changing the drawing. On Ubuntu's ImageMagick
-6.9.12 every raster differs from the committed set by edge pixels only, with
-the same silhouette coverage and the same plate colour, and the acceptance
-suite passes on either set. The JPG drifts the most, because quantisation and
-Huffman tables also differ between libjpeg builds; its encoder settings are
-pinned (quality 95, 4:4:4, stripped, optimised coding) all the same. The build
-that produced the committed set is not recorded anywhere in the history, so
-there is no version to install that gives the committed bytes back.
-
-Judge a regeneration by `tests/acceptance/test_demo_branding.py` and by eye,
-not by `git diff`, and do not commit the churn unless the mark itself changed.
-When you do commit regenerated icons, name the ImageMagick build that made
-them (`magick -version` or `convert -version`) in the commit message.
-
-The base app's set in `apps/desktop/src-tauri/icons/` is the original
-`tauri icon` output; the script never writes there. Rendering `--edition base`
-into a scratch directory is how you check the two editions still line up after
-changing the mark.
+Regeneration is deterministic on one machine and not across machines: another
+librsvg build anti-aliases edges differently, so it changes the bytes of every
+raster without changing the drawing. The SVG outputs are plain text and
+reproduce exactly. Judge a regeneration by the acceptance suite and by eye,
+not by `git diff`, and do not commit the churn unless the drawing changed.
+When you do commit regenerated icons, name the librsvg build that made them
+(`rsvg-convert --version`) in the commit message.
 
 `tests/acceptance/test_demo_branding.py` enforces the result: the overlay
-overrides every icon, the plates stay far apart in colour, the silhouettes and
-the white mark match, the ribbon is on the large frames only, the two
-Steamworks icons are at the sizes Valve's spec names, the Shortcut Icon is
-byte-identical to the frame the app installs, the App Icon is opaque and
-carries the ribbon, and the `.icns` carries every representation the full
-app's does — including the 1× 16 pt and 32 pt ones macOS draws in Finder's
-list view.
+overrides every icon; every frame draws the official icon's two voices on its
+stage; the demo is the base pixel for pixel outside the badge, and the badge
+is amber with four letterforms in it; the containers carry every
+representation, with the `.icns` on Apple's icon grid; the Steamworks icons
+are at Valve's sizes for both apps, the Shortcut Icon byte-identical to the
+frame the app installs; and every vector output matches the generator.
+`tests/acceptance/test_brand_icon.py` fails on any violet-and-emerald drawing
+in the repository that is not the official mark.
 
 ---
 
