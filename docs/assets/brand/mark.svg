@@ -1,15 +1,1 @@
-<!-- SPDX-License-Identifier: CC-BY-4.0 -->
-<!-- Conversation Simulator mark: "The Exchange" — two voices mid-turn.
-     Violet bubble = the player (you), emerald bubble = the character (them),
-     the same colour coding the app uses for transcript turns.
-     Usage guide: docs/brand.md -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Conversation Simulator">
-  <g fill="#a78bfa">
-    <rect x="6" y="18" width="36" height="26" rx="8"/>
-    <path d="M13 40 L13 54 L27 40 Z"/>
-  </g>
-  <g fill="#6ee7b7">
-    <rect x="22" y="6" width="36" height="26" rx="8"/>
-    <path d="M51 30 L51 44 L37 30 Z"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 864 864"><defs><style>.cls-1{fill:#a78bfa}.cls-2{fill:#6ee7b7}</style></defs><title>Artboard 1</title><g id="ART"><g><path d="M222.547 280.722 L455.273 280.722 C506.685 280.722 548.363 325.875 548.363 381.574 L548.363 507.639 C548.363 563.338 506.685 608.491 455.273 608.491 L222.547 608.491 C171.135 608.491 129.457 563.338 129.457 507.639 L129.457 381.574 C129.457 325.875 171.135 280.722 222.547 280.722 Z" class="cls-1"/><polygon points="210.911,558.065 210.911,734.557 373.819,558.065" class="cls-1"/></g><g><path d="M408.727 129.443 L641.453 129.443 C692.865 129.443 734.543 174.596 734.543 230.296 L734.543 356.361 C734.543 412.06 692.865 457.213 641.453 457.213 L408.727 457.213 C357.315 457.213 315.637 412.06 315.637 356.361 L315.637 230.296 C315.637 174.596 357.315 129.443 408.727 129.443 Z" class="cls-2"/><polygon points="653.089,432 653.089,608.491 490.181,432" class="cls-2"/></g></g><g id="GUIDES"></g></svg>
