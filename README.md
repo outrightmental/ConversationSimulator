@@ -2,6 +2,8 @@
 [![Release](https://github.com/outrightmental/ConversationSimulator/actions/workflows/release.yml/badge.svg)](https://github.com/outrightmental/ConversationSimulator/actions/workflows/release.yml)
 
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+<img src="docs/assets/brand/ConversationSimulatorIcon.svg" alt="" width="96" height="96">
+
 # Conversation Simulator
 
 > The simulator for conversations.

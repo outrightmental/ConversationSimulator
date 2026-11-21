@@ -1,59 +1,54 @@
 # SPDX-License-Identifier: Apache-2.0
 """Acceptance tests — demo-edition branding (issue #499, demo gate D-10).
 
-The Steam Demo app (5343430) shipped the base app's icon because
+The Steam Demo app (5343430) once shipped the base app's icon because
 ``tauri.demo.conf.json`` overlaid the product name but not ``bundle.icon``, so
-the demo and the full game were indistinguishable in the Steam client. These
-tests pin the fix from both ends:
+the demo and the full game were indistinguishable in the Steam client. Later
+the two editions were told apart by two different plates, teal and purple,
+around a white bubble that was not the brand's mark at all. Now there is one
+icon, ``docs/assets/brand/ConversationSimulatorIcon.svg``, and the demo is that
+icon with an amber "DEMO" badge in its lower-right corner. These tests pin it:
 
   * the demo overlay overrides every icon the base config declares, and each
     override resolves to a real file;
-  * the demo icons are the same mark on a visibly different plate — a colour
-    distance the eye cannot miss at 32 px, with the silhouette left alone so
-    the demo still reads as the same product;
-  * the "DEMO" ribbon is on the large frames and off the small ones, because
-    the word is unreadable at the 16-32 px the taskbar and the library row
-    actually draw — and where it is drawn, the band really does spell the word;
-  * the hand-written ICO and ICNS containers carry every representation the
-    base app's do, each one holds the size its directory entry or chunk type
-    promises, and the ones that are not PNG decode back to the frame they were
-    built from;
+  * every base frame draws the official icon — its two voices, violet and
+    emerald, where the source puts them, on its dark stage — and every demo
+    frame is that same frame, pixel for pixel, except inside the badge, which
+    is amber with four dark letterforms in it. At 16-32 px the word is mush,
+    but the amber pill is still there: colour is what tells two rows of a
+    library list apart;
+  * the hand-written ICO and ICNS containers carry every representation a
+    desktop asks for, each one holds the size its directory entry or chunk
+    type promises, the ICNS is on Apple's icon grid, and the run-length
+    encoded ARGB chunks decode to the frame they were built from;
   * the two Steamworks icons exist at the sizes Valve's spec names — App Icon
-    184 x 184 JPG, Shortcut Icon 256 x 256 PNG (512 is the only other size
-    Valve takes there) — and the shortcut icon is the same image the app
-    itself installs.
+    184 x 184 JPG, Shortcut Icon 256 x 256 PNG — for both apps, and the
+    shortcut icon is the same image the app itself installs;
+  * the Microsoft Store logos are the same tile, at the sizes the manifest
+    names, for both packages;
+  * every generated SVG (favicons, the site logos, the demo master, the Steam
+    vectors) is byte-for-byte what the generator draws today;
+  * the Steam capsules: every asset at Valve's exact size, the demo's the
+    full game's art plus the same badge, clear of the composition, on every
+    asset allowed to carry the name — and none on the library hero.
 
-The App Icon is the one the issue's screenshot is about: Valve's spec says it
-is what the Steam client draws "in the library list view, 'favorites' in chat,
-and notifications", which is exactly the sidebar row where the demo and the
-full game read as the same product.
-
-Issue #551 is the same gap one level up: the demo app had no capsule or
-library art at all, so its library entry and store presence rendered blank.
-D-10g pins the demo capsule set ``gen_capsules.py --edition demo`` writes to
-``publishing/assets/capsules/demo/``: every asset at Valve's exact size, on
-the demo icon's purple plate rather than the full game's near-black stage,
-with the icon's "DEMO" ribbon in the lower-right corner of every asset allowed
-to carry the name — clear of the composition — and none on the library hero.
-
-Nothing here needs a build or a network, and only the JPEG's pixels need
-ImageMagick — the PNGs, the ICO and the ICNS are parsed directly, and the
-JPEG's dimensions come straight out of its SOF marker. The CI acceptance job
-installs ImageMagick for those three pixel checks; without it they skip on a
-developer machine and fail under CI, so a runner image that stops shipping it
-cannot quietly drop the App Icon from the gate. Owner: platform team.
+Nothing here needs a build, a renderer or a network, and only the JPEG's
+pixels need ImageMagick — the PNGs, the ICO and the ICNS are parsed directly,
+and the JPEG's dimensions come straight out of its SOF marker. The CI
+acceptance job installs ImageMagick for those pixel checks; without it they
+skip on a developer machine and fail under CI, so a runner image that stops
+shipping it cannot quietly drop the App Icon from the gate. Owner: platform
+team.
 """
 from __future__ import annotations
 
 import importlib.util
 import json
-import math
 import os
 import shutil
 import struct
 import subprocess
 import zlib
-from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -62,45 +57,52 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SRC_TAURI = _REPO_ROOT / "apps" / "desktop" / "src-tauri"
 _BASE_CONF = _SRC_TAURI / "tauri.conf.json"
 _DEMO_CONF = _SRC_TAURI / "tauri.demo.conf.json"
+_BUNDLE_DIR = {"base": _SRC_TAURI / "icons", "demo": _SRC_TAURI / "icons-demo"}
 _ICON_DIR = _REPO_ROOT / "publishing" / "assets" / "icons"
-_APP_ICON = _ICON_DIR / "demo_app_icon.jpg"
-_SHORTCUT_ICON = _ICON_DIR / "demo_shortcut_icon.png"
-_DEMO_SVG = _ICON_DIR / "demo_icon.svg"
+_MSSTORE_DIR = {
+    "base": _REPO_ROOT / "publishing" / "microsoft-store" / "Assets",
+    "demo": _REPO_ROOT / "publishing" / "microsoft-store" / "Assets-demo",
+}
 _ASSET_SOURCE = _REPO_ROOT / "publishing" / "assets" / "source"
 _GEN_ICONS = _ASSET_SOURCE / "gen_icons.py"
 _GEN_CAPSULES = _ASSET_SOURCE / "gen_capsules.py"
 _CAPSULE_DIR = _REPO_ROOT / "publishing" / "assets" / "capsules"
 _DEMO_CAPSULE_DIR = _CAPSULE_DIR / "demo"
+_EDITIONS = ("base", "demo")
 
-# Plate colours from publishing/assets/source/gen_icons.py.
-_BASE_PLATE = (0x14, 0x7A, 0x84)
-_DEMO_PLATE = (0x6D, 0x28, 0xD9)
-_RIBBON_BG = (0x0D, 0x0D, 0x15)
-_RIBBON_FG = (0xF4, 0xF4, 0xF5)
-_WHITE = (0xFF, 0xFF, 0xFF)
+# The brand palette (docs/brand.md), restated so that a recoloured source or
+# badge fails here rather than shipping.
+_YOU = (0xA7, 0x8B, 0xFA)       # --cs-you, the violet bubble
+_THEM = (0x6E, 0xE7, 0xB7)      # --cs-them, the emerald bubble
+_BADGE = (0xFB, 0xBF, 0x24)     # --cs-event, the DEMO pill
+_INK = (0x0F, 0x0F, 0x11)       # --cs-stage, the DEMO lettering
+_STAGE_LIGHT = (0x45, 0x45, 0x45)   # the icon's radial gradient, centre ...
+_STAGE_DARK = (0x29, 0x29, 0x29)    # ... and edge
+# Colours that must appear nowhere in any icon any more: the old teal and
+# purple plates, and the old capsule-only green bubble.
+_RETIRED = ((0x14, 0x7A, 0x84), (0x6D, 0x28, 0xD9), (0x15, 0x80, 0x3D))
 
-# The ribbon band, as gen_icons.py places it: distance along the lower-right
-# diagonal, u(x, y) = (x + y) / sqrt(2), in the 256-unit viewBox the mark is
-# drawn in.  Restated here rather than imported so that moving the band in the
-# generator without meaning to is a failure, not a silently relocated ribbon.
-_VIEW = 256.0
-_RIBBON_U_INNER, _RIBBON_U_OUTER = 266.0, 308.0
+# Where the two bubbles are solid, as fractions of the icon's side, read off
+# the 864-unit source: the middle of each bubble's body.
+_YOU_AT = (0.25, 0.52)
+_THEM_AT = (0.72, 0.33)
+
+# The badge's rectangle, as fractions of the icon's side, restated from
+# gen_icons.py (an 88-unit cap height of a 4.1725-cap-wide word, 44 units of
+# padding either side, a 150-unit pill, 52 units off the right and bottom
+# edges, all of 864) so that moving the badge without meaning to is a failure.
+_BADGE_H = 150 / 864
+_BADGE_W = (88 * 4.1725 + 2 * 44) / 864
+_BADGE_MARGIN = 52 / 864
 
 # Steamworks, Store Presence -> Graphical Assets -> Community and Client Icons
-# (https://partner.steamgames.com/doc/store/assets/community).  Both fields are
-# required, and neither is the 32 px ".ico" a reader might expect: the sizes are
-# restated here so a drift in gen_icons.py fails rather than ships an asset
-# Valve's uploader rejects.
+# (https://partner.steamgames.com/doc/store/assets/community).
 _APP_ICON_PX = 184       # App Icon: 184x184 JPG — the library-list row
-# Shortcut Icon: Valve takes 256x256 or 512x512, .ico or .png.  This pins the
-# 256 the generator emits, which is the frame the bundle already ships; a move
-# to 512 is a deliberate change to both sides, not a drift.
-_SHORTCUT_ICON_PX = 256
+_SHORTCUT_ICON_PX = 256  # Shortcut Icon: 256x256 or 512x512, .ico or .png
 
-# Below this the two icons would start to look alike in a library list.  The
-# teal/purple pair measures ~148, so there is room to retune either plate; the
-# point of the floor is to fail a future "subtle" recolour, not to be a tight fit.
-_MIN_PLATE_DISTANCE = 100.0
+# AppxManifest.xml's three logos.
+_MSSTORE_LOGOS = {"Square150x150Logo.png": 150, "Square44x44Logo.png": 44,
+                  "StoreLogo.png": 50}
 
 # Steamworks capsule and library sizes
 # (https://partner.steamgames.com/doc/store/assets), restated so a drift in
@@ -119,23 +121,15 @@ _CAPSULE_SIZES = {
 _BASE_ONLY_CAPSULES = {"page_background": (1438, 810)}
 # The assets that carry the game name, and so may carry "DEMO".  The hero must
 # stay textless (Steam lays the logo over it) and the logo has no corner.
-_RIBBONED_CAPSULES = ("header_capsule", "small_capsule", "main_capsule",
-                      "vertical_capsule", "library_capsule", "library_header")
-_OPAQUE_CAPSULES = tuple(n for n in _CAPSULE_SIZES if n != "library_logo")
-
-# The full game's capsule stage, lower and upper band (gen_capsules.py).
-_BASE_STAGE = ((0x0D, 0x0D, 0x15), (0x12, 0x12, 0x1C))
-# The demo stage: the icon plate above, a step darker below.
-_DEMO_LOWER_BAND = (0x5B, 0x21, 0xB6)
-
-# Ribbon placement on a capsule, restated from gen_capsules.py: the icon's
-# 256-unit frame, plate corner (245.5, 245.5) pinned to the capsule's
-# lower-right corner and scaled as a demo icon 0.6 x the capsule's
-# geometric-mean side.  The band edges themselves are _RIBBON_U_* above.
-_PLATE_CORNER = 245.5
-_CAPSULE_RIBBON_ICON_SIDE = 0.6
-# Fraction of the band's width that must stay clear inside its inner edge.
-_CAPSULE_RIBBON_CLEARANCE = 0.4
+_BADGED_CAPSULES = ("header_capsule", "small_capsule", "main_capsule",
+                    "vertical_capsule", "library_capsule", "library_header")
+# The capsules' stage, lower and upper band (gen_capsules.py).
+_CAPSULE_STAGE = ((0x0D, 0x0D, 0x15), (0x12, 0x12, 0x1C))
+# The capsule badge sits as on a demo icon 0.6 x the capsule's geometric-mean
+# side, pinned to the capsule's lower-right corner; a quarter of the pill's
+# height around it must be plain stage.
+_CAPSULE_BADGE_ICON_SIDE = 0.6
+_CAPSULE_BADGE_CLEARANCE = 0.25
 
 
 # ---------------------------------------------------------------------------
@@ -302,20 +296,6 @@ class _Raster:
             for x in range(0, self.width, step):
                 yield x, y, self.rgba(x, y)
 
-    def diagonal_strip(self, lo: float, hi: float):
-        """The pixels whose centres satisfy lo <= x + y <= hi, as (x, y, rgba).
-
-        The ribbon band, its clearance and the corner tip beyond it are all
-        such strips across the lower-right corner, so only they are read.
-        """
-        w, h = self.width, self.height
-        for y in range(max(0, int(lo) - w - 1), h):
-            x0 = max(0, math.floor(lo - y - 1))
-            x1 = min(w - 1, math.ceil(hi - y - 1))
-            for x in range(x0, x1 + 1):
-                if lo <= x + y + 1 <= hi:
-                    yield x, y, self.rgba(x, y)
-
 
 def _find_magick() -> str | None:
     """ImageMagick's command-line entry point, or None when it is not installed.
@@ -393,109 +373,8 @@ def _magick_rgb(path: Path, size: int) -> list[tuple[int, int, int]]:
     return [tuple(raw[i:i + 3]) for i in range(0, len(raw), 3)]
 
 
-def _plate_colour(path: Path) -> tuple[int, int, int]:
-    """The icon's dominant opaque colour — in practice the rounded-square plate."""
-    _, _, pixels = _read_png(path)
-    opaque = Counter((r, g, b) for r, g, b, a in pixels if a == 255)
-    assert opaque, f"{path} has no fully opaque pixels"
-    return opaque.most_common(1)[0][0]
-
-
 def _distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
     return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
-
-
-def _mark_mask(path: Path) -> set[tuple[int, int]]:
-    """``{(x, y)}`` of the opaque near-white pixels outside the ribbon band.
-
-    White is the mark: the speech bubble and its tail, with the three
-    plate-coloured dots as holes in it. The ribbon's lettering is white as
-    well, so the band is cut out of every frame alike, whichever edition it
-    is; the base has no ribbon, and its absence must not read as a missing
-    mark.
-    """
-    width, _, pixels = _read_png(path)
-    inner = _RIBBON_U_INNER * 2 ** 0.5 * (width / _VIEW)
-    mask: set[tuple[int, int]] = set()
-    for index, (r, g, b, a) in enumerate(pixels):
-        y, x = divmod(index, width)
-        if (x + 0.5) + (y + 0.5) >= inner:
-            continue
-        if a > 128 and _distance((r, g, b), _WHITE) <= 60:
-            mask.add((x, y))
-    return mask
-
-
-def _unmatched(mask: set[tuple[int, int]], other: set[tuple[int, int]]) -> int:
-    """How many pixels of ``mask`` have no pixel of ``other`` within one step.
-
-    The one-pixel neighbourhood is what lets two anti-aliasers disagree about
-    an edge without the masks disagreeing about the mark. A mark that is
-    missing, moved or resized by more than a pixel still shows up in full.
-    """
-    return sum(
-        1 for x, y in mask
-        if not any(
-            (x + dx, y + dy) in other
-            for dx in (-1, 0, 1) for dy in (-1, 0, 1)
-        )
-    )
-
-
-def _count_near(path: Path, colour: tuple[int, int, int], tolerance: int = 24) -> int:
-    _, _, pixels = _read_png(path)
-    return sum(
-        1 for r, g, b, a in pixels
-        if a > 200 and _distance((r, g, b), colour) <= tolerance
-    )
-
-
-def _ribbon_band(path: Path) -> tuple[int, int, int]:
-    """(covered, band colour, lettering) pixel counts inside the ribbon band.
-
-    The band is the strip of the plate between ``_RIBBON_U_INNER`` and
-    ``_RIBBON_U_OUTER`` along the lower-right diagonal, scaled from the
-    256-unit viewBox to the frame.  Looking only inside it is what separates
-    the ribbon's own white lettering from the speech bubble's white body.
-    """
-    width, _, pixels = _read_png(path)
-    scale = width / _VIEW
-    inner, outer = _RIBBON_U_INNER * 2 ** 0.5 * scale, _RIBBON_U_OUTER * 2 ** 0.5 * scale
-    covered = band = word = 0
-    for index, (r, g, b, a) in enumerate(pixels):
-        y, x = divmod(index, width)
-        if not inner <= (x + 0.5) + (y + 0.5) <= outer or a <= 200:
-            continue
-        covered += 1
-        if _distance((r, g, b), _RIBBON_BG) <= 24:
-            band += 1
-        elif _distance((r, g, b), _RIBBON_FG) <= 24:
-            word += 1
-    return covered, band, word
-
-
-def _ribbon_letterforms(path: Path) -> list[int]:
-    """Lettering pixel counts, one entry per letterform, reading along the band.
-
-    The ribbon runs down the lower-right diagonal, so the word is laid out
-    along ``x - y`` — bucket the band's light pixels by that and the gaps
-    ``WORD_TRACKING`` leaves between glyphs show up as empty buckets.  Summing
-    a glyph into a single bucket range rather than walking connected pixels is
-    what makes this survive a re-render: a counter (the hole in D and O) and a
-    hairline stroke the anti-aliasing happens to break in two still read as one
-    letterform, while a missing or overlapping glyph does not.
-    """
-    width, _, pixels = _read_png(path)
-    scale = width / _VIEW
-    inner, outer = _RIBBON_U_INNER * 2 ** 0.5 * scale, _RIBBON_U_OUTER * 2 ** 0.5 * scale
-    columns: dict[int, int] = {}
-    for index, (r, g, b, a) in enumerate(pixels):
-        y, x = divmod(index, width)
-        if not inner <= (x + 0.5) + (y + 0.5) <= outer or a <= 200:
-            continue
-        if _distance((r, g, b), _RIBBON_FG) <= 24:
-            columns[x - y] = columns.get(x - y, 0) + 1
-    return _letterform_runs(columns)
 
 
 def _letterform_runs(columns: dict[int, int]) -> list[int]:
@@ -565,12 +444,6 @@ def _jpeg_frame(path: Path) -> tuple[int, int, int]:
 # ---------------------------------------------------------------------------
 # Minimal ICNS reader.
 # ---------------------------------------------------------------------------
-# Chunks that hold no plain image: the table of contents, the version and
-# metadata blobs Apple's own tooling appends (the base icon.icns carries an
-# `info`), and the nested-ICNS variant chunks.  Only image types are required
-# of the demo set.
-_ICNS_METADATA = {b"TOC ", b"icnV", b"info", b"name", b"sbtp", b"slct"}
-
 # The pixel size each PNG-payload chunk type promises, per the ICNS format.
 # ``write_icns`` in gen_icons.py picks the frame for each type off its own copy
 # of this table; stating it independently here is what makes a transposed pair
@@ -653,6 +526,81 @@ def _decode_icns_argb(payload: bytes, size: int) -> list[tuple[int, int, int, in
     return [(red[i], green[i], blue[i], alpha[i]) for i in range(size * size)]
 
 
+def _near(rgb, colour, tolerance: float) -> bool:
+    return _distance(rgb[:3], colour) <= tolerance
+
+
+def _badge_box(size: int) -> tuple[float, float, float, float]:
+    """The DEMO pill's (x0, y0, x1, y1) on a ``size`` px square icon."""
+    x1 = y1 = size * (1 - _BADGE_MARGIN)
+    return x1 - size * _BADGE_W, y1 - size * _BADGE_H, x1, y1
+
+
+def _in_box(x: int, y: int, box, pad: float = 0.0) -> bool:
+    """Whether pixel (x, y), by its centre, falls inside ``box`` grown by ``pad``."""
+    x0, y0, x1, y1 = box
+    cx, cy = x + 0.5, y + 0.5
+    return x0 - pad <= cx <= x1 + pad and y0 - pad <= cy <= y1 + pad
+
+
+def _text_window(box, unit: float) -> tuple[float, float, float, float]:
+    """The part of a pill's bounding box that is only pill or lettering.
+
+    The rows of the cap height (88 of the badge's 150 units), and the columns
+    24 units in from either end: at those rows the rounded ends have already
+    reached 15 units in, and the lettering starts 44 in.  ``unit`` is the
+    icon's side / 864.  Outside this window the bounding box holds the stage
+    the pill's round ends leave uncovered, which is as dark as the ink.
+    """
+    x0, y0, x1, y1 = box
+    mid = (y0 + y1) / 2
+    return x0 + 24 * unit, mid - 44 * unit, x1 - 24 * unit, mid + 44 * unit
+
+
+def _is_ink(rgba) -> bool:
+    """Darker than the amber by a clear margin: the lettering, or its edge."""
+    r, g, b = rgba[:3]
+    return 0.299 * r + 0.587 * g + 0.114 * b < 165
+
+
+def _letterforms(ink_by_column: dict[int, int]) -> list[int]:
+    """Ink pixel counts per run of consecutive columns: one run per letter."""
+    return _letterform_runs({x: n for x, n in ink_by_column.items() if n})
+
+
+class _Frame:
+    """A decoded RGBA PNG icon frame, addressable by (x, y)."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.width, self.height, self.pixels = _read_png(path)
+
+    @classmethod
+    def from_bytes(cls, raw: bytes, label: str) -> "_Frame":
+        frame = cls.__new__(cls)
+        frame.path = label
+        frame.width, frame.height, frame.pixels = _decode_png(raw, label)
+        return frame
+
+    def at(self, fx: float, fy: float) -> tuple[int, int, int, int]:
+        """The pixel at a fraction of the frame's width and height."""
+        x = min(self.width - 1, int(fx * self.width))
+        y = min(self.height - 1, int(fy * self.height))
+        return self.pixels[y * self.width + x]
+
+    def __iter__(self):
+        for index, rgba in enumerate(self.pixels):
+            y, x = divmod(index, self.width)
+            yield x, y, rgba
+
+
+def _bundle_png(edition: str, name: str) -> Path:
+    return _BUNDLE_DIR[edition] / name
+
+
+_BUNDLE_PNGS = ("32x32.png", "128x128.png", "128x128@2x.png")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -682,8 +630,8 @@ class TestDemoOverlayOverridesIcons:
         demo_dirs = {Path(p).parent for p in demo_icons}
         assert demo_dirs.isdisjoint(base_dirs)
 
-    def test_every_declared_icon_exists(self, demo_icons):
-        missing = [p for p in demo_icons if not (_SRC_TAURI / p).is_file()]
+    def test_every_declared_icon_exists(self, base_icons, demo_icons):
+        missing = [p for p in base_icons + demo_icons if not (_SRC_TAURI / p).is_file()]
         assert not missing, f"declared but absent: {missing}"
 
     def test_no_demo_icon_is_a_copy_of_the_base_icon(self, base_icons, demo_icons):
@@ -698,453 +646,373 @@ class TestDemoOverlayOverridesIcons:
 
 
 # ---------------------------------------------------------------------------
-# D-10b  Same mark, visibly different plate
+# D-10b  Both editions draw the official icon; the demo adds only the badge
 # ---------------------------------------------------------------------------
-class TestDemoIconIsVisuallyDistinct:
-    @pytest.mark.parametrize("name", ["32x32.png", "128x128.png", "128x128@2x.png"])
-    def test_plate_colours_are_far_apart(self, name):
-        base = _plate_colour(_SRC_TAURI / "icons" / name)
-        demo = _plate_colour(_SRC_TAURI / "icons-demo" / name)
-        assert _distance(base, demo) >= _MIN_PLATE_DISTANCE, (
-            f"{name}: demo plate {demo} is too close to the base plate {base}"
+class TestEveryFrameIsTheOfficialIcon:
+    """The bundle frames are ConversationSimulatorIcon.svg, in the tile shape."""
+
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_the_two_voices(self, edition, name):
+        """Violet below-left and emerald above-right, where the source has them."""
+        frame = _Frame(_bundle_png(edition, name))
+        assert _near(frame.at(*_YOU_AT), _YOU, 24), (
+            f"{edition}/{name}: {frame.at(*_YOU_AT)} where the violet bubble should be"
+        )
+        assert _near(frame.at(*_THEM_AT), _THEM, 24), (
+            f"{edition}/{name}: {frame.at(*_THEM_AT)} where the emerald bubble should be"
         )
 
-    def test_plates_are_the_documented_colours(self):
-        assert _distance(_plate_colour(_SRC_TAURI / "icons" / "32x32.png"), _BASE_PLATE) < 12
-        assert _distance(_plate_colour(_SRC_TAURI / "icons-demo" / "32x32.png"), _DEMO_PLATE) < 12
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_the_dark_stage(self, edition, name):
+        """Open stage between the bubbles and the corner is the source's grey gradient."""
+        r, g, b, a = _Frame(_bundle_png(edition, name)).at(0.12, 0.12)
+        assert a == 255
+        assert max(r, g, b) - min(r, g, b) <= 3, f"{edition}/{name}: stage is not grey"
+        assert _STAGE_DARK[0] - 3 <= r <= _STAGE_LIGHT[0] + 3, (
+            f"{edition}/{name}: stage {r, g, b} is outside the icon's gradient"
+        )
 
-    @pytest.mark.parametrize("name", ["32x32.png", "128x128.png", "128x128@2x.png"])
-    def test_silhouette_is_unchanged(self, name):
-        """The demo is the same product: neither the plate's outline nor the
-        mark on it may move.
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_rounded_corners(self, edition, name):
+        frame = _Frame(_bundle_png(edition, name))
+        w, h = frame.width, frame.height
+        for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+            assert frame.pixels[y * w + x][3] == 0, f"{edition}/{name}: corner ({x}, {y}) is opaque"
 
-        Two comparisons, because the plate is opaque under the bubble, so
-        alpha alone cannot tell a frame with the bubble painted out from the
-        real one. Coverage is compared rather than raw alpha, so that the two
-        renderers disagreeing by a fraction of a pixel along the rounded edge
-        does not read as a different shape; the white mark is compared as a
-        mask with a one-pixel neighbourhood for the same reason, with the
-        ribbon band cut out of both editions because its lettering is white
-        too and the base has no ribbon.
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_no_retired_colour(self, edition, name):
+        """No trace of the old teal or purple plates or the capsule-only green."""
+        frame = _Frame(_bundle_png(edition, name))
+        stray = [(x, y) for x, y, rgba in frame
+                 if rgba[3] > 200 and any(_near(rgba, c, 20) for c in _RETIRED)]
+        assert not stray, f"{edition}/{name}: retired brand colour at {stray[:5]}"
+
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_png_dimensions(self, name):
+        expected = {"32x32.png": 32, "128x128.png": 128, "128x128@2x.png": 256}[name]
+        for edition in _EDITIONS:
+            frame = _Frame(_bundle_png(edition, name))
+            assert (frame.width, frame.height) == (expected, expected)
+
+
+class TestDemoIsTheIconWithABadge:
+    """Demo = base + badge, and nothing else: the demo must read as the same product."""
+
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_identical_to_the_base_outside_the_badge(self, name):
+        base = _Frame(_bundle_png("base", name))
+        demo = _Frame(_bundle_png("demo", name))
+        box = _badge_box(base.width)
+        moved = [
+            (x, y) for (x, y, b), (_, _, d) in zip(base, demo)
+            if not _in_box(x, y, box, pad=1.0) and max(abs(i - j) for i, j in zip(b, d)) > 2
+        ]
+        assert not moved, f"{name}: the demo differs from the base outside the badge at {moved[:5]}"
+
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_the_badge_is_amber(self, name):
+        """At every size, 32 px included: the pill's colour is the cue that survives.
+
+        Measured over the pill's bounding box, which its round ends and its
+        lettering share: at 32 px about a third of it is still clean amber.
         """
-        base_path = _SRC_TAURI / "icons" / name
-        demo_path = _SRC_TAURI / "icons-demo" / name
-        _, _, base = _read_png(base_path)
-        _, _, demo = _read_png(demo_path)
-        assert len(base) == len(demo)
-        differing = sum(
-            1 for (_, _, _, a), (_, _, _, b) in zip(base, demo) if (a > 128) != (b > 128)
-        )
-        assert differing <= len(base) * 0.01, (
-            f"{name}: {differing}/{len(base)} covered pixels differ — the demo "
-            "mark should share the base silhouette"
+        demo = _Frame(_bundle_png("demo", name))
+        box = _badge_box(demo.width)
+        inside = [rgba for x, y, rgba in demo if _in_box(x, y, box)]
+        amber = sum(1 for rgba in inside if _near(rgba, _BADGE, 40))
+        assert inside and amber >= 0.3 * len(inside), (
+            f"{name}: only {amber}/{len(inside)} badge pixels are amber"
         )
 
-        base_mark = _mark_mask(base_path)
-        demo_mark = _mark_mask(demo_path)
-        assert base_mark, f"{name}: no white mark found on the base icon"
-        stray = _unmatched(demo_mark, base_mark) + _unmatched(base_mark, demo_mark)
-        # Zero on the committed set at every size: the edge pixels the two
-        # renderers classify differently all have a matching neighbour. A
-        # painted-out bubble puts the whole base mark here; dropped dots put
-        # their interiors here at 128 px and up.
-        assert stray <= len(base_mark) * 0.01, (
-            f"{name}: {stray} pixels of the white mark are in one edition and "
-            f"not within a pixel of it in the other (base mark {len(base_mark)}, "
-            f"demo mark {len(demo_mark)}): the demo should carry the base mark"
-        )
+    @pytest.mark.parametrize("name", _BUNDLE_PNGS)
+    def test_the_base_has_no_badge(self, name):
+        base = _Frame(_bundle_png("base", name))
+        amber = sum(1 for _, _, rgba in base if rgba[3] > 200 and _near(rgba, _BADGE, 40))
+        assert amber == 0, f"{name}: the full game's icon carries {amber} amber pixels"
 
-    def test_png_dimensions(self):
-        for name, expected in (("32x32.png", 32), ("128x128.png", 128), ("128x128@2x.png", 256)):
-            width, height, _ = _read_png(_SRC_TAURI / "icons-demo" / name)
-            assert (width, height) == (expected, expected), name
-
-
-# ---------------------------------------------------------------------------
-# D-10c  The "DEMO" ribbon appears only where it is legible
-# ---------------------------------------------------------------------------
-class TestDemoRibbon:
-    def test_large_frames_carry_the_ribbon(self):
-        for name in ("128x128.png", "128x128@2x.png"):
-            path = _SRC_TAURI / "icons-demo" / name
-            width, _, _ = _read_png(path)
-            ribbon_px = _count_near(path, _RIBBON_BG)
-            assert ribbon_px > width * 4, f"{name}: no DEMO ribbon found"
-
-    def test_small_frame_has_no_ribbon(self):
-        """At 32 px the word is ~3 px tall; it reads as dirt, not as a word."""
-        path = _SRC_TAURI / "icons-demo" / "32x32.png"
-        assert _count_near(path, _RIBBON_BG) == 0
-
-    @pytest.mark.parametrize("name", ["128x128.png", "128x128@2x.png"])
-    def test_the_ribbon_actually_spells_demo(self, name):
-        """The band is dark and the word is light, both inside the band.
-
-        Without this the ribbon tests pass on an empty black stripe: the
-        letterforms in ``gen_icons.py`` are hand-built polygons laid out in an
-        upright frame and then rotated onto the diagonal, so a tracking or
-        glyph-height slip can push "DEMO" off the band — or collapse it —
-        while the band itself is still drawn exactly where it belongs.
-        """
-        covered, band, word = _ribbon_band(_SRC_TAURI / "icons-demo" / name)
-        assert covered, f"{name}: the ribbon band falls outside the plate"
-        assert band > covered * 0.5, (
-            f"{name}: only {band}/{covered} band pixels are the ribbon colour"
-        )
-        # "DEMO" measures ~17-22% of the band; the window is wide enough to
-        # survive a re-render and narrow enough to catch a missing or
-        # overflowing word.
-        assert 0.05 <= word / covered <= 0.45, (
-            f"{name}: lettering is {word}/{covered} of the ribbon band — "
-            '"DEMO" is missing, mispositioned or the wrong size'
-        )
-
-    @pytest.mark.parametrize("name", ["128x128.png", "128x128@2x.png"])
-    def test_the_ribbon_carries_four_separated_letterforms(self, name):
-        """Four glyphs, not four glyphs' worth of ink.
-
-        The area check above is blind to *which* letters are there: drop the E
-        from ``_GLYPHS``' layout and the remaining three still land inside its
-        window.  Counting the gaps ``WORD_TRACKING`` leaves along the band is
-        what pins the word to "DEMO" — a dropped glyph gives three runs, and a
-        tracking or glyph-width slip that lets two letters touch gives fewer
-        than four as well.
-        """
-        runs = _ribbon_letterforms(_SRC_TAURI / "icons-demo" / name)
-        assert len(runs) == 4, (
-            f'{name}: the ribbon has {len(runs)} letterform(s), not the four of '
-            f'"DEMO" — pixel counts {runs}'
-        )
-        # D, E, M and O differ in width, but not by anything like 4x; a run
-        # that small is a fragment, not a letter.
-        assert min(runs) * 4 >= max(runs), f"{name}: lopsided letterforms {runs}"
-
-    def test_base_icon_never_carries_a_ribbon(self):
-        for name in ("32x32.png", "128x128.png", "128x128@2x.png"):
-            assert _count_near(_SRC_TAURI / "icons" / name, _RIBBON_BG) == 0, name
-
-
-# ---------------------------------------------------------------------------
-# D-10d  Container formats
-# ---------------------------------------------------------------------------
-class TestIconContainers:
-    def test_ico_carries_the_sizes_windows_asks_for(self):
-        frames = _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico")
-        sizes = {w for w, _, _ in frames}
-        assert {16, 32, 48, 256} <= sizes, f"icon.ico is missing sizes: {sizes}"
-
-    def test_ico_entries_match_the_frames_they_point_at(self):
-        """A directory entry that disagrees with its own payload is a dead frame.
-
-        The entry is all Windows reads when it picks a size, so a 48 px slot
-        holding the 64 px frame is drawn rescaled — or skipped. ``write_ico``
-        derives both numbers from the same list, which is exactly the kind of
-        pairing that stays right until someone reorders one side of it.
-        """
-        for width, height, payload in _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico"):
-            assert _png_dimensions(payload) == (width, height), (
-                f"icon.ico declares a {width}x{height} frame but holds "
-                f"{_png_dimensions(payload)}"
-            )
-
-    def test_icns_png_chunks_hold_the_size_their_type_promises(self):
-        """Same bookkeeping on the macOS side: the type *is* the size."""
-        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
-        for kind, payload in chunks.items():
-            if kind not in _ICNS_PNG_SIZES:
+    @pytest.mark.parametrize("name", ("128x128.png", "128x128@2x.png"))
+    def test_the_badge_spells_four_letters(self, name):
+        """Dark lettering in the pill, in four separate runs of columns: D, E, M, O."""
+        demo = _Frame(_bundle_png("demo", name))
+        window = _text_window(_badge_box(demo.width), demo.width / 864)
+        columns: dict[int, int] = {}
+        inside = ink = 0
+        for x, y, rgba in demo:
+            if not _in_box(x, y, window):
                 continue
-            size = _ICNS_PNG_SIZES[kind]
-            assert _png_dimensions(payload) == (size, size), (
-                f"{kind.decode()} should be {size}x{size}, holds "
+            inside += 1
+            if _is_ink(rgba):
+                ink += 1
+                columns[x] = columns.get(x, 0) + 1
+            else:
+                assert _near(rgba, _BADGE, 60), f"{name}: {rgba} at ({x}, {y}) is neither pill nor ink"
+        assert 0.15 <= ink / inside <= 0.6, f"{name}: lettering is {ink}/{inside} of the pill"
+        runs = _letterforms(columns)
+        assert len(runs) == 4, f"{name}: {len(runs)} letterform(s), not four: {runs}"
+
+
+# ---------------------------------------------------------------------------
+# D-10c  The ICO and ICNS containers
+# ---------------------------------------------------------------------------
+_ICNS_REQUIRED = {b"ic04", b"ic05", b"ic07", b"ic08", b"ic09", b"ic10",
+                  b"ic11", b"ic12", b"ic13", b"ic14"}
+
+
+class TestIconContainers:
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_ico_carries_the_sizes_windows_asks_for(self, edition):
+        sizes = {w for w, _, _ in _read_ico(_BUNDLE_DIR[edition] / "icon.ico")}
+        assert {16, 24, 32, 48, 64, 128, 256} <= sizes, f"{edition} icon.ico is missing sizes: {sizes}"
+
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_ico_entries_match_the_frames_they_point_at(self, edition):
+        """A directory entry that lies about its frame's size makes Windows rescale."""
+        for width, height, payload in _read_ico(_BUNDLE_DIR[edition] / "icon.ico"):
+            assert _png_dimensions(payload) == (width, height), (
+                f"{edition} icon.ico declares a {width}x{height} frame but holds "
                 f"{_png_dimensions(payload)}"
             )
 
-    def test_ico_32px_frame_is_the_bundle_png(self):
-        """Closes the ring between the three 32 px artefacts.
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    @pytest.mark.parametrize("size,name", ((32, "32x32.png"), (128, "128x128.png"),
+                                           (256, "128x128@2x.png")))
+    def test_ico_frames_are_the_bundle_pngs(self, edition, size, name):
+        ico = {w: payload for w, _, payload in _read_ico(_BUNDLE_DIR[edition] / "icon.ico")}
+        assert ico[size] == _bundle_png(edition, name).read_bytes(), (
+            f"{edition} icon.ico's {size} px frame is not {name}"
+        )
 
-        ``ic05`` is pinned to this frame below, and the three 32 px artefacts
-        — the bundle PNG, the ICO slot and the ICNS rep — are what the taskbar
-        and the Finder list draw. Without this link they could drift apart one
-        re-render at a time.
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_icns_is_well_formed_and_complete(self, edition):
+        chunks = _read_icns(_BUNDLE_DIR[edition] / "icon.icns")
+        missing = _ICNS_REQUIRED - set(chunks)
+        assert not missing, f"{edition} icon.icns is missing representations: {missing}"
+        for kind, payload in chunks.items():
+            if kind in _ICNS_PNG_SIZES:
+                size = _ICNS_PNG_SIZES[kind]
+                assert _png_dimensions(payload) == (size, size), (
+                    f"{edition} icon.icns {kind!r} promises {size} px"
+                )
+
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_icns_sits_on_apples_icon_grid(self, edition):
+        """824/1024 of the canvas, centred: a transparent 100/1024 margin all round.
+
+        A full-bleed square sits oversized in the Dock, and macOS 26 sets an
+        icon that does not fill the standard shape on a grey plate of its own.
         """
-        ico = {w: payload for w, _, payload in _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico")}
-        _, _, from_ico = _decode_png(ico[32], "icon.ico 32px frame")
-        _, _, from_png = _read_png(_SRC_TAURI / "icons-demo" / "32x32.png")
-        assert from_ico == from_png, "icon.ico's 32 px frame is not 32x32.png"
+        chunks = _read_icns(_BUNDLE_DIR[edition] / "icon.icns")
+        frame = _Frame.from_bytes(chunks[b"ic07"], f"{edition} icns ic07")   # 128 px
+        margin = 128 * 100 / 1024                                            # 12.5 px
+        assert frame.pixels[64 * 128 + int(margin) - 2][3] == 0, "no left margin"
+        assert frame.pixels[64 * 128 + int(margin) + 2][3] == 255, "art does not start at the grid"
+        assert frame.pixels[(int(margin) - 2) * 128 + 64][3] == 0, "no top margin"
+        corner = int(margin) + 2
+        assert frame.pixels[corner * 128 + corner][3] == 0, "the art's corner is not rounded"
+        assert _near(frame.at(0.5 + (_THEM_AT[0] - 0.5) * 824 / 1024,
+                              0.5 + (_THEM_AT[1] - 0.5) * 824 / 1024), _THEM, 24)
 
-    def test_icns_is_well_formed(self):
-        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
-        # ic07/ic08 are the 128 and 256 px representations macOS actually draws
-        # in the Dock and in Finder's icon view.
-        assert {b"ic07", b"ic08"} <= set(chunks), list(chunks)
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_icns_argb_32_matches_its_png_twin(self, edition):
+        """ic05 (32 px ARGB) and ic11 (32 px PNG) are the same frame."""
+        chunks = _read_icns(_BUNDLE_DIR[edition] / "icon.icns")
+        argb = _decode_icns_argb(chunks[b"ic05"], 32)
+        _, _, png = _decode_png(chunks[b"ic11"], f"{edition} icns ic11")
+        assert argb == png, f"{edition} icon.icns: ic05 does not decode to ic11's frame"
 
-    def test_icns_covers_every_representation_the_base_icon_has(self):
-        """Including the 1x 16 pt and 32 pt reps (``ic04``/``ic05``).
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_icns_argb_16_decodes(self, edition):
+        chunks = _read_icns(_BUNDLE_DIR[edition] / "icon.icns")
+        pixels = _decode_icns_argb(chunks[b"ic04"], 16)
+        assert pixels[0][3] == 0, "the 16 px frame's corner is not transparent"
+        assert pixels[8 * 16 + 8][3] == 255, "the 16 px frame's centre is not opaque"
 
-        Without them macOS has to scale the nearest representation down for
-        Finder's list view and a 1x Dock — which costs exactly the small-size
-        sharpness this icon exists to provide.
-        """
-        base = _read_icns(_SRC_TAURI / "icons" / "icon.icns")
-        demo = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
-        wanted = set(base) - _ICNS_METADATA
-        missing = sorted(k.decode("latin-1") for k in wanted - set(demo))
-        assert not missing, f"demo icon.icns is missing representations: {missing}"
-
-    @pytest.mark.parametrize("kind,size", [(b"ic04", 16), (b"ic05", 32)])
-    def test_icns_argb_reps_match_the_ico_frame_of_the_same_size(self, kind, size):
-        """The hand-rolled ARGB encoding decodes back to the frame it came from.
-
-        ``ic04``/``ic05`` are run-length-encoded raw pixels rather than PNG, so
-        a channel-order or RLE slip would ship a corrupt icon that still opens.
-        """
-        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
-        decoded = _decode_icns_argb(chunks[kind], size)
-        ico = _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico")
-        frames = {w: payload for w, _, payload in ico}
-        width, height, expected = _decode_png(frames[size], f"icon.ico {size}px frame")
-        assert (width, height) == (size, size)
-        assert decoded == expected, f"{kind.decode()} does not match the {size} px frame"
-
-    @pytest.mark.parametrize("kind,size", [(b"ic04", 16), (b"ic05", 32)])
-    def test_icns_argb_payload_ends_on_a_literal(self, kind, size):
-        """The last RLE op must not be a repeat, whose value byte ends the payload.
-
-        ``iconutil``'s ARGB reader stops one byte short of the payload — on
-        Apple's own files as well. Apple always ends a channel on a literal,
-        so it loses one sample there and nobody notices. Ending on a repeat
-        instead loses the whole run: before ``tail_literal``, the blue channel
-        closed with a 42- and an 83-sample run and ``iconutil -c iconset``
-        gave back a band of (109, 40, 0) across the bottom two rows of both
-        reps, on fully opaque pixels. ``NSImage`` reads either form correctly,
-        but this file is also uploaded to Steamworks' Mac Icon field and
-        decoded by something we do not control.
-        """
-        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
-        control = _icns_argb_last_op(chunks[kind], size)
-        assert control < 128, (
-            f"{kind.decode()} ends on a repeat of {control - 125} samples; a "
-            "reader that stops one byte early loses all of them"
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    @pytest.mark.parametrize("kind,size", ((b"ic04", 16), (b"ic05", 32)))
+    def test_icns_argb_payload_ends_on_a_literal(self, edition, kind, size):
+        """``iconutil`` reads one byte short of an ARGB payload; a trailing
+        repeat would lose its value byte and up to 130 blue samples with it."""
+        chunks = _read_icns(_BUNDLE_DIR[edition] / "icon.icns")
+        assert _icns_argb_last_op(chunks[kind], size) < 128, (
+            f"{edition} icon.icns {kind!r}: the blue channel ends on a run"
         )
 
 
 # ---------------------------------------------------------------------------
-# D-10e  The two Steamworks icons
+# D-10d  The Steamworks icons, for both apps
 # ---------------------------------------------------------------------------
 class TestSteamworksIcons:
-    """Valve's "Community and Client Icons" fields, and only those.
+    """Community and Client Icons: App Icon (184 JPG) and Shortcut Icon (256 PNG).
 
-    There is no "client icon" asset: the fields are App Icon (184 x 184 JPG)
-    and Shortcut Icon (256 x 256 or 512 x 512, .ico or .png), plus Mac Icon,
-    which takes the bundle's own ``icon.icns`` unchanged. Getting the field
-    wrong is not a cosmetic slip — an asset at a size Valve does not accept is
-    one the uploader rejects, which is how the demo's library row stays
-    identical to the full game's.
+    The Mac Icon field takes the bundle's ``icon.icns`` unchanged.  The App
+    Icon is what the Steam client draws in the library list, chat favourites
+    and notifications — the row where the demo and the full game must not
+    look alike.
     """
 
-    def test_app_icon_is_a_184px_jpeg(self):
-        """The asset in issue #499's screenshot: Steam's library-list row."""
-        width, height, components = _jpeg_frame(_APP_ICON)
-        assert (width, height) == (_APP_ICON_PX, _APP_ICON_PX), (
-            f"Steamworks requires {_APP_ICON_PX}x{_APP_ICON_PX}, got {width}x{height}"
-        )
-        assert components == 3, (
-            f"the App Icon should be 3-component YCbCr, not {components}"
-        )
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_app_icon_is_a_184px_jpeg(self, edition):
+        assert _jpeg_frame(_ICON_DIR / f"{edition}_app_icon.jpg") == (_APP_ICON_PX, _APP_ICON_PX, 3)
 
-    def test_app_icon_is_flattened_onto_the_capsule_base(self):
-        """JPEG has no alpha, so the plate's rounded corners must be composited.
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_app_icon_is_the_full_bleed_icon(self, edition):
+        """Square and opaque to the edge: the source exactly, no plate, no matte."""
+        pixels = _magick_rgb(_ICON_DIR / f"{edition}_app_icon.jpg", _APP_ICON_PX)
+        n = _APP_ICON_PX
 
-        Valve replaces alpha with solid black when it derives an App Icon from
-        the Shortcut Icon; this one is flattened onto the capsule set's
-        near-black deliberately, so the corners read as the store art's
-        background rather than as a black notch.
-        """
-        pixels = _magick_rgb(_APP_ICON, _APP_ICON_PX)
-        corner = pixels[2 * _APP_ICON_PX + 2]
-        assert _distance(corner, _RIBBON_BG) <= 24, (
-            f"the App Icon's corner is {corner}, not the capsule base colour"
-        )
+        def at(fx, fy):
+            return pixels[int(fy * n) * n + int(fx * n)]
 
-    def test_app_icon_plate_is_the_demo_purple(self):
-        """Hue is what separates the two library rows at the size this is drawn."""
-        pixels = _magick_rgb(_APP_ICON, _APP_ICON_PX)
-        plate = Counter(pixels).most_common(1)[0][0]
-        assert _distance(plate, _DEMO_PLATE) <= 24, (
-            f"the App Icon's dominant colour is {plate}, not the demo purple"
-        )
-        assert _distance(plate, _BASE_PLATE) >= _MIN_PLATE_DISTANCE
+        for corner in (pixels[0], pixels[n - 1], pixels[(n - 1) * n]):
+            assert _near(corner, _STAGE_DARK, 14), f"{edition}: corner {corner} is not the stage"
+        assert _near(at(*_YOU_AT), _YOU, 28)
+        assert _near(at(*_THEM_AT), _THEM, 28)
 
-    def test_app_icon_carries_the_demo_ribbon(self):
-        """184 clears ``RIBBON_MIN_PX``, so the word is on the asset that matters.
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_app_icon_badge_only_on_the_demo(self, edition):
+        pixels = _magick_rgb(_ICON_DIR / f"{edition}_app_icon.jpg", _APP_ICON_PX)
+        n = _APP_ICON_PX
+        box = _badge_box(n)
+        inside = [pixels[y * n + x] for y in range(n) for x in range(n) if _in_box(x, y, box)]
+        amber = sum(1 for rgb in inside if _near(rgb, _BADGE, 48))
+        if edition == "demo":
+            assert amber >= 0.4 * len(inside), f"demo App Icon: {amber}/{len(inside)} amber"
+        else:
+            assert amber == 0, f"full game's App Icon carries {amber} amber pixels"
 
-        Not a given — it is why the App Icon is rendered at 184 rather than
-        downscaled from an existing frame. If the floor ever rises above 184
-        the library row loses the word and falls back to hue alone, which
-        should be a decision, not a side effect.
-
-        Counted the same way as the bundle frames: dark band, light lettering,
-        both inside the diagonal strip, with the tolerance opened up because
-        JPEG ringing smears every edge in here.
-        """
-        gen = _load_generator()
-        assert _APP_ICON_PX >= gen.RIBBON_MIN_PX
-
-        pixels = _magick_rgb(_APP_ICON, _APP_ICON_PX)
-        scale = _APP_ICON_PX / _VIEW
-        inner = _RIBBON_U_INNER * 2 ** 0.5 * scale
-        outer = _RIBBON_U_OUTER * 2 ** 0.5 * scale
-        band = word = covered = 0
-        for index, rgb in enumerate(pixels):
-            y, x = divmod(index, _APP_ICON_PX)
-            if not inner <= (x + 0.5) + (y + 0.5) <= outer:
-                continue
-            covered += 1
-            if _distance(rgb, _RIBBON_BG) <= 48:
-                band += 1
-            elif _distance(rgb, _RIBBON_FG) <= 48:
-                word += 1
-        assert covered, "the ribbon band falls outside the App Icon"
-        assert band > covered * 0.5, (
-            f"only {band}/{covered} band pixels are the ribbon colour"
-        )
-        assert 0.05 <= word / covered <= 0.45, (
-            f'lettering is {word}/{covered} of the band — "DEMO" is missing, '
-            "mispositioned or the wrong size on the App Icon"
-        )
-
-    def test_shortcut_icon_is_a_256px_png(self):
-        width, height, _ = _read_png(_SHORTCUT_ICON)
-        assert (width, height) == (_SHORTCUT_ICON_PX, _SHORTCUT_ICON_PX), (
-            f"the Shortcut Icon should be {_SHORTCUT_ICON_PX}x"
-            f"{_SHORTCUT_ICON_PX} — the frame the bundle ships; Valve's other "
-            "accepted size, 512, would break the byte-identity below"
-        )
-
-    def test_shortcut_icon_is_the_frame_the_app_installs(self):
-        """One mark: the desktop shortcut Steam creates and the bundled app agree.
-
-        Byte equality rather than pixel equality, because they are meant to be
-        the same file — Valve generates the .ico from this PNG, so there is no
-        container in between to justify a re-encode.
-        """
-        assert _SHORTCUT_ICON.read_bytes() == (
-            _SRC_TAURI / "icons-demo" / "128x128@2x.png"
-        ).read_bytes()
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    def test_shortcut_icon_is_the_frame_the_app_installs(self, edition):
+        shortcut = _ICON_DIR / f"{edition}_shortcut_icon.png"
+        assert _png_dimensions(shortcut.read_bytes()) == (_SHORTCUT_ICON_PX, _SHORTCUT_ICON_PX)
+        assert shortcut.read_bytes() == _bundle_png(edition, "128x128@2x.png").read_bytes()
 
     def test_no_stale_client_icon_remains(self):
-        """The 32 px ".ico" this suite used to pin is not a Steamworks field.
-
-        It was the wrong asset at the wrong size: Valve has no slot for it, and
-        the row in the issue's screenshot is the App Icon. Leaving the file in
-        the tree would invite someone to upload it.
-        """
-        assert not (_ICON_DIR / "demo_client_icon.ico").exists()
+        """Valve generates the .ico from the Shortcut Icon PNG; a hand-built one
+        in the tree would invite someone to upload it."""
+        assert not list(_ICON_DIR.glob("*_client_icon.ico"))
 
 
 # ---------------------------------------------------------------------------
-# D-10f  The committed output still matches the generator
+# D-10e  The Microsoft Store package logos, for both packages
 # ---------------------------------------------------------------------------
-def _load_generator():
-    """Import ``gen_icons.py`` by path — it is a script, not a package module.
+class TestMicrosoftStoreLogos:
+    @pytest.mark.parametrize("edition", _EDITIONS)
+    @pytest.mark.parametrize("name", sorted(_MSSTORE_LOGOS))
+    def test_logo_is_the_tile_at_the_manifest_size(self, edition, name):
+        frame = _Frame(_MSSTORE_DIR[edition] / name)
+        size = _MSSTORE_LOGOS[name]
+        assert (frame.width, frame.height) == (size, size)
+        assert frame.pixels[0][3] == 0, f"{edition}/{name}: the corner is not rounded"
+        assert _near(frame.at(*_THEM_AT), _THEM, 28), f"{edition}/{name}: no emerald bubble"
+        assert _near(frame.at(*_YOU_AT), _YOU, 28), f"{edition}/{name}: no violet bubble"
 
-    Only the geometry is touched. ``_magick()`` is looked up lazily inside the
-    render functions, so importing costs nothing and needs no ImageMagick.
+    @pytest.mark.parametrize("name", sorted(_MSSTORE_LOGOS))
+    def test_badge_only_on_the_demo(self, name):
+        for edition in _EDITIONS:
+            frame = _Frame(_MSSTORE_DIR[edition] / name)
+            box = _badge_box(frame.width)
+            inside = [rgba for x, y, rgba in frame if _in_box(x, y, box)]
+            amber = sum(1 for rgba in inside if _near(rgba, _BADGE, 40))
+            if edition == "demo":
+                assert amber >= 0.4 * len(inside), f"demo {name}: {amber}/{len(inside)} amber"
+            else:
+                assert amber == 0, f"base {name} carries {amber} amber pixels"
+
+
+# ---------------------------------------------------------------------------
+# D-10f  The committed vector output still matches the generator
+# ---------------------------------------------------------------------------
+def _load(path: Path, name: str):
+    """Import a generator script by path — they are scripts, not package modules.
+
+    Importing costs nothing and needs no renderer: rsvg-convert and ImageMagick
+    are only looked up inside the render functions.
     """
-    spec = importlib.util.spec_from_file_location("convsim_gen_icons", _GEN_ICONS)
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
 class TestGeneratedArtworkIsCurrent:
-    """The one artefact here that is checked against its generator rather than
-    against a property of itself.
+    """The SVG outputs are plain text, so they are checked against the generator
+    byte for byte: a hand-edited favicon, a stale demo master or a logo copied
+    in from somewhere else fails here instead of becoming a second mark.
 
-    Everything above pins what the rasterised set *looks like*; none of it can
-    tell a tree where the mark was edited in ``gen_icons.py`` and the script
-    never re-run — rasterising to find out would need ImageMagick, which this
-    suite borrows for the App Icon's pixels and nothing else. The committed
-    ``demo_icon.svg`` is drawn from the same geometry constants as the PNG, ICO
-    and ICNS frames, and unlike them it is plain text, so comparing it to
-    ``icon_svg()`` catches a half-applied regeneration for free — and keeps the
-    vector the docs hand to anyone re-rendering the mark from drifting out of
-    hand-edits.
+    The rasters cannot be checked this way without a renderer; everything
+    above pins what they look like instead.
     """
 
-    def test_committed_svg_is_what_the_generator_draws(self):
-        """Compared stripped: the drawing must match, the trailing byte need not.
-
-        The generator writes the file with a final newline, as the repo's
-        .editorconfig asks. Pinning that exactly would make the one artefact
-        here anyone is invited to *open* fail the suite the moment an editor
-        normalised its last line — and re-running the generator would take the
-        newline straight back out again.
-        """
-        gen = _load_generator()
-        assert _DEMO_SVG.read_text().strip() == gen.icon_svg("demo", ribbon=True), (
-            "publishing/assets/icons/demo_icon.svg is out of date — it is "
-            "generated output: re-run publishing/assets/source/gen_icons.py "
-            "(which also rewrites the bundle icon set and the Steam uploads; "
-            "expect every raster's bytes to change with it, and name your "
-            "ImageMagick build in the commit message, see the script's docstring)"
+    def test_every_vector_output_is_current(self):
+        gen = _load(_GEN_ICONS, "convsim_gen_icons")
+        stale = [
+            str(rel) for rel, text in gen.text_outputs().items()
+            if (_REPO_ROOT / rel).read_text() != text
+        ]
+        assert not stale, (
+            f"{stale} are out of date — they are generated output: re-run "
+            "publishing/assets/source/gen_icons.py (which also rewrites the "
+            "rasters; name your librsvg build in the commit message, see the "
+            "script's docstring)"
         )
 
-    def test_the_vector_carries_the_ribbon(self):
-        """It is billed as the >= 128 px drawing, so it must be the ribboned one."""
-        gen = _load_generator()
-        assert _DEMO_SVG.read_text().strip() != gen.icon_svg("demo", ribbon=False)
+    def test_the_demo_vectors_carry_the_badge(self):
+        gen = _load(_GEN_ICONS, "convsim_gen_icons")
+        for rel in (gen.DEMO_MASTER_SVG, gen.STEAM_ICON_DIR / "demo_icon.svg"):
+            assert gen.BADGE_FILL in (_REPO_ROOT / rel).read_text(), f"{rel} has no badge"
+        for rel in (gen.STEAM_ICON_DIR / "base_icon.svg", *gen.FAVICON_SVG):
+            assert gen.BADGE_FILL not in (_REPO_ROOT / rel).read_text(), f"{rel} has a badge"
 
 
 # ---------------------------------------------------------------------------
-# D-10g  The demo capsule and library art (issue #551)
+# D-10g  The capsule and library art (issue #551)
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="module")
-def demo_capsule():
-    """``demo_capsule(name)`` -> a decoded ``_Raster``, each file read once."""
-    cache: dict[str, _Raster] = {}
+def capsule():
+    """``capsule(edition, name)`` -> a decoded ``_Raster``, each file read once."""
+    cache: dict[tuple[str, str], _Raster] = {}
 
-    def load(name: str) -> _Raster:
-        if name not in cache:
-            cache[name] = _Raster(_DEMO_CAPSULE_DIR / f"{name}.png")
-        return cache[name]
+    def load(edition: str, name: str) -> _Raster:
+        if (edition, name) not in cache:
+            folder = _DEMO_CAPSULE_DIR if edition == "demo" else _CAPSULE_DIR
+            cache[(edition, name)] = _Raster(folder / f"{name}.png")
+        return cache[(edition, name)]
 
     return load
 
 
-def _capsule_ribbon_band(width: int, height: int) -> tuple[float, float]:
-    """The demo ribbon's (inner, outer) edges on a capsule, as values of x + y."""
-    k = _CAPSULE_RIBBON_ICON_SIDE * math.sqrt(width * height) / _VIEW
-    root2 = math.sqrt(2.0)
-    return (width + height - (2 * _PLATE_CORNER - _RIBBON_U_INNER * root2) * k,
-            width + height - (2 * _PLATE_CORNER - _RIBBON_U_OUTER * root2) * k)
+def _capsule_badge_box(width: int, height: int) -> tuple[float, float, float, float]:
+    """The DEMO pill on a capsule: an icon's badge, that icon pinned to the
+    capsule's lower-right corner at 0.6 x the geometric-mean side."""
+    side = _CAPSULE_BADGE_ICON_SIDE * (width * height) ** 0.5
+    x0, y0, x1, y1 = _badge_box(side)
+    dx, dy = width - side, height - side
+    return x0 + dx, y0 + dy, x1 + dx, y1 + dy
 
 
-def _dominant_colour(raster: _Raster, step: int = 4) -> tuple[int, int, int]:
-    counts = Counter(rgba[:3] for _, _, rgba in raster.sample(step) if rgba[3] == 255)
-    assert counts, "no opaque pixels"
-    return counts.most_common(1)[0][0]
+def _pixels_in(raster: _Raster, box, pad: float = 0.0):
+    x0, y0, x1, y1 = box
+    for y in range(max(0, int(y0 - pad)), min(raster.height, int(y1 + pad) + 1)):
+        for x in range(max(0, int(x0 - pad)), min(raster.width, int(x1 + pad) + 1)):
+            if _in_box(x, y, box, pad):
+                yield x, y, raster.rgba(x, y)
 
 
-class TestDemoCapsules:
-    """The demo app's own store and library art, so its entries stop rendering blank.
+class TestCapsules:
+    """Each app's own store and library art, drawing the official mark.
 
-    The set is the full game's, on the demo icon's purple plate and with the
-    icon's "DEMO" ribbon in the lower-right corner of every asset that may
-    carry the game name. The checks mirror the icon ones above: the plate
-    separates the two library entries at a glance, and where the ribbon is
-    drawn it really spells the word — and nothing of the composition runs
-    under it.
+    The demo's set is the full game's plus the icon's badge, pinned to the
+    lower-right corner of every asset that may carry the game name.
     """
 
     def test_the_demo_set_is_exactly_the_upload_set(self):
-        """Eight assets, and nothing that invites a wrong upload.
-
-        No page background — it is optional, Valve wants it ambient and
-        textless, and the full game's near-black one is the file to use if the
-        demo ever needs one — and no community icon: the App Icon and the
-        Shortcut Icon are gen_icons.py's, in publishing/assets/icons/.
-        """
+        """Eight assets, and nothing that invites a wrong upload: no page
+        background (optional, and the full game's is the file if ever needed)
+        and no community icon (gen_icons.py's, in publishing/assets/icons/)."""
         found = sorted(p.name for p in _DEMO_CAPSULE_DIR.iterdir())
         assert found == sorted(f"{n}.png" for n in _CAPSULE_SIZES), (
             f"publishing/assets/capsules/demo/ holds {found}; re-run "
@@ -1155,9 +1023,7 @@ class TestDemoCapsules:
     def test_demo_asset_is_valves_exact_size(self, name):
         path = _DEMO_CAPSULE_DIR / f"{name}.png"
         assert path.is_file(), f"{path.name} is missing: run gen_capsules.py --edition demo"
-        assert _png_dimensions(path.read_bytes()) == _CAPSULE_SIZES[name], (
-            f"{name}: Steamworks requires {_CAPSULE_SIZES[name]}"
-        )
+        assert _png_dimensions(path.read_bytes()) == _CAPSULE_SIZES[name]
 
     @pytest.mark.parametrize("name", sorted({**_CAPSULE_SIZES, **_BASE_ONLY_CAPSULES}))
     def test_full_game_asset_is_valves_exact_size(self, name):
@@ -1166,119 +1032,72 @@ class TestDemoCapsules:
         assert path.is_file(), f"{path.name} is missing: run gen_capsules.py"
         assert _png_dimensions(path.read_bytes()) == sizes[name]
 
-    def test_no_demo_asset_is_a_copy_of_the_full_games(self):
-        """The regression itself: the demo app's entries showing the base art,
-        or nothing, instead of their own."""
-        for name in _CAPSULE_SIZES:
+    def test_badged_demo_assets_are_not_copies(self):
+        for name in _BADGED_CAPSULES:
             demo = (_DEMO_CAPSULE_DIR / f"{name}.png").read_bytes()
             assert demo != (_CAPSULE_DIR / f"{name}.png").read_bytes(), name
 
-    @pytest.mark.parametrize("name", _OPAQUE_CAPSULES)
-    def test_plate_is_the_demo_purple(self, name, demo_capsule):
-        """Hue separates the two library entries, as it does the two icons."""
-        raster = demo_capsule(name)
-        opaque = all(rgba[3] == 255 for _, _, rgba in raster.sample(16))
-        assert opaque, f"{name}: a store capsule should be fully opaque"
-        plate = _dominant_colour(raster)
-        assert _distance(plate, _DEMO_PLATE) <= 12, (
-            f"{name}: dominant colour {plate} is not the demo plate {_DEMO_PLATE}"
-        )
-        assert _distance(plate, _BASE_PLATE) >= _MIN_PLATE_DISTANCE
-        for stage in _BASE_STAGE:
-            assert _distance(plate, stage) >= _MIN_PLATE_DISTANCE, (
-                f"{name}: plate {plate} is too close to the full game's stage {stage}"
-            )
+    def test_hero_and_logo_are_the_full_games(self):
+        """No text on the hero, no corner on the logo: the demo's are the full game's."""
+        for name in ("library_hero", "library_logo"):
+            assert ((_DEMO_CAPSULE_DIR / f"{name}.png").read_bytes()
+                    == (_CAPSULE_DIR / f"{name}.png").read_bytes()), name
 
-    @pytest.mark.parametrize("name", _RIBBONED_CAPSULES)
-    def test_ribbon_spells_demo_in_the_lower_right(self, name, demo_capsule):
-        """A dark band with four light letterforms, where the generator puts it.
+    @pytest.mark.parametrize("name", _BADGED_CAPSULES)
+    def test_demo_is_the_full_art_outside_the_badge(self, name, capsule):
+        full, demo = capsule("full", name), capsule("demo", name)
+        box = _capsule_badge_box(full.width, full.height)
+        moved = [
+            (x, y) for y in range(0, full.height, 3) for x in range(0, full.width, 3)
+            if not _in_box(x, y, box, pad=2.0)
+            and max(abs(a - b) for a, b in zip(full.rgba(x, y), demo.rgba(x, y))) > 2
+        ]
+        assert not moved, f"{name}: the demo differs from the full game outside the badge at {moved[:5]}"
 
-        Counted as on the icons: band colour and lettering inside the diagonal
-        strip, then the lettering bucketed along the band so the gaps between
-        D, E, M and O show up as four separate runs.
-        """
-        raster = demo_capsule(name)
-        inner, outer = _capsule_ribbon_band(raster.width, raster.height)
-        covered = band = word = 0
+    @pytest.mark.parametrize("name", _BADGED_CAPSULES)
+    def test_badge_spells_demo_in_the_lower_right(self, name, capsule):
+        raster = capsule("demo", name)
+        box = _capsule_badge_box(raster.width, raster.height)
+        amber = sum(1 for _, _, rgba in _pixels_in(raster, box) if _near(rgba, _BADGE, 40))
+        inside = sum(1 for _ in _pixels_in(raster, box))
+        assert inside and amber >= 0.4 * inside, f"{name}: {amber}/{inside} of the pill is amber"
+        unit = _CAPSULE_BADGE_ICON_SIDE * (raster.width * raster.height) ** 0.5 / 864
         columns: dict[int, int] = {}
-        for x, y, (r, g, b, _) in raster.diagonal_strip(inner, outer):
-            covered += 1
-            if _distance((r, g, b), _RIBBON_BG) <= 24:
-                band += 1
-            elif _distance((r, g, b), _RIBBON_FG) <= 24:
-                word += 1
-                columns[x - y] = columns.get(x - y, 0) + 1
-        assert covered, f"{name}: the ribbon band falls outside the capsule"
-        assert band > covered * 0.5, (
-            f"{name}: only {band}/{covered} band pixels are the ribbon colour"
-        )
-        assert 0.05 <= word / covered <= 0.45, (
-            f'{name}: lettering is {word}/{covered} of the band — "DEMO" is '
-            "missing, mispositioned or the wrong size"
-        )
-        runs = _letterform_runs(columns)
+        for x, _, rgba in _pixels_in(raster, _text_window(box, unit)):
+            if _is_ink(rgba):
+                columns[x] = columns.get(x, 0) + 1
+        runs = _letterforms(columns)
         assert len(runs) == 4, f"{name}: {len(runs)} letterform(s), not four: {runs}"
-        assert min(runs) * 4 >= max(runs), f"{name}: lopsided letterforms {runs}"
 
-    @pytest.mark.parametrize("name", _RIBBONED_CAPSULES)
-    def test_nothing_crowds_the_ribbon(self, name, demo_capsule):
-        """Only the plate in the clearance inside the band and in the tip beyond it.
+    @pytest.mark.parametrize("name", _BADGED_CAPSULES)
+    def test_nothing_crowds_the_badge(self, name, capsule):
+        """Only the stage where the badge goes, and a clearance round it.
 
-        A mark or a line of the logotype under the ribbon is half hidden — the
-        one failure in this set the eye skips over on a full-size capsule. The
-        two pixels next to each band edge are left out for the anti-aliasing.
+        Checked on the full game's art, which has no badge: anything there is
+        composition the demo's badge would cover or crowd.
         """
-        raster = demo_capsule(name)
-        inner, outer = _capsule_ribbon_band(raster.width, raster.height)
-        stage = (_DEMO_PLATE, _DEMO_LOWER_BAND)
+        raster = capsule("full", name)
+        box = _capsule_badge_box(raster.width, raster.height)
+        pad = _CAPSULE_BADGE_CLEARANCE * (box[3] - box[1])
+        strays = [(x, y) for x, y, rgba in _pixels_in(raster, box, pad)
+                  if min(_distance(rgba[:3], c) for c in _CAPSULE_STAGE) > 16]
+        assert not strays, f"{name}: artwork under or beside the badge at {strays[:5]}"
 
-        def strays(lo: float, hi: float) -> list[tuple[int, int]]:
-            return [
-                (x, y) for x, y, rgba in raster.diagonal_strip(lo, hi)
-                if min(_distance(rgba[:3], c) for c in stage) > 16
-            ]
-
-        clearance = strays(inner - _CAPSULE_RIBBON_CLEARANCE * (outer - inner), inner - 2)
-        assert not clearance, (
-            f"{name}: {len(clearance)} pixels of artwork within the ribbon's "
-            f"clearance, e.g. {clearance[:5]}"
+    @pytest.mark.parametrize("edition", ("full", "demo"))
+    @pytest.mark.parametrize("name", sorted(_CAPSULE_SIZES))
+    def test_the_mark_is_the_two_voices(self, edition, name, capsule):
+        """Both bubble colours, and none of the retired capsule-only drawing's."""
+        raster = capsule(edition, name)
+        seen = [rgba for _, _, rgba in raster.sample(3) if rgba[3] == 255]
+        assert any(_near(rgba, _YOU, 6) for rgba in seen), f"{edition}/{name}: no violet bubble"
+        assert any(_near(rgba, _THEM, 6) for rgba in seen), f"{edition}/{name}: no emerald bubble"
+        assert not any(_near(rgba, c, 20) for rgba in seen for c in _RETIRED), (
+            f"{edition}/{name}: carries a retired brand colour"
         )
-        tip = strays(outer + 2, raster.width + raster.height)
-        assert not tip, f"{name}: the corner beyond the ribbon is not plain plate: {tip[:5]}"
 
-    def test_hero_carries_no_ribbon(self, demo_capsule):
-        """Valve's library hero takes no text or logo: plate and mark only."""
-        raster = demo_capsule("library_hero")
-        inner, outer = _capsule_ribbon_band(raster.width, raster.height)
-        corner = [rgba for _, _, rgba in raster.diagonal_strip(
-            inner - (outer - inner), raster.width + raster.height)]
-        assert corner
-        stage = (_DEMO_PLATE, _DEMO_LOWER_BAND)   # the strip crosses both bands
-        assert all(min(_distance(rgba[:3], c) for c in stage) <= 16 for rgba in corner), (
-            "the hero's lower-right corner is not plain plate"
-        )
-        dark = sum(1 for _, _, rgba in raster.sample(4) if _distance(rgba[:3], _RIBBON_BG) <= 48)
-        assert dark == 0, f"{dark} sampled hero pixels are the ribbon's near-black"
-
-    def test_logo_is_transparent_and_carries_the_demo_mark(self, demo_capsule):
-        """The logo is laid over the purple hero, so its player bubble is white.
-
-        The full game's logo has a #6D28D9 bubble, which on the demo hero would
-        vanish into the plate and leave three floating dots: of the logo's
-        opaque pixels, only those dots may be the plate colour.
-        """
-        raster = demo_capsule("library_logo")
+    def test_logo_is_transparent(self, capsule):
+        raster = capsule("full", "library_logo")
         assert raster.alpha, "the library logo must be a transparent PNG"
         w, h = raster.width, raster.height
         for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
             assert raster.rgba(x, y)[3] == 0, f"logo corner ({x}, {y}) is not transparent"
-        opaque = [rgba[:3] for _, _, rgba in raster.sample(2) if rgba[3] == 255]
-        assert opaque, "the library logo is empty"
-        purple = sum(1 for rgb in opaque if _distance(rgb, _DEMO_PLATE) <= 24)
-        assert purple <= len(opaque) * 0.02, (
-            f"{purple}/{len(opaque)} of the logo is the demo plate colour — it "
-            "would disappear against the demo hero"
-        )
-        assert not any(_distance(rgb, _RIBBON_BG) <= 24 for rgb in opaque), (
-            "the library logo carries the ribbon's band colour"
-        )

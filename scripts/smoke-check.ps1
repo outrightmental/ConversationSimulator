@@ -166,7 +166,7 @@ Check-File "apps\desktop\src-tauri\entitlements.plist"
 # (SIGABRT) on first mic access instead of prompting, breaking voice input.
 Check-File "apps\desktop\src-tauri\Info.plist"
 # Icons referenced by tauri.conf.json are embedded at compile time; a missing
-# file breaks `tauri dev`/`tauri build`, so verify the placeholder set is present.
+# file breaks `tauri dev`/`tauri build`, so verify the set is present.
 Check-File "apps\desktop\src-tauri\icons\32x32.png"
 Check-File "apps\desktop\src-tauri\icons\128x128.png"
 Check-File "apps\desktop\src-tauri\icons\128x128@2x.png"
@@ -181,12 +181,14 @@ Check-File "apps\desktop\src-tauri\icons-demo\128x128.png"
 Check-File "apps\desktop\src-tauri\icons-demo\128x128@2x.png"
 Check-File "apps\desktop\src-tauri\icons-demo\icon.icns"
 Check-File "apps\desktop\src-tauri\icons-demo\icon.ico"
-# The two Steamworks icons are not compiled into anything — they are uploaded
-# by hand to the demo app's Graphical Assets (demo gate D-10).  They are
-# checked here because they come off the same mark and the same script, so a
-# tree that has the bundle set but not these is a half-applied regeneration.
-# demo_app_icon.jpg is the library-list row from issue #499; the Mac Icon field
-# takes icons-demo/icon.icns above, so it needs no separate file.
+# The Steamworks icons are not compiled into anything — they are uploaded by
+# hand to each app's Graphical Assets (demo gate D-10 for the demo's).  They
+# are checked here because they come off the same icon and the same script
+# (gen_icons.py), so a tree that has the bundle sets but not these is a
+# half-applied regeneration.  The App Icon is the library-list row from issue
+# #499; the Mac Icon field takes each bundle's icon.icns above.
+Check-File "publishing\assets\icons\base_app_icon.jpg"
+Check-File "publishing\assets\icons\base_shortcut_icon.png"
 Check-File "publishing\assets\icons\demo_app_icon.jpg"
 Check-File "publishing\assets\icons\demo_shortcut_icon.png"
 
