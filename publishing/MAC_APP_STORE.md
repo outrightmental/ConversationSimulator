@@ -117,6 +117,30 @@ Done once, in this order. Nothing here can be done from CI.
 
 ## Where it stands (2026-11-21)
 
+Steps 1 to 3 above are done. Steps 4 to 6 are not.
+
+- **Agreements, tax and banking:** the Free and Paid Apps agreements, the bank
+  account and the W-9 were already active on the Outright Mental account.
+- **Bundle IDs:** `com.outrightmental.convsim` and
+  `com.outrightmental.convsim.demo`, registered 2026-11-21 with the default
+  capabilities.
+- **App records:** *Conversation Simulator*, Apple ID **6837668150**, SKU
+  `convsim-mac`; and *Conversation Simulator Demo*, Apple ID **6837668183**,
+  SKU `convsim-demo-mac`. Both are macOS, English (U.S.), full access.
+  `MAC_APP_STORE_FULL_APP_URL` is `https://apps.apple.com/app/id6837668150`.
+- **Filled in on both records**, from the tables in this document: subtitle;
+  categories Education and Entertainment; price ($9.99, or free for the demo);
+  availability in 174 regions, all but China mainland; the privacy policy URL;
+  App Privacy *Data Not Collected*, published; promotional text (full app
+  only), description and keywords; support and marketing URLs; copyright; the
+  five screenshots; and the review notes, with *Sign-in required* off.
+- **Still to do in App Store Connect, all the maintainer's:**
+  - the age rating questionnaire, which now asks more than the table above
+    covers (In-App Controls, Messaging and Chat, Health or Wellness Topics);
+  - Content Rights;
+  - the review contact details;
+  - the build, and Add for Review.
+
 Both apps build from the v0.4.12 tag, unsigned: the full app (run
 44897182990) and the demo (run 44896676770), each with the one-folder engine
 at `Contents/Resources/resources/bin/convsim-core/convsim-core`,
@@ -124,9 +148,11 @@ llama-server and its Metal libraries, `LSApplicationCategoryType`
 education, `ITSAppUsesNonExemptEncryption` false and the microphone text.
 The full app's first v0.4.12 build (run 44896674177) stopped on an empty
 bash array under macOS's bash 3.2, fixed in #619; the workflow from `main`
-builds any tag. Not yet: signing, the `.pkg`, the TestFlight upload, and any
-run of the sandboxed app on a Mac. Those wait on the six steps above, which
-are all a person's. Once they are done, send v0.4.12 to TestFlight with:
+builds any tag.
+
+What blocks TestFlight is step 4 and step 5: the signing secrets, the same
+values UmlautHero uses. After that, set `MAC_APP_STORE` to `true` (step 6)
+and send v0.4.12:
 
 ```bash
 gh workflow run mac-app-store.yml --repo outrightmental/ConversationSimulator --ref main -f tag=v0.4.12

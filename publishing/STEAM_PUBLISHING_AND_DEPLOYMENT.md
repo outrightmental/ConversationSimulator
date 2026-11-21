@@ -14,23 +14,26 @@
 > [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) for
 > the registration checklist and identifier table.
 
-**Where it stands (2026-11-21).** v0.4.12 is staged on both apps, set live
-on no branch. Both builds came from the v0.4.12 tag, and Defender found the
-Windows payloads clean.
+**Where it stands (2026-11-21).** v0.4.12 is staged on both apps. Both
+builds came from the v0.4.12 tag, and Defender found the Windows payloads
+clean.
 
-| App | Store state | Latest staged build |
-|---|---|---|
-| Conversation Simulator (4963030) | public page, *Coming soon*, Q1 2027 | BuildID **26831893**, `Conversation Simulator v0.4.12` (Release run 44895020918) |
-| Conversation Simulator Demo (5343430) | not public | BuildID **26832087**, `Conversation Simulator Demo v0.4.12` (demo Release run 44896670753) |
+| App | Store state | `default` and `beta` branches | Latest staged build |
+|---|---|---|---|
+| Conversation Simulator (4963030) | public, *Coming soon*, Q1 2027; release date set to 2027-03-15 | not changed here | BuildID **26831893**, `Conversation Simulator v0.4.12` (Release run 44895020918) |
+| Conversation Simulator Demo (5343430) | public as *Coming soon* since 2026-11-21; store presence approved; build in Valve review since 2026-11-12; release date set to 2027-01-11 | BuildID 26725955 (v0.4.11) on both | BuildID **26832087**, `Conversation Simulator Demo v0.4.12` (demo Release run 44896670753) |
 
-**Official-icon art (#617), uploaded 2026-11-21, not yet published.** Both
-apps now have the new App Icon, Shortcut Icon and Mac Icon (Steamworks
-Settings → Client Images). Their store pages have the new header, small, main
-and vertical capsules and the library capsule, header and logo, and the full
-app also has the page background. Each app has two Publish steps left:
-Steamworks Settings → Publish for the icons, and the store page's Publish tab
-for the art. The full app's store diff held only these art changes when they
-were uploaded. Two things were left as they were:
+**Setting a build live needs the account's confirmation.** Each change asks
+for a confirmation from the Steam Mobile authenticator, or a code by SMS or
+email. That's a person's step: Steamworks → the app → Builds → choose the
+branch on the BuildID's row → Preview Change → Set Build Live Now.
+
+**Official-icon art (#617), published 2026-11-21.** Both apps have the new App
+Icon, Shortcut Icon and Mac Icon (Steamworks Settings → Client Images,
+published). The full app's public store page has the new header, small, main
+and vertical capsules, page background, and library capsule, header and logo
+(store revision 8). The demo's page has the same set and went public with it.
+Two things were left as they were:
 
 - **The library hero** on both apps. Steam's upload asks you to confirm the
   hero has "no text or logos", and `library_hero.png` has the bubble mark in
@@ -38,8 +41,7 @@ were uploaded. Two things were left as they were:
 - **The full app's temporary art override** (old art, 3 of 4 capsules), which
   has no dates and so is not showing.
 
-Before Next Fest the demo still needs its five screenshots and build and store
-review ([`STEAM_NEXT_FEST_DEMO.md`](STEAM_NEXT_FEST_DEMO.md) §4).
+The demo's store page has no screenshot slot in Steamworks.
 
 ---
 

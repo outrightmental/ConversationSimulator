@@ -10,8 +10,8 @@
 #
 # When a store goes live, change its status (and its action) here; nothing
 # else needs to change. Store IDs: Steam 4963030 (demo 5343430), Microsoft
-# Store 9NTNF4X3GQ95 (demo 9NNGXLM2HZZM); the Mac App Store records do not
-# exist yet (publishing/MAC_APP_STORE.md).
+# Store 9NTNF4X3GQ95 (demo 9NNGXLM2HZZM), Mac App Store 6837668150 (demo
+# 6837668183; not on sale yet, publishing/MAC_APP_STORE.md).
 groups:
   - id: full
     label: The full app
@@ -43,8 +43,9 @@ groups:
       - name: Steam
         icon: gamepad
         platforms: Windows · macOS · Linux
-        status: soon
-        url: https://store.steampowered.com/app/4963030/Conversation_Simulator/
+        status: wishlist
+        action: See the page
+        url: https://store.steampowered.com/app/5343430/Conversation_Simulator_Demo/
       - name: Microsoft Store
         icon: windows
         platforms: Windows 10 and 11
