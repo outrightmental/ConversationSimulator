@@ -214,7 +214,7 @@ jobs:
       # ── Branch policy guard ────────────────────────────────────────────────
       # Automatic (workflow_call) runs may only target the 'beta' branch.
       # Promoting to 'default' (public) requires an explicit workflow_dispatch
-      # with the Stage 4 gate checklist — use steam-promote.yml after sign-off.
+      # with the Stage 4 gate checklist — use promote.yml after sign-off.
       - name: Guard — refuse default branch on automatic runs
         if: env.HAS_STEAM_CREDS == 'true'
         env:

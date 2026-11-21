@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Ready
+
+# The publishing contract (publishing/product.yaml) and whether the product's propaganda is ready to go:
+# outrightmental/publishing's ready check, reported on every change. A broken contract fails it; the
+# propaganda only reports until publishing/product.yaml sets propaganda.enforce: true.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ready:
+    uses: outrightmental/publishing/.github/workflows/ready.yml@v1
+    secrets: inherit
