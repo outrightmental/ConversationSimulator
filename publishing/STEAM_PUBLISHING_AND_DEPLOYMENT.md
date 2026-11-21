@@ -23,11 +23,23 @@ Windows payloads clean.
 | Conversation Simulator (4963030) | public page, *Coming soon*, Q1 2027 | BuildID **26831893**, `Conversation Simulator v0.4.12` (Release run 44895020918) |
 | Conversation Simulator Demo (5343430) | not public | BuildID **26832087**, `Conversation Simulator Demo v0.4.12` (demo Release run 44896670753) |
 
-Before Next Fest, the demo also needs its store presence, which is a
-partner-portal user's job. That means the icons, capsules and library art
-regenerated with the official icon in #617 (the full game's art changed too),
-and the five demo screenshots. Then it needs build and store review
-([`STEAM_NEXT_FEST_DEMO.md`](STEAM_NEXT_FEST_DEMO.md) §4).
+**Official-icon art (#617), uploaded 2026-11-21, not yet published.** Both
+apps now have the new App Icon, Shortcut Icon and Mac Icon (Steamworks
+Settings → Client Images). Their store pages have the new header, small, main
+and vertical capsules and the library capsule, header and logo, and the full
+app also has the page background. Each app has two Publish steps left:
+Steamworks Settings → Publish for the icons, and the store page's Publish tab
+for the art. The full app's store diff held only these art changes when they
+were uploaded. Two things were left as they were:
+
+- **The library hero** on both apps. Steam's upload asks you to confirm the
+  hero has "no text or logos", and `library_hero.png` has the bubble mark in
+  the middle. Whether the mark counts as a logo is the maintainer's call.
+- **The full app's temporary art override** (old art, 3 of 4 capsules), which
+  has no dates and so is not showing.
+
+Before Next Fest the demo still needs its five screenshots and build and store
+review ([`STEAM_NEXT_FEST_DEMO.md`](STEAM_NEXT_FEST_DEMO.md) §4).
 
 ---
 
