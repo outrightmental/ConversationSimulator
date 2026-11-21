@@ -1,4 +1,55 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.4.12 — Release Notes
+
+> **Patch release (2026-11-21).** Characters keep talking through ordinary
+> words, and the app has one icon everywhere.
+
+## What's new in v0.4.12
+
+### Ordinary lines are no longer stopped (#600)
+
+Every line a character says is checked against the safety policy before you
+see it. The check rejected some ordinary lines: "market penetration" ended a
+negotiation as if it were explicit content, and "I really want to hear
+specifics, not buzzwords." counted as the character giving away its hidden
+agenda. Each rejected line cost a rewrite (20 to 50 s on a computer
+without a graphics card), and a line judged explicit ended the conversation.
+
+- Words that have an innocent professional meaning pass only inside those
+  phrases ("market penetration", "penetration testing", "erect a building")
+  and are stopped anywhere else, as before.
+- A line counts as giving the game away when the character narrates a
+  concealed intent ("I secretly want you to..."), not whenever it says
+  "really" or "actually".
+- The hidden-agenda check compares phrases instead of single long words, and
+  ignores the words of the scenario's public brief, which the character is
+  meant to talk about. It now also catches lines that repeat an agenda word
+  for word, which the old check missed.
+
+CI runs 138 innocent lines from all 21 official scenarios and 74 violations
+against the check on every change.
+
+### One icon everywhere (#617)
+
+The app, its installers, the Steam and Microsoft Store entries and both
+websites use the official Conversation Simulator icon. The demo's icon is the
+same with an amber **DEMO** badge, so the two are easy to tell apart in a
+Steam library, the taskbar and the Dock. On macOS 26 the icon no longer sits
+on a grey plate.
+
+### The demo on the Mac App Store (#609)
+
+The Mac App Store build now makes the free demo as its own app, beside the
+$9.99 one. In that edition the demo's *Get the full game* card leaves out the
+line about carrying your model and conversations over, because each app in
+Apple's sandbox keeps its own files.
+
+## Upgrade notes
+
+- No database migration. Conversations in progress continue normally.
+
+---
+
 # Conversation Simulator v0.4.11 — Release Notes
 
 > **Patch release (2026-11-17).** Two more stores.
